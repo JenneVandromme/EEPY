@@ -1,0 +1,7 @@
+# Reachy Mini control (movement, simulator, robot connection).
+# Pulls in numpy>=2.2.5 as its own dependency — do NOT install this into
+# the same environment as requirements-vision.txt, see the README.
+reachy-mini[mujoco]
+scipy
+requests
+python-dotenv

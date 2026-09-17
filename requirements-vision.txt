@@ -1,0 +1,8 @@
+# Camera-based perception (face/eye/fatigue cues). Installed together in
+# ONE pip command (this file) on purpose — see the README's "why two
+# environments" note for why numpy<2 and mediapipe must be resolved
+# together, not installed separately.
+numpy<2
+opencv-python
+mediapipe==0.10.14
+scipy
