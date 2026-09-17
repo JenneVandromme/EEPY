@@ -122,6 +122,11 @@ pip install -r requirements-robot.txt
 pip install -r requirements-robot.txt
 ```
 
+This one command installs everything robot-related, **including the
+MuJoCo simulator** (the `[mujoco]` part) — there's no separate simulator
+download or install step later. `reachy-mini-daemon --sim` further down
+will just work once this finishes.
+
 **If you're on Linux**, `reachy-mini` also needs a system package
 (GStreamer) that isn't installed via `pip`. If Step 3 installs fine but
 running a robot script later fails with an error mentioning `Gst` or
@@ -130,6 +135,15 @@ running a robot script later fails with an error mentioning `Gst` or
 ```bash
 sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gir1.2-gst-plugins-base-1.0
 ```
+
+**If you're on Windows:** this setup (`reachy-mini[mujoco]` specifically,
+and whether the simulator viewer opens cleanly) hasn't actually been
+tested by anyone on the team yet — everything above is our best expectation
+from the package's published support, not a confirmed result the way macOS
+and Linux are. If Step 3 or the simulator step below fails in a
+Windows-specific way, that's not you doing something wrong — flag it in
+the team chat, and once it's fixed, add what you did here so the next
+Windows teammate doesn't hit it too.
 
 ### Step 4 — Copy the environment file
 
