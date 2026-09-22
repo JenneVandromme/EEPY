@@ -51,6 +51,17 @@ from [python.org/downloads](https://www.python.org/downloads/) (**on
 Windows, tick "Add python.exe to PATH"** during install, it's a checkbox
 on the first install screen) and re-open your terminal afterwards.
 
+> **macOS gotcha:** macOS ships its own ancient Python 3.9 at
+> `/usr/bin/python3` (from Xcode Command Line Tools), and it's common for
+> this to stay first on your `PATH` even *after* you install a newer
+> Python — so `python3 --version` can still print 3.9, or worse, a plain
+> `python3 -m venv ...` can silently create the venv with that old 3.9
+> instead of the one you just installed. If you installed via
+> [python.org](https://www.python.org/downloads/) or `brew install
+> python@3.12`, don't rely on the bare `python3` command — use the
+> versioned one explicitly (`python3.12`) as shown in Step 1, and use the
+> version-check right after creating the venv to confirm it took.
+
 ### Step 1 — Create the two virtual environments
 
 A "virtual environment" (venv) is just an isolated folder of Python
@@ -61,9 +72,13 @@ teammate creates their own locally.
 **macOS / Linux:**
 
 ```bash
-python3 -m venv .venv-vision
-python3 -m venv .venv-robot
+python3.12 -m venv .venv-vision
+python3.12 -m venv .venv-robot
 ```
+
+(If you installed a different version in Step 0, e.g. 3.11, use that
+instead: `python3.11 -m venv ...`. Just don't use the bare `python3` — see
+the macOS gotcha note in Step 0.)
 
 **Windows (PowerShell):**
 
@@ -74,6 +89,17 @@ python -m venv .venv-robot
 
 This creates two folders, `.venv-vision/` and `.venv-robot/`. You only do
 this once.
+
+**Verify it actually used the right Python** before moving on — this
+catches the macOS gotcha above before it wastes your time:
+
+```bash
+.venv-robot/bin/python --version      # Windows: .venv-robot\Scripts\python.exe --version
+```
+
+This must print `3.11` or higher. If it prints `3.9` (or anything below
+3.11), delete the folder (`rm -rf .venv-robot`) and recreate it with the
+correct versioned command above.
 
 ### Step 2 — Install the vision (camera) dependencies
 
@@ -134,6 +160,24 @@ running a robot script later fails with an error mentioning `Gst` or
 
 ```bash
 sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gir1.2-gst-plugins-base-1.0
+```
+
+**If `pip install -r requirements-robot.txt` fails with something like**
+`ERROR: Could not find a version that satisfies the requirement
+reachy-mini[mujoco] (from versions: none)` — this looks like a mujoco/
+install problem but almost always isn't. It means `.venv-robot` was
+created with too old a Python (`reachy-mini` needs 3.11+; if your venv is
+3.9 or 3.10, pip can't find *any* matching version and gives this
+unhelpful error instead of saying so directly). Fix:
+
+```bash
+deactivate                          # if currently active
+rm -rf .venv-robot
+python3.12 -m venv .venv-robot      # use your versioned Python, see Step 0/1
+source .venv-robot/bin/activate
+python --version                    # confirm this prints 3.11+ before continuing
+pip install --upgrade pip
+pip install -r requirements-robot.txt
 ```
 
 **If you're on Windows:** this setup (`reachy-mini[mujoco]` specifically,
