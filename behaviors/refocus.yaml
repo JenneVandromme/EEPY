@@ -1,0 +1,111 @@
+# ===========================================================================
+#  refocus.yaml -- the "hey, back to work" ladder.
+#
+#  Level 0 is barely noticeable. Level 4 gives up on nudging and offers a
+#  break. The decision logic picks exactly ONE behaviour by (ladder, level),
+#  so every level from 0 to 4 must exist -- no gaps, no duplicates.
+#
+#  The idea is escalation: start so subtle it is deniable, and only get
+#  explicit if the gentle version did not land.
+#
+#  After editing run:  python -m eepy.behaviors.validate
+# ===========================================================================
+behaviors:
+
+  # --- Level 0 -- presence only -------------------------------------------
+  - name: refocus_study_buddy
+    ladder: refocus
+    level: 0
+    group: refocus
+    description: >
+      Does almost nothing on purpose. Just breathes and sits with you. This
+      is the rung the robot sits on most of the time.
+    loop: forever
+    intensity: 0.6
+    keyframes:
+      - use: breathe_in
+      - use: breathe_out
+
+  # --- Level 1 -- joint attention -----------------------------------------
+  - name: refocus_joint_attention
+    ladder: refocus
+    level: 1
+    group: refocus
+    description: >
+      Looks at the student, then pointedly down at their notes. Shared
+      attention, no words. Easy to ignore, which is the point -- if the
+      student is actually fine, nothing has been lost.
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - use: glance_at_notes
+      - use: return_to_neutral
+
+  # --- Level 2 -- curious ---------------------------------------------------
+  - name: refocus_curious
+    ladder: refocus
+    level: 2
+    group: refocus
+    description: >
+      A questioning head tilt with a small sound. Still wordless, but now it
+      is clearly addressed AT the student rather than just happening nearby.
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - use: head_tilt_curious
+      # Written out by hand rather than reusing a block, so you can see the
+      # long form. Every field here is optional except duration.
+      - head:
+          yaw: -8             # + turns left, - turns right
+          pitch: 4            # + chin down, - chin up
+          roll: 12            # + tips toward the left ear
+        antennas:
+          right: -25          # mirrored values look symmetric
+          left: 25
+        duration: 0.5
+        easing: cartoon
+        sound: questioning.wav
+        hold: 0.8
+      - use: return_to_neutral
+
+  # --- Level 3 -- verbal ----------------------------------------------------
+  - name: refocus_verbal
+    ladder: refocus
+    level: 3
+    group: refocus
+    description: >
+      Says something. By now the quiet nudges have been ignored, so the robot
+      stops being coy. Which words get used depends on how sure the system
+      is -- see lines.yaml.
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - head: { pitch: -8 }
+        antennas: { right: -15, left: 15 }
+        duration: 0.6
+        easing: ease_in_out
+        say: refocus_check        # line ID from lines.yaml
+        hold: 1.5
+      - use: nod_small
+      - use: return_to_neutral
+
+  # --- Level 4 -- offer a break --------------------------------------------
+  - name: refocus_break_offer
+    ladder: refocus
+    level: 4
+    group: refocus
+    description: >
+      Stops pushing and offers a break instead. If someone has ignored four
+      rungs of nudging, more nudging is not the answer -- they are probably
+      genuinely done.
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - use: head_tilt_curious
+      - head: { pitch: -6, roll: 8 }
+        antennas: { right: -20, left: 20 }
+        duration: 0.8
+        easing: minjerk
+        say: refocus_break_offer
+        hold: 2.0
+      - use: return_to_neutral

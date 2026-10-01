@@ -1,0 +1,165 @@
+# ===========================================================================
+#  _blocks.yaml -- shared pieces every behaviour can reuse.
+#
+#  Two things live here:
+#    1. gaze_targets -- named directions, so nobody has to remember angles.
+#    2. blocks       -- small named movements that bigger behaviours reuse.
+#
+#  Edit this file and you change every behaviour that uses these pieces, so
+#  go gently. After any edit run:
+#
+#      python -m eepy.behaviors.validate
+#
+#  Angles are DEGREES. Heights are MILLIMETRES. Times are SECONDS.
+# ===========================================================================
+
+# --- Where the robot can look --------------------------------------------
+# Instead of writing "pitch: 20" and hoping it means "at the notes", write
+# "look_at: notes". If the robot sits somewhere new on the desk, we fix the
+# angle once, here, and every behaviour follows.
+gaze_targets:
+
+  user:
+    # Up toward the face of someone sitting at the desk.
+    pitch: -12
+
+  notes:
+    # Down at the notebook / desk surface.
+    pitch: 20
+
+  screen:
+    # Off to the side, at the laptop.
+    yaw: 25
+
+  away:
+    # Politely off to the other side -- "I'm not watching you".
+    yaw: -35
+    pitch: -5
+
+
+# --- Reusable movements ---------------------------------------------------
+blocks:
+
+  nod_small:
+    description: One small nod. Yes, I'm listening.
+    # relative: true means the numbers below are OFFSETS from wherever the
+    # head already is, not absolute positions. That is what lets a nod work
+    # in the middle of any behaviour without knowing where the head started.
+    relative: true
+    keyframes:
+      - head: { pitch: 8 }
+        duration: 0.25
+        easing: ease_in_out
+      - head: { pitch: -8 }
+        duration: 0.30
+        easing: ease_in_out
+
+  nod_slow:
+    description: A single slow, heavier nod. Reads as agreement, not alertness.
+    relative: true
+    keyframes:
+      - head: { pitch: 10 }
+        duration: 0.6
+        easing: minjerk
+      - head: { pitch: -10 }
+        duration: 0.8
+        easing: minjerk
+
+  glance_at_user:
+    description: Look up at the student and hold a moment.
+    keyframes:
+      - look_at: user
+        duration: 0.8
+        easing: ease_in_out
+        hold: 0.5
+
+  glance_at_notes:
+    description: Look pointedly down at the work.
+    keyframes:
+      - look_at: notes
+        duration: 0.6
+        easing: minjerk
+        hold: 0.8
+
+  head_tilt_curious:
+    description: Tip the head sideways. The universal "hmm?".
+    relative: true
+    keyframes:
+      - head: { roll: 12 }
+        duration: 0.5
+        easing: cartoon
+        hold: 0.6
+
+  antenna_perk:
+    description: Antennas up and alert.
+    keyframes:
+      - antennas: { right: -10, left: 10 }
+        duration: 0.4
+        easing: cartoon
+
+  antenna_droop:
+    description: >
+      Antennas folded over -- tired, deflated. Large mirrored values are the
+      direction the SDK's own sleep pose uses, so this reads as "flopped
+      down", not "spread wide".
+    keyframes:
+      - antennas: { right: -70, left: 70 }
+        duration: 1.2
+        easing: minjerk
+
+  antenna_droop_deep:
+    description: Antennas all the way down. Nearly asleep.
+    keyframes:
+      - antennas: { right: -150, left: 150 }
+        duration: 1.8
+        easing: minjerk
+
+  breathe_in:
+    description: >
+      Half of the slow idle "breathing" cycle -- the head rises a few
+      millimetres. Deliberately tiny; it should be felt, not watched.
+    relative: true
+    keyframes:
+      - head: { z: 4, pitch: -2 }
+        duration: 2.2
+        easing: ease_in_out
+
+  breathe_out:
+    description: The other half of the breathing cycle -- settle back down.
+    relative: true
+    keyframes:
+      - head: { z: -4, pitch: 2 }
+        duration: 2.6
+        easing: ease_in_out
+
+  yawn:
+    description: >
+      A yawn, read as a stretch: head tips back, rises, then sags lower than
+      it started. Contagious yawning is the point -- it nudges without words.
+    relative: true
+    keyframes:
+      - head: { pitch: -14, z: 5 }
+        duration: 1.1
+        easing: ease_in_out
+        hold: 0.4
+      - head: { pitch: 20, z: -12 }
+        duration: 1.6
+        easing: minjerk
+
+  head_sag:
+    description: Head sinks and tips forward, the way a tired head does.
+    relative: true
+    keyframes:
+      - head: { pitch: 16, z: -14 }
+        duration: 2.5
+        easing: ease_in_out
+        hold: 1.0
+
+  return_to_neutral:
+    description: Back to a calm, level, forward-facing rest pose.
+    keyframes:
+      - head: { yaw: 0, pitch: 0, roll: 0, z: 0 }
+        antennas: { right: -10, left: 10 }
+        body_yaw: 0
+        duration: 1.0
+        easing: minjerk

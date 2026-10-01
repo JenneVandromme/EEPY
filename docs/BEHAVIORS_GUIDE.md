@@ -1,0 +1,477 @@
+# Writing EEPY's behaviours
+
+This is the guide for editing what the robot *does*. You do not need to know
+Python, and you do not need the robot on your desk.
+
+Everything lives in two folders:
+
+```
+behaviors/     what the robot does   (the files you edit)
+sounds/        the sounds it plays
+```
+
+---
+
+## Contents
+
+1. [The idea in one minute](#the-idea-in-one-minute)
+2. [Your first edit](#your-first-edit)
+3. [How a behaviour is put together](#how-a-behaviour-is-put-together)
+4. [Every field you can use](#every-field-you-can-use)
+5. [The ranges — how far each joint goes](#the-ranges--how-far-each-joint-goes)
+6. [Building blocks](#building-blocks)
+7. [Words](#words)
+8. [Checking your work](#checking-your-work)
+9. [Common mistakes](#common-mistakes)
+
+---
+
+## The idea in one minute
+
+EEPY nudges a student in **ladders**. A ladder is a set of rungs from "barely
+noticeable" to "impossible to miss", and the robot climbs it only as far as it
+needs to.
+
+There are two:
+
+| Ladder | Levels | What it is for |
+|---|---|---|
+| `refocus` | 0–4 | The student has drifted off their work |
+| `bedtime` | 0–5 | It is late and they should sleep |
+
+Level 0 is almost nothing. The top level says something out loud, or goes to
+sleep. **Every level must exist** — the decision logic asks for "bedtime,
+level 3" and there has to be something there.
+
+The files:
+
+```
+behaviors/
+  _blocks.yaml     shared pieces every behaviour reuses  (start here to read)
+  idle.yaml        quiet background presence
+  refocus.yaml     the refocus ladder, levels 0-4
+  bedtime.yaml     the bedtime ladder, levels 0-5
+  lines.yaml       everything the robot can say
+```
+
+One file per ladder, so three of us can edit at the same time without
+colliding.
+
+---
+
+## Your first edit
+
+Say you want the curious head tilt to be a bit bigger. In
+`behaviors/refocus.yaml`, find `refocus_curious` and the line `roll: 12`.
+Change it to `roll: 18`. That is the whole edit.
+
+Before you push, check it. The tools live in the project's environment, so
+activate that first:
+
+```bash
+source .venv-robot/bin/activate        # Windows: .venv-robot\Scripts\Activate.ps1
+
+python -m eepy.behaviors.validate                   # is it valid and reachable?
+python -m eepy.behaviors.preview refocus_curious    # what will it do?
+```
+
+(Forget the first line and the tools will tell you so — they will not throw a
+traceback at you.)
+
+A check called **behaviours** also runs on every pull request, so a broken file
+cannot be merged even if you forget. When it fails, its log names the file, the
+behaviour and the keyframe, and usually suggests the fix — the same output the
+validator gives you locally.
+
+### Comparing before and after
+
+The obvious way to judge `roll: 12` against `roll: 18` is to watch both. You
+cannot do that yet: **nothing plays these files on the robot or the simulator
+so far.** The part that reads a behaviour and drives the robot is a separate
+job, still to be built. Until it exists, `preview` is what you have, and it
+prints numbers rather than movement:
+
+```bash
+python -m eepy.behaviors.preview refocus_curious
+```
+
+That is genuinely useful for timing — you can see that the tilt takes 0.5 s and
+is held for 0.8 s, and that the whole behaviour runs 4.7 s — and it will tell
+you if a pose is impossible. It cannot tell you whether 18 degrees *looks*
+right. For now, change one number at a time and keep the ones you want to
+compare written down, so they are easy to try side by side once the player
+lands.
+
+---
+
+## How a behaviour is put together
+
+A behaviour is a **list of keyframes**. Each keyframe is one pose plus how long
+to take getting there. The robot slides smoothly from one to the next.
+
+```yaml
+behaviors:
+
+  - name: refocus_curious          # its unique name
+    ladder: refocus                # which ladder
+    level: 2                       # which rung
+    description: >
+      A questioning head tilt with a small sound.
+    loop: once
+    keyframes:
+      - use: glance_at_user        # reuse a ready-made piece
+      - head: { roll: 18 }         # or write a pose yourself
+        duration: 0.5
+        sound: questioning.wav
+      - use: return_to_neutral
+```
+
+Three things to know:
+
+**Durations add up.** `duration` is how long to *move into* this keyframe, not
+a clock time. So you can insert a keyframe without renumbering anything.
+
+**Anything you leave out stays as it was.** If keyframe 1 sets the antennas and
+keyframe 2 does not mention them, they stay where keyframe 1 put them.
+
+**Order is top to bottom.** That is the whole timeline.
+
+---
+
+## Every field you can use
+
+### On the behaviour
+
+| Field | Required | What it does |
+|---|---|---|
+| `name` | yes | Unique. Lower-case letters, numbers, underscores. |
+| `description` | yes | One or two sentences, for humans. |
+| `ladder` | no | `refocus` or `bedtime`. Needs `level` too. |
+| `level` | with `ladder` | Which rung, counting from 0. |
+| `group` | no | A free label for tidiness. |
+| `loop` | no | `once` (default), `forever`, or a number like `3`. |
+| `intensity` | no | `0.0`–`1.0`. Shrinks every angle. `1.0` is as written. |
+| `keyframes` | yes | The list below. |
+
+### On a keyframe
+
+A keyframe is **exactly one** of three things.
+
+**1. A pose:**
+
+```yaml
+- head:
+    yaw: -8          # + turns LEFT,  - turns RIGHT
+    pitch: 6         # + chin DOWN,   - chin UP
+    roll: 12         # + tips toward the LEFT ear
+    z: -4            # height in mm. + rises, - sinks
+  antennas:
+    right: -25       # mirrored! see the warning below
+    left: 25
+  body_yaw: 0        # whole body turns. + is left
+  duration: 0.5      # REQUIRED, seconds
+  easing: cartoon    # how it accelerates, see below
+  hold: 0.8          # extra seconds to sit still afterwards
+  sound: questioning.wav   # a file in sounds/
+  say: refocus_check       # an ID from lines.yaml
+  relative: false    # see "relative" below
+```
+
+Instead of `head:` you can write **`look_at:`** with a named direction:
+
+```yaml
+- look_at: notes     # user | notes | screen | away
+  duration: 0.6
+```
+
+**2. A reused block:**
+
+```yaml
+- use: nod_small
+  scale: 0.6         # optional, 0.0-1.0, makes the whole block smaller
+  sound: yawn.wav    # optional, plays as the block starts
+  say: refocus_check # optional, same
+```
+
+You cannot put `duration:`, `easing:` or `hold:` next to `use:` — the block
+already carries its own timing, so it would be unclear which one wins. To make
+a block slower, change it in `_blocks.yaml`; to make it smaller, use `scale:`.
+
+**3. A handover to the robot's own built-in routine:**
+
+```yaml
+- action: goto_sleep
+  duration: 2.0
+```
+
+`goto_sleep` must be the **last** keyframe — nothing can follow it.
+
+### `easing` — how the movement accelerates
+
+| Value | Feels like |
+|---|---|
+| `minjerk` | Smooth and natural. The default; use it unless you want otherwise. |
+| `ease_in_out` | Gentle start and stop. Good for slow, calm movements. |
+| `linear` | Constant speed. Looks mechanical — usually a mistake. |
+| `cartoon` | Snappy, with a bit of overshoot. Good for a surprised tilt. |
+
+### `relative` — offsets instead of positions
+
+Normally the numbers are absolute: `pitch: 10` means "chin at 10 degrees".
+
+With `relative: true` they are **offsets from wherever the head already is**.
+Offsets add up as you go, so `+8` then `-8` goes down and comes back to where
+it started. That is how a nod works from any pose:
+
+```yaml
+- head: { pitch: 8 }     # 8 degrees DOWN from here
+  relative: true
+  duration: 0.25
+```
+
+Most blocks in `_blocks.yaml` are relative for exactly this reason.
+
+### ⚠️ The antennas are mirrored
+
+To make the antennas look **symmetric**, give them equal-and-opposite numbers:
+
+```yaml
+antennas: { right: -45, left: 45 }     # symmetric
+antennas: { right: 45,  left: 45 }     # lopsided!
+```
+
+Their resting position is `right: -10, left: 10`, not zero. The robot's own
+software offsets them slightly off vertical on purpose, because they shake
+when they are perfectly upright.
+
+Bigger mirrored numbers = folded further over. `-150 / 150` is nearly asleep.
+
+---
+
+## The ranges — how far each joint goes
+
+**Write a number outside these and the check fails.** Nothing is quietly
+corrected for you — a wrong number is a mistake worth seeing, not something to
+paper over.
+
+| What | Range | Notes |
+|---|---|---|
+| `head.yaw` | −180 … 180 | But see the neck rule below. |
+| `head.pitch` | −40 … 40 | + is chin down. |
+| `head.roll` | −40 … 40 | + tips toward the left ear. |
+| `head.z` | −45 … 20 mm | **The head sinks much further than it rises.** |
+| `antennas.right/left` | −180 … 180 | Mirrored. Rest is −10 / +10. |
+| `body_yaw` | −160 … 160 | |
+| `duration` | above 0, up to 60 s | |
+| `hold` | 0 … 60 s | |
+| `intensity`, `scale` | 0.0 … 1.0 | |
+
+**The neck rule.** The head cannot twist more than **65°** away from the body.
+So `yaw: 90` with `body_yaw: 0` fails — turn the body too:
+
+```yaml
+- head: { yaw: 90 }
+  body_yaw: 60        # now the head is only 30 deg from the body
+  duration: 1.0
+```
+
+### The one that surprises everyone
+
+**Two numbers can each be fine and still be impossible together.**
+
+The head sits on six short legs. Tilting it and raising it use up *the same*
+leg travel. So:
+
+- `pitch: 35` on its own — fine.
+- `z: 18` on its own — fine.
+- `pitch: 35` **and** `z: 18` together — **impossible.**
+
+The checker knows this. It asks the robot's real geometry whether each pose
+can actually be held, and says so:
+
+```
+✗ behaviors/bedtime.yaml
+    in behaviour "bedtime_subtle", keyframe 2
+    the robot cannot physically reach this pose (yaw 0, pitch 35, roll 0, height 18 mm).
+    → Each value is inside its own limit, but not all together -- the head is
+      on six short legs, and tilting it uses up the same travel as raising it.
+      Try a smaller tilt, or bring the height closer to 0.
+```
+
+If you hit this: make the tilt smaller, or move `z` closer to 0. There is the
+most room when `z` is between −10 and −25, where the head can tilt a long way.
+
+---
+
+## Building blocks
+
+`behaviors/_blocks.yaml` holds small named movements. Reuse them instead of
+copying keyframes.
+
+(The leading underscore is not decoration: it is how the tools know this file
+holds shared pieces rather than behaviours. Do not rename it, and do not start
+a behaviour file's name with one.)
+
+
+
+| Block | What it does |
+|---|---|
+| `nod_small`, `nod_slow` | One nod, quick or heavy. |
+| `glance_at_user`, `glance_at_notes` | Look up at them, or down at the work. |
+| `head_tilt_curious` | The sideways "hmm?" tilt. |
+| `antenna_perk` | Antennas up and alert. |
+| `antenna_droop`, `antenna_droop_deep` | Tired, and nearly asleep. |
+| `breathe_in`, `breathe_out` | The two halves of the idle breathing. |
+| `yawn` | A yawn, read as a stretch. |
+| `head_sag` | The head sinking the way a tired head does. |
+| `return_to_neutral` | Back to calm and level. |
+
+Changing a block changes **every** behaviour that uses it. That is the point,
+but tread carefully.
+
+To add one, copy an existing block and give it a new name. Blocks cannot use
+other blocks — keep them flat.
+
+**Gaze targets** are in the same file. If the robot gets moved on the desk and
+is looking slightly wrong, fix the angle once in `gaze_targets:` and every
+behaviour follows.
+
+---
+
+## Words
+
+`behaviors/lines.yaml`. A behaviour never contains words — it references a
+line by ID with `say:`, and the words live in one place.
+
+Every line comes in two tones:
+
+- **`hedged`** — when the system is *not sure*. Softer, a guess, easy to brush
+  off. *"Losing focus a bit?"*
+- **`direct`** — when it *is* sure. Shorter, more certain. *"Back to it?"*
+
+Each tone holds a **list**, and one is picked at random so the robot does not
+repeat itself.
+
+```yaml
+  refocus_check:
+    description: Level 3 of the refocus ladder.
+    variants:
+      hedged:
+        - "Losing focus a bit?"
+        - "Still with it?"
+      direct:
+        - "Back to it?"
+```
+
+**Always put the words in quotes.** Without them, YAML turns `no` into
+`false`, and any line containing a colon breaks the file.
+
+You can use two placeholders, filled in when the robot speaks:
+
+- `{minutes}` — a number of minutes
+- `{evidence}` — a short phrase saying why the robot spoke up
+
+Anything else is rejected, so a typo like `{minute}` gets caught.
+
+---
+
+## Checking your work
+
+Two places, same check: on every pull request, and locally.
+
+**Locally** — you already have everything. The behaviour tools
+live in the same environment as the robot code, so if you followed the
+README's setup there is nothing extra to install:
+
+```bash
+source .venv-robot/bin/activate          # Windows: .venv-robot\Scripts\Activate.ps1
+```
+
+If you have not set that up yet, work through **"1. Setting everything up on
+your computer"** in the main [README](../README.md) once — you need Step 0,
+Step 1 and Step 3. You do not need a robot plugged in, and you do not need
+the simulator running — checking and previewing behaviours works entirely
+offline.
+
+Then:
+
+```bash
+python -m eepy.behaviors.validate      # check every file
+```
+
+```
+✓ All behaviour files are valid (13 behaviours, 13 blocks, 6 lines).
+    ladder bedtime: levels 0-5 complete
+    ladder refocus: levels 0-4 complete
+```
+
+To **see** a behaviour without the robot:
+
+```bash
+python -m eepy.behaviors.preview refocus_joint_attention
+python -m eepy.behaviors.preview --ladder bedtime --level 5
+python -m eepy.behaviors.preview --list
+```
+
+That prints the whole timeline with blocks expanded and `intensity` applied —
+the actual numbers the robot will be sent:
+
+```
+time         dur        easing        head y/p/r            z mm     antennas R/L     body     sound / say
+---------------------------------------------------------------------------------------------------------
+ 0.00- 1.30  0.80+0.5   ease_in_out      0.0  -12.0    0.0     0.0    -10.0   10.0       0.0
+ 1.30- 2.70  0.60+0.8   minjerk          0.0   20.0    0.0     0.0    -10.0   10.0       0.0
+ 2.70- 3.70  1.00       minjerk          0.0    0.0    0.0     0.0    -10.0   10.0       0.0
+
+  ✓ every pose is physically reachable
+```
+
+### Errors and warnings
+
+An **error** (`✗`) blocks merging. A **warning** (`!`) does not — it is advice,
+usually "this movement is so fast it will look like a twitch".
+
+---
+
+## Common mistakes
+
+**Indentation.** YAML cares. Use **spaces, never tabs** — the check will tell
+you if a tab sneaks in. Everything under a `-` lines up with everything else
+under that `-`.
+
+**Forgetting the quotes on words.**
+
+```yaml
+- "Back to it?"          # good
+- Back to it: really?    # breaks the file -- the colon starts a new field
+- "no"                   # good
+- no                     # becomes false
+```
+
+**Forgetting `duration`.** Every keyframe needs one. The only exception is
+`use:`, which brings its own.
+
+**Antennas the same sign.** `right: 45, left: 45` is lopsided. Mirror them.
+
+**Expecting `z` to rise as far as it sinks.** It does not: −45 mm down, only
++20 mm up.
+
+**A pose and a `use:` in one keyframe.** Pick one — they are separate
+keyframes.
+
+**Writing the same name twice.** Every behaviour's name must be unique across
+*all* the files.
+
+**Leaving a gap in a ladder.** 0, 1, 3 is broken — the robot would have
+nothing to play at level 2.
+
+**Referencing a sound that is not there.** The file has to land in `sounds/`
+alongside the behaviour that names it.
+
+---
+
+## If you get stuck
+
+Run the validator. It names the file, the behaviour and the keyframe, and
+usually suggests the fix. If the message is confusing, that is a bug in the
+checker worth reporting — say so, and it can be made clearer.

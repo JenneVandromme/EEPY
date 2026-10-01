@@ -1,0 +1,97 @@
+# ===========================================================================
+#  lines.yaml -- everything EEPY can say out loud.
+#
+#  Behaviours never contain words. They reference a line by its ID
+#  ("say: refocus_check"), and the words live here. That way you can rewrite
+#  what the robot says without touching any movement.
+#
+#  Every line has two tones:
+#
+#    hedged  -- used when the system is NOT confident. Softer, phrased as a
+#               guess, easy to brush off. "Losing focus a bit?"
+#    direct  -- used when the system IS confident. Shorter, more certain.
+#               "Back to it?"
+#
+#  Each tone holds a LIST of variants. One is picked at random each time, so
+#  the robot does not say the identical sentence twice in a row.
+#
+#  IMPORTANT -- always put the words in "quotes". Without quotes, YAML turns
+#  a line like  no  into the value false, and a line containing a colon
+#  breaks the file outright.
+#
+#  Placeholders in {curly braces} get filled in by the player later:
+#    {minutes}  -- a number of minutes, e.g. "40"
+#    {evidence} -- a short phrase explaining why the robot spoke up,
+#                  e.g. "you've been still for a while"
+#  Only those two are allowed; the validator rejects anything else, so a typo
+#  like {minute} is caught before it ever reaches the robot.
+#
+#  After editing run:  python -m eepy.behaviors.validate
+# ===========================================================================
+lines:
+
+  refocus_check:
+    description: Level 3 of the refocus ladder -- the first spoken nudge.
+    variants:
+      hedged:
+        - "Losing focus a bit?"
+        - "Still with it?"
+        - "Hmm, drifting?"
+      direct:
+        - "Back to it?"
+        - "Shall we get back to it?"
+
+  refocus_break_offer:
+    description: Level 4 of the refocus ladder -- stop pushing, offer a break.
+    variants:
+      hedged:
+        - "Maybe a short break would help?"
+        - "Want to pause for a bit?"
+      direct:
+        - "Let's take five."
+        - "Time for a break. Come back in {minutes} minutes?"
+
+  bedtime_check:
+    description: Level 3 of the bedtime ladder -- first spoken bedtime nudge.
+    variants:
+      hedged:
+        - "Getting late, isn't it?"
+        - "You must be getting tired."
+      direct:
+        - "Time for bed?"
+        - "You've been at this {minutes} minutes. Bed?"
+
+  bedtime_negotiate:
+    description: >
+      Level 4 of the bedtime ladder -- offer a wind-down timer rather than
+      repeating the same nudge.
+    variants:
+      hedged:
+        - "Shall we wind down in {minutes} minutes?"
+        - "How about we stop in a little while?"
+      direct:
+        - "Let's finish in {minutes} minutes. Deal?"
+        - "Last {minutes} minutes, then bed."
+
+  bedtime_goodnight:
+    description: Level 5 of the bedtime ladder -- said just before sleeping.
+    variants:
+      hedged:
+        - "I think I'm going to sleep. Night."
+        - "I'm fading. Goodnight?"
+      direct:
+        - "Goodnight."
+        - "Sleep well."
+
+  approving:
+    description: >
+      Optional words for the approving nod. Not currently referenced by any
+      behaviour -- kept here so a designer can wire it up without writing
+      new text.
+    variants:
+      hedged:
+        - "Nice."
+        - "That's it."
+      direct:
+        - "Good going."
+        - "{evidence} -- nice work."

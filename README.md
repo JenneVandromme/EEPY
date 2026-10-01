@@ -324,7 +324,19 @@ EEPY/
 │   ├── safety_limits.py   # clamps any movement to the robot's real physical limits
 │   ├── connection.py      # shared "how do I reach the robot?" helper (sim/USB/wireless)
 │   ├── test_connection.py # sanity check — can we connect and move the robot?
+│   ├── greetings.py       # a scripted greeting sequence
 │   └── conversation.py    # talk to the robot via Gemini (STT + reply + TTS)
+├── behaviors/             # WHAT the robot does, as editable YAML — see docs/BEHAVIORS_GUIDE.md
+│   ├── _blocks.yaml       # shared building blocks + named gaze targets
+│   ├── idle.yaml          # quiet background presence
+│   ├── refocus.yaml       # the "back to work" ladder, levels 0-4
+│   ├── bedtime.yaml       # the "time to sleep" ladder, levels 0-5
+│   └── lines.yaml         # everything the robot can say
+├── sounds/                # the sounds behaviours play (see sounds/README.md)
+├── eepy/behaviors/        # the code that reads, checks and previews behaviors/
+├── docs/
+│   └── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
+├── tests/                 # pytest: python -m pytest tests/
 ├── models/                 # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
 ├── requirements-robot.txt
@@ -336,6 +348,25 @@ As real detection and movement logic gets built, it goes in `vision/` and
 pass it through `robot/safety_limits.py`'s `enforce()` first — it's what
 keeps a bug in our code from trying to twist a joint past what the hardware
 can actually do.
+
+### Editing what the robot does
+
+The robot's movements are **not** hard-coded in Python — they live in
+`behaviors/*.yaml`, in degrees and seconds, so they can be edited without
+touching any code. If that is the part you are working on, read
+**[docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md)**, not this section.
+
+The tools need no robot and no simulator. With `.venv-robot` active (Step 3
+above installs everything):
+
+```bash
+python -m eepy.behaviors.validate                   # check every file
+python -m eepy.behaviors.preview --list             # what behaviours exist
+python -m eepy.behaviors.preview refocus_curious    # what one will actually do
+```
+
+A GitHub Action runs that same check on every pull request, so a broken
+behaviour file cannot be merged.
 
 ## Stuck?
 

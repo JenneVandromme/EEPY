@@ -1,0 +1,38 @@
+# ===========================================================================
+#  idle.yaml -- what EEPY does when nothing in particular is happening.
+#
+#  These are NOT on a ladder. The decision logic plays them as background
+#  presence, not as nudges, so they have no "ladder" or "level" field.
+#
+#  After editing run:  python -m eepy.behaviors.validate
+# ===========================================================================
+behaviors:
+
+  - name: study_buddy_idle
+    group: idle
+    description: >
+      Quiet company. A slow breathing motion, and every few cycles it glances
+      down at the notes as if reading along. Must be boring to watch -- if you
+      notice it, it is too big.
+    loop: forever          # runs until the player stops it
+    intensity: 0.7         # deliberately under 1.0: calmer than written
+    keyframes:
+      - use: breathe_in
+      - use: breathe_out
+      - use: breathe_in
+      - use: breathe_out
+      # ... and now a glance at the work, then back to level.
+      - use: glance_at_notes
+      - use: return_to_neutral
+
+  - name: approving_nod
+    group: idle
+    description: >
+      "Good, keep going." Played when the student gets back to work on their
+      own, so the robot is not only ever the one interrupting.
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - use: nod_slow
+      - use: antenna_perk
+      - use: return_to_neutral

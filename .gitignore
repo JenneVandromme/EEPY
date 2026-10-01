@@ -26,6 +26,14 @@ dist/
 data/
 datasets/
 
+# ...but the behaviour validator's vendored robot geometry IS source, not data.
+# It is a 7.4 KB copy of reachy_mini/assets/kinematics_data.json, so CI can run
+# the reachability check without installing the whole SDK. The 'data/' rule
+# above would otherwise swallow it and the GitHub Action would fail with a
+# confusing missing-file error.
+!eepy/behaviors/data/
+!eepy/behaviors/data/**
+
 # IDE
 .vscode/
 !.vscode/extensions.json

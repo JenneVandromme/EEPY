@@ -1,0 +1,68 @@
+# Checks every behaviour file on every pull request, so a broken YAML can
+# never be merged.
+#
+# This installs a deliberately minimal set of packages rather than
+# requirements-robot.txt. That file pulls in reachy-mini[mujoco] — the
+# simulator, GStreamer, onnxruntime — none of which a YAML check needs, and
+# which would turn a 30-second check into a slow and fragile one. The
+# reachability check needs only the small Rust kinematics wheel plus the
+# 7.4 KB geometry file vendored in eepy/behaviors/data/.
+#
+# If you add an import to eepy/behaviors/, add it in BOTH places: here, and
+# requirements-robot.txt.
+name: behaviours
+
+on:
+  pull_request:
+    paths:
+      - "behaviors/**"
+      - "sounds/**"
+      - "eepy/**"
+      - "robot/safety_limits.py"   # the validator reads its limits from here
+      - "tests/**"
+      - "requirements-robot.txt"     # a dependency change can break the check
+      - ".github/workflows/behaviors.yml"
+  push:
+    branches: [main]
+  # So the check can be re-run from the Actions tab without pushing a commit.
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pyyaml \
+            'pydantic>=2' \
+            numpy \
+            scipy \
+            reachy_mini_rust_kinematics \
+            pytest
+
+      - name: Confirm the reachability check is active
+        # Without this the validator would still pass, but it would only be
+        # range-checking — which lets through poses the robot cannot reach.
+        # Better to fail loudly than to pass for the wrong reason.
+        run: |
+          python -c "
+          from eepy.behaviors import reach
+          assert reach.available(), 'the Rust IK solver is missing'
+          assert not reach.is_reachable(pitch=35, z_mm=18), 'IK check is not working'
+          assert reach.is_reachable(), 'neutral pose should be reachable'
+          print('reachability check is live')
+          "
+
+      - name: Validate the behaviour files
+        run: python -m eepy.behaviors.validate
+
+      - name: Tests
+        run: python -m pytest tests/ -q

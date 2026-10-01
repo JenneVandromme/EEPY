@@ -5,3 +5,18 @@ reachy-mini[mujoco]
 scipy
 requests
 python-dotenv
+
+# Behaviour files: editing, checking and previewing behaviors/*.yaml.
+# These need no robot and no simulator, but they live here rather than in a
+# separate environment so that one `pip install -r requirements-robot.txt`
+# gives you everything — the robot AND the behaviour tools. Three people
+# editing behaviours should not have to manage a second virtualenv.
+#
+# reachy-mini already installs pyyaml, pydantic and numpy as its own
+# dependencies, so these three lines change nothing about what gets
+# downloaded. They are listed anyway because eepy/behaviors/ imports them
+# directly: relying on another package's dependency list is how a working
+# setup breaks mysteriously the day that package drops one.
+pyyaml
+pydantic>=2
+pytest

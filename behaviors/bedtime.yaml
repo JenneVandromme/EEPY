@@ -1,0 +1,137 @@
+# ===========================================================================
+#  bedtime.yaml -- the "you should go to sleep" ladder.
+#
+#  Six rungs, 0 to 5. Level 0 is just company; level 5 says goodnight and
+#  goes to sleep. Every level from 0 to 5 must exist -- no gaps.
+#
+#  This ladder leans on the body more than words. A tired-LOOKING robot is a
+#  stronger hint than a robot that tells you you're tired, and it is much
+#  easier to ignore without feeling nagged.
+#
+#  After editing run:  python -m eepy.behaviors.validate
+# ===========================================================================
+behaviors:
+
+  # --- Level 0 -- companion -------------------------------------------------
+  - name: bedtime_companion
+    ladder: bedtime
+    level: 0
+    group: bedtime
+    description: >
+      Evening company. Same breathing as the study idle but slower and
+      smaller, so the room feels like it is winding down.
+    loop: forever
+    intensity: 0.5
+    keyframes:
+      - use: breathe_in
+      - use: breathe_out
+
+  # --- Level 1 -- subtle ----------------------------------------------------
+  - name: bedtime_subtle
+    ladder: bedtime
+    level: 1
+    group: bedtime
+    description: >
+      The robot starts looking tired itself: antennas droop, the head sags,
+      and it yawns. Says nothing. Contagious yawning does the work.
+    loop: once
+    keyframes:
+      - use: antenna_droop
+      - use: head_sag
+      - use: yawn
+        sound: yawn.wav
+      - head: { pitch: 10, z: -8 }
+        duration: 2.0
+        easing: ease_in_out
+        hold: 1.5
+
+  # --- Level 2 -- attentive -------------------------------------------------
+  - name: bedtime_attentive
+    ladder: bedtime
+    level: 2
+    group: bedtime
+    description: >
+      Now it looks at the student while looking tired, with a soft sound. The
+      tiredness stops being ambient and becomes directed at them.
+    loop: once
+    keyframes:
+      - use: antenna_droop
+      - look_at: user
+        duration: 1.2
+        easing: ease_in_out
+        hold: 0.5
+      - head: { pitch: -10, roll: 14 }
+        duration: 0.9
+        easing: minjerk
+        sound: soft_chime.wav
+        hold: 1.2
+      - use: yawn
+        sound: yawn.wav
+
+  # --- Level 3 -- verbal ----------------------------------------------------
+  - name: bedtime_verbal
+    ladder: bedtime
+    level: 3
+    group: bedtime
+    description: >
+      Says it out loud. Still gentle, and still phrased as a question rather
+      than an instruction.
+    loop: once
+    keyframes:
+      - use: antenna_droop
+      - use: glance_at_user
+      - head: { pitch: -8, roll: 6 }
+        duration: 0.7
+        easing: ease_in_out
+        say: bedtime_check
+        hold: 2.0
+      - use: nod_slow
+      - use: head_sag
+
+  # --- Level 4 -- negotiation -----------------------------------------------
+  - name: bedtime_negotiate
+    ladder: bedtime
+    level: 4
+    group: bedtime
+    description: >
+      Offers a deal instead of repeating itself: a wind-down timer. Giving
+      the student the choice is what keeps this from feeling like nagging.
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - use: head_tilt_curious
+      - head: { pitch: -6, roll: 10 }
+        antennas: { right: -45, left: 45 }
+        duration: 0.9
+        easing: minjerk
+        say: bedtime_negotiate
+        hold: 2.5
+      - use: nod_small
+      - use: antenna_droop
+
+  # --- Level 5 -- goodnight -------------------------------------------------
+  - name: bedtime_goodnight
+    ladder: bedtime
+    level: 5
+    group: bedtime
+    description: >
+      Says goodnight and goes to sleep. The last keyframe hands over to the
+      SDK's own goto_sleep(), which is the only way to reach the real
+      calibrated sleep pose -- it needs a sideways head shift that this file
+      format deliberately does not expose. That handover plays the SDK's own
+      go_sleep sound by itself, which is why the last keyframe has no "sound:".
+    loop: once
+    keyframes:
+      - use: glance_at_user
+      - head: { pitch: -6 }
+        antennas: { right: -30, left: 30 }
+        duration: 0.8
+        easing: ease_in_out
+        say: bedtime_goodnight
+        sound: goodnight.wav
+        hold: 2.0
+      - use: antenna_droop_deep
+      - use: head_sag
+      # Hand over to the robot's built-in sleep. Nothing may follow this.
+      - action: goto_sleep
+        duration: 2.0
