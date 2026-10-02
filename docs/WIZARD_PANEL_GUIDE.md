@@ -11,7 +11,7 @@ source .venv-robot/bin/activate
 python -m eepy.wizard --backend real        # or --backend sim, or --backend dry
 ```
 
-It prints two addresses. Open **`http://localhost:8080`** on the desktop, or the
+It prints two addresses. Open **`http://127.0.0.1:8080`** on the desktop, or the
 **`http://<numbers>:8080`** one on any laptop on the same network. Several
 laptops can have it open at once — they all show the same thing.
 
@@ -72,6 +72,8 @@ The markers are the ground truth the HMM learns from, so:
 | STOP seems slow at bedtime level 5 | The goodnight routine cannot be interrupted. It finishes in a few seconds. |
 | Page says it lost contact with its server | The panel was stopped on the desktop. Start it again; nothing recorded so far is lost. |
 | Page looks stuck | Refresh it. The session keeps running on the desktop. |
+| Page is completely white | You reached a different program. Use the exact address the panel printed (`127.0.0.1`, not `localhost`). |
+| "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
 | Laptop cannot open the address | Same Wi-Fi as the desktop? On the desktop, allow "Python" when macOS asks about incoming connections. |
 
 **To stop the panel:** press **Ctrl+C** in its terminal. It ends any running

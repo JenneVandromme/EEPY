@@ -38,6 +38,39 @@ def _lan_address() -> str | None:
         return None
 
 
+def _port_taken(port: int) -> str | None:
+    """Is anything already answering on this port, over IPv4 OR IPv6?
+
+    Checking both matters. Another program -- a PHP or Node dev server, say --
+    can hold [::1]:8080 while the panel takes 127.0.0.1:8080. Both start
+    without complaint, and a browser asked for "localhost" tries IPv6 first:
+    it reaches the OTHER program and shows its page, often a blank white one.
+    Returns a description of what answered, or None if the port is free.
+    """
+    for family, address in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.3)
+                if probe.connect_ex((address, port)) == 0:
+                    return f"{address}:{port}"
+        except OSError:
+            continue  # e.g. no IPv6 on this machine
+    return None
+
+
+def _who_listens(port: int) -> str:
+    """'php (process 29510)', if the operating system will say. Best effort."""
+    import subprocess
+
+    try:
+        out = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=2).stdout.splitlines()[1:]
+    except Exception:  # noqa: BLE001 -- lsof missing, Windows, ...
+        return "another program"
+    names = sorted({f"{line.split()[0]} (process {line.split()[1]})" for line in out if line.split()})
+    return ", ".join(names) or "another program"
+
+
 def main(argv: list[str] | None = None) -> int:
     for module in ("fastapi", "uvicorn"):
         if importlib.util.find_spec(module) is None:
@@ -70,6 +103,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--logs-dir", type=Path, default=LOGS_DIR)
     args = parser.parse_args(argv)
 
+    taken = _port_taken(args.port)
+    if taken:
+        print(f"\n  Cannot start: port {args.port} is already in use by {_who_listens(args.port)}"
+              f" (answering at {taken}).\n"
+              f"  If a browser opened http://localhost:{args.port}, it showed THAT program,"
+              " not the panel.\n\n"
+              f"  Either stop that program, or start the panel on another port:\n"
+              f"      python -m eepy.wizard --port {args.port + 1}", file=sys.stderr)
+        return 2
+
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
     for noisy in ("reachy_mini", "uvicorn.access", "httpx"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -81,7 +124,9 @@ def main(argv: list[str] | None = None) -> int:
     status = "connected" if wizard.connected() else "NOT connected -- see the panel"
     print(f"  Robot: {wizard.backend_name}, {status}")
     print("\n  Open the panel:")
-    print(f"    on this computer:      http://localhost:{args.port}")
+    # 127.0.0.1, not "localhost": localhost can mean IPv6 to a browser, and
+    # be answered by a different program than the one listening on IPv4.
+    print(f"    on this computer:      http://127.0.0.1:{args.port}")
     lan = _lan_address()
     if lan and args.host == "0.0.0.0":
         print(f"    on another laptop:     http://{lan}:{args.port}")

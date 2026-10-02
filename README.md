@@ -202,6 +202,14 @@ don't need this for the camera/robot sanity checks below, only for talking
 to the robot. `.env` is gitignored, so your personal key never gets
 committed.
 
+Two more settings in `.env` are worth knowing:
+
+- `EEPY_BACKEND` — where the behaviour tools and the Wizard panel send motion:
+  `dry` (nothing moves; the default), `sim` (the simulator) or `real` (the
+  robot). Set it to `sim` while you work in the simulator, and you can leave
+  `--backend sim` off every command.
+- `REACHY_MINI_HOST` — the real robot's IP address, for `real`.
+
 ---
 
 ## 2. Running / testing things
@@ -340,19 +348,38 @@ EEPY/
 ├── logs/                  # session logs from the panel (gitignored: participant data)
 ├── docs/
 │   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
-│   └── WIZARD_PANEL_GUIDE.md # how to run a session with the Wizard panel
+│   └── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
 ├── tests/                 # pytest: python -m pytest tests/
-├── models/                 # trained model weights go here (gitignored, see models/README.md)
+├── models/                # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
 ├── requirements-robot.txt
-└── .env.example            # copy to .env for API keys / robot address (gitignored)
+└── .env.example           # copy to .env for API keys / robot address (gitignored)
 ```
 
 As real detection and movement logic gets built, it goes in `vision/` and
-`robot/` respectively. Any script that sends a movement to the robot should
-pass it through `robot/safety_limits.py`'s `enforce()` first — it's what
-keeps a bug in our code from trying to twist a joint past what the hardware
-can actually do.
+`robot/` respectively. Any script in `robot/` that sends a movement to the
+robot should pass it through `robot/safety_limits.py`'s `enforce()` first —
+it's what keeps a bug in our code from trying to twist a joint past what the
+hardware can actually do.
+
+The behaviour player (`eepy/behaviors/`) is the one deliberate exception. It
+checks the **same** limits — it reads them straight from `safety_limits.py` —
+but where `enforce()` quietly *clamps* a bad value, the player *refuses* it and
+says why, so a mistake in a behaviour file is seen and fixed rather than
+silently softened. It also checks things `enforce()` cannot, like whether the
+head can physically reach a pose and how fast it moves. Details in
+[eepy/behaviors/README.md](eepy/behaviors/README.md).
+
+### Which document to read
+
+| You want to… | Read |
+|---|---|
+| set up your computer, or run the sanity checks | this README |
+| edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
+| run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
+| replace or add a sound | [sounds/README.md](sounds/README.md) |
+| understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
+| understand how the Wizard panel is built, and why | [eepy/wizard/README.md](eepy/wizard/README.md) |
 
 ### Editing what the robot does
 

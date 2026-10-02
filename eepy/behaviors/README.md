@@ -182,7 +182,7 @@ upstream can't go unnoticed.
 | Keyframe timing vs plan | within about 15 ms |
 | Frame lateness, simulator | mean 2.7 ms, p95 4.8 ms, max 16.8 ms (one frame is 20 ms) |
 | Simulated head vs command | median 2.7° behind, up to 15° on fast moves — motor lag, not the player |
-| Tests | 132 passing |
+| Tests | `python -m pytest tests/` — timing, preemption, idle, relative poses, intensity, stop, reload, safety |
 
 ## Not verified yet
 

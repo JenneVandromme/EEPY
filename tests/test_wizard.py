@@ -394,3 +394,34 @@ def test_a_reconnect_does_not_log_a_drop_that_never_happened(make, files):
         client.get("/api/state")
     client.post("/api/session/end")
     assert not [r for r in lines(files) if r["kind"] == "connection" and r["status"] == "lost"]
+
+
+def test_a_port_held_on_ipv6_only_counts_as_taken():
+    """The real failure: a dev server on [::1]:8080, the panel on 127.0.0.1:8080,
+    and the browser's 'localhost' quietly reaching the other one."""
+    import socket
+
+    from eepy.wizard.__main__ import _port_taken
+
+    try:
+        holder = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        holder.bind(("::1", 0))
+    except OSError:
+        pytest.skip("no IPv6 on this machine")
+    holder.listen()
+    port = holder.getsockname()[1]
+    try:
+        assert _port_taken(port) == f"::1:{port}"
+    finally:
+        holder.close()
+
+
+def test_a_free_port_is_free():
+    import socket
+
+    from eepy.wizard.__main__ import _port_taken
+
+    with socket.socket() as probe:          # ask the OS for a port nobody is using
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    assert _port_taken(port) is None

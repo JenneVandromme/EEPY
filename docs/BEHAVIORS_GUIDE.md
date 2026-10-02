@@ -506,6 +506,18 @@ alongside the behaviour that names it.
 
 ---
 
+## Your behaviour on the Wizard panel
+
+Every behaviour automatically becomes a button on the Wizard-of-Oz panel — no
+code needed. Behaviours on a ladder go in that ladder's row; the others go
+under "Idle & basics". After adding or renaming one, press **Reload files** on
+the panel.
+
+To give a new behaviour its own shortcut key, add it to
+`config/wizard_panel.yaml` (ladder rungs are bound by ladder and level, others by
+name). Until you do, the panel picks a free key and shows a reminder. See
+[WIZARD_PANEL_GUIDE.md](WIZARD_PANEL_GUIDE.md).
+
 ## If you get stuck
 
 Run the validator. It names the file, the behaviour and the keyframe, and

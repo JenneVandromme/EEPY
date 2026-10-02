@@ -175,13 +175,22 @@ JavaScript was run in a simulated browser (jsdom) against a live panel, with
 scripted key presses: every button rendered, every key behaved correctly, and
 no errors were thrown.
 
+**11. The page came up completely white in Safari.**
+Another program on the same Mac — a PHP dev server — held port 8080 on IPv6
+(`[::1]`), while the panel held it on IPv4. Both started without complaint.
+Safari tries IPv6 first for `localhost`, so it reached the other program and
+showed its empty page. *Fix:* before starting, the panel checks the port on
+**both** IPv4 and IPv6, and refuses with a message naming the program in the
+way. It also prints `http://127.0.0.1:8080` rather than `localhost`, which can't
+be ambiguous.
+
 ## Measured
 
 | | Result |
 |---|---|
 | Robot drop shown on the page (real simulator) | 0.1 s |
 | STOP while a reconnect hangs for 2 s | answers in under 0.5 s |
-| Panel tests / whole suite | 24 / 161 passing, also in a fresh CI environment |
+| Tests | `python -m pytest tests/test_wizard.py` — every endpoint, the log format, config errors, robot drops, STOP during a reconnect, port conflicts. Also run by CI on every pull request. |
 
 ## Not verified yet
 
