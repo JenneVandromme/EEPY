@@ -333,7 +333,7 @@ EEPY/
 │   ├── bedtime.yaml       # the "time to sleep" ladder, levels 0-5
 │   └── lines.yaml         # everything the robot can say
 ├── sounds/                # the sounds behaviours play (see sounds/README.md)
-├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ (player.py)
+├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ — how it works: eepy/behaviors/README.md
 ├── docs/
 │   └── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
 ├── tests/                 # pytest: python -m pytest tests/
