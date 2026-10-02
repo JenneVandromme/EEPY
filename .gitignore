@@ -34,6 +34,10 @@ datasets/
 !eepy/behaviors/data/
 !eepy/behaviors/data/**
 
+# Session logs from the Wizard-of-Oz panel hold participant data -- they must
+# never end up in git. Share them through the team's agreed storage instead.
+logs/
+
 # IDE
 .vscode/
 !.vscode/extensions.json
