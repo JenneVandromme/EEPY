@@ -87,6 +87,14 @@ class Backend(Protocol):
         """
         ...
 
+    def is_connected(self) -> bool:
+        """Is the link to the robot alive right now? Must be cheap: polled often.
+
+        Without this, a dropped connection is only noticed the next time a pose
+        is sent -- so a robot sitting quietly would look fine while unreachable.
+        """
+        ...
+
     def close(self) -> None:
         ...
 
@@ -144,6 +152,9 @@ class DryRunBackend:
         time.sleep(self.action_seconds)
         self.pose = SLEEP_POSE if action == "goto_sleep" else NEUTRAL
         return self.pose
+
+    def is_connected(self) -> bool:
+        return self.connected
 
     def close(self) -> None:
         self.connected = False
@@ -272,6 +283,16 @@ class _SDKBackend:
     def run_action(self, action: str) -> Pose:
         getattr(self.mini, action)()
         return self.read_pose()
+
+    def is_connected(self) -> bool:
+        # The SDK has no public "am I connected" call. Its websocket client
+        # flips the private _is_alive flag the moment its receive loop dies,
+        # which is exactly the signal wanted, and reading it costs nothing.
+        # If a future SDK renames it, this degrades to "assume connected" --
+        # the same as before this check existed -- rather than to a crash.
+        if self.mini is None:
+            return False
+        return bool(getattr(self.mini.client, "_is_alive", True))
 
     def close(self) -> None:
         if self.mini is None:

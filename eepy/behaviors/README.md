@@ -160,6 +160,21 @@ Needed so CI can run without the SDK. *Guard:* a test compares our copy to the
 SDK's at 1001 points per curve whenever the SDK is installed, so a change
 upstream can't go unnoticed.
 
+## Added for the Wizard panel (A6)
+
+- **`play(..., source="wizard")`** and `play_level(..., source=...)`: who asked
+  for a behaviour. It is copied into every event that behaviour produces —
+  idle runs are marked `"idle"` — so a log can tell an operator's choice from
+  the system's.
+- **`player.say(line_id)` or `player.say(text="...")`**: speak a line from
+  `lines.yaml`, or free text, without playing a behaviour. It goes through the
+  same `speech_callback` and emits the same `line_requested` event.
+- **`backend.is_connected()`**: a cheap check of whether the robot link is alive,
+  so a dropped robot shows up even while nothing is playing.
+- **One rename:** in `keyframe_reached` events, the YAML location (`"x[2] ->
+  nod[1]"`) moved from `source` to `keyframe`, so `source` always means "who
+  triggered it".
+
 ## Measured behaviour
 
 | | Result |

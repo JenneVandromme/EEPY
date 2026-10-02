@@ -151,6 +151,7 @@ class _Run:
     context: dict[str, Any] = field(default_factory=dict)
     idle: bool = False
     internal: bool = False            # the player's own neutral return
+    source: str | None = None         # who asked: "wizard", "auto", ...
     cue_index: int = 0
     started: float = 0.0
 
@@ -222,6 +223,9 @@ class BehaviorPlayer:
         self._commanded: Pose = NEUTRAL
         self._last_send: float | None = None
         self._last_lines: dict[str, str] = {}
+        # Its own lock: say() runs on the caller's thread and behaviours speak
+        # from the control thread, and both remember the last wording used.
+        self._lines_lock = threading.Lock()
         self._lateness: deque[float] = deque(maxlen=20000)
         self._thread: threading.Thread | None = None
         self._running = threading.Event()
@@ -257,13 +261,17 @@ class BehaviorPlayer:
         return self
 
     def play(self, name: str, intensity: float = 1.0, wait: bool = False, *,
-             tone: str = "hedged", context: dict[str, Any] | None = None) -> Playback:
+             tone: str = "hedged", context: dict[str, Any] | None = None,
+             source: str | None = None) -> Playback:
         """Play a behaviour by name. Returns at once unless wait=True.
 
         intensity  0-1, multiplies the behaviour's own intensity.
         tone       "hedged" (unsure, softer) or "direct" (confident), for any
                    spoken line.
         context    values for placeholders in spoken lines, e.g. {"minutes": 40}.
+        source     who asked for it -- "wizard", "auto", ... Copied into every
+                   event this behaviour produces, so a log can tell a
+                   behaviour the operator triggered from one the system chose.
         """
         behavior = self._lookup(name)
         if not 0.0 <= intensity <= 1.0:
@@ -279,20 +287,56 @@ class BehaviorPlayer:
         playback = Playback(name, intensity)
         with self._lock:
             self._pending_plays += 1
-        self._commands.put(("play", behavior, intensity, tone, dict(context or {}), playback))
+        self._commands.put(("play", behavior, intensity, tone, dict(context or {}),
+                            playback, source))
         if wait:
             playback.wait()
         return playback
 
     def play_level(self, ladder: str, level: int, intensity: float = 1.0,
                    wait: bool = False, *, tone: str = "hedged",
-                   context: dict[str, Any] | None = None) -> Playback:
+                   context: dict[str, Any] | None = None,
+                   source: str | None = None) -> Playback:
         """Play the behaviour on a ladder rung, e.g. play_level("bedtime", 3)."""
         try:
             behavior = self._library.get_behavior(ladder, level)
         except KeyError as exc:
             raise PlayerError(str(exc).strip('"')) from None
-        return self.play(behavior.name, intensity, wait, tone=tone, context=context)
+        return self.play(behavior.name, intensity, wait, tone=tone, context=context,
+                         source=source)
+
+    def say(self, line_id: str | None = None, text: str | None = None, *,
+            tone: str = "hedged", context: dict[str, Any] | None = None,
+            source: str | None = None) -> str:
+        """Speak a line on its own, without playing a behaviour. Returns at once.
+
+        Give EITHER a line_id from lines.yaml -- a wording is picked the same
+        way as inside a behaviour (random, not the last one used, placeholders
+        filled from context) -- OR free text to say as-is.
+
+        Goes through the same speech_callback, and emits the same
+        line_requested event, as a line inside a behaviour. Returns the text
+        that was handed to speech.
+        """
+        if (line_id is None) == (text is None):
+            raise PlayerError("say() needs either a line_id or some text, not both.")
+        if tone not in ("hedged", "direct"):
+            raise PlayerError(f'tone must be "hedged" or "direct", not {tone!r}.')
+        if text is not None:
+            spoken = text.strip()
+            if not spoken:
+                raise PlayerError("There is nothing to say -- the text is empty.")
+            line_id = "free_text"
+        else:
+            if line_id not in self._library.lines:
+                match = difflib.get_close_matches(line_id, self._library.lines, n=1, cutoff=0.5)
+                hint = f' Did you mean "{match[0]}"?' if match else ""
+                raise PlayerError(f'There is no line called "{line_id}" in lines.yaml.{hint}')
+            spoken = self._pick_line(line_id, tone, dict(context or {}))
+        self._emit("line_requested", None, line_id=line_id, tone=tone, text=spoken,
+                   source=source)
+        self._speech.submit(self.speech_callback, line_id, spoken)
+        return spoken
 
     def stop(self, return_to_neutral: bool = True) -> None:
         """Interrupt whatever is playing, idle included. Returns at once.
@@ -458,14 +502,14 @@ class BehaviorPlayer:
                 return
             kind = command[0]
             if kind == "play":
-                _, behavior, intensity, tone, context, playback = command
+                _, behavior, intensity, tone, context, playback, source = command
                 with self._lock:
                     self._pending_plays -= 1
                 if self._closing:
                     playback._end("interrupted", by="close")
                     continue
                 self._quiet = False
-                self._start_behavior(behavior, intensity, tone, context, playback)
+                self._start_behavior(behavior, intensity, tone, context, playback, source)
             elif kind == "stop":
                 self._interrupt_all("stop")
                 self._quiet = True
@@ -512,7 +556,7 @@ class BehaviorPlayer:
         return f"keyframe {segment.index + 1} ({segment.step.source}): {violation.message}"
 
     def _start_behavior(self, behavior: Behavior, intensity: float, tone: str,
-                        context: dict, playback: Playback) -> None:
+                        context: dict, playback: Playback, source: str | None = None) -> None:
         self._wake_if_asleep()
         try:
             steps, trajectory = self._plan(behavior, intensity)
@@ -523,13 +567,14 @@ class BehaviorPlayer:
             # Refused before it began, so whatever was playing carries on.
             log.error('Refused to play "%s" from the current pose: %s', behavior.name, reason)
             playback._end("refused", reason=reason)
-            self._emit("behavior_refused", behavior.name, reason=reason)
+            self._emit("behavior_refused", behavior.name, reason=reason, source=source)
             return
         self._interrupt_all(behavior.name, keep_idle=False)
         run = _Run(
             name=behavior.name, steps=steps, trajectory=trajectory,
             t0=time.monotonic(), loops_left=_loops(behavior), playback=playback,
             behavior=behavior, intensity=intensity, tone=tone, context=context,
+            source=source,
         )
         run.started = run.t0
         with self._lock:
@@ -558,6 +603,7 @@ class BehaviorPlayer:
         self._idle_run = _Run(
             name=behavior.name, steps=steps, trajectory=trajectory,
             t0=time.monotonic(), loops_left=None, behavior=behavior, idle=True,
+            source="idle",
         )
         self._idle_run.started = self._idle_run.t0
         self._announce(self._idle_run)
@@ -573,7 +619,7 @@ class BehaviorPlayer:
         self._emit("behavior_started", run.name, intensity=run.intensity,
                    tone=run.tone if run.playback else None,
                    duration=round(run.trajectory.duration, 3),
-                   stretched=stretched or None, idle=run.idle)
+                   stretched=stretched or None, idle=run.idle, source=run.source)
 
     def _return_to_neutral(self) -> None:
         if self._asleep:
@@ -623,10 +669,12 @@ class BehaviorPlayer:
             return
         if outcome == "finished":
             self._emit("behavior_finished", run.name,
-                       duration=round(time.monotonic() - run.started, 3), idle=run.idle)
+                       duration=round(time.monotonic() - run.started, 3), idle=run.idle,
+                       source=run.source)
         else:
             self._emit("behavior_interrupted", run.name, by=by, reason=reason,
-                       at=round(time.monotonic() - run.started, 3), idle=run.idle)
+                       at=round(time.monotonic() - run.started, 3), idle=run.idle,
+                       source=run.source)
         if run.playback:
             run.playback._end(outcome, by=by, reason=reason)
 
@@ -710,17 +758,20 @@ class BehaviorPlayer:
         if run.internal:
             return
         if cue.kind == "keyframe":
+            # "keyframe" is the YAML location ("x[2] -> nod[1]"); "source" is
+            # reserved for who triggered the behaviour, as on every event.
             self._emit("keyframe_reached", run.name, index=cue.segment + 1,
-                       source=cue.value, idle=run.idle)
+                       keyframe=cue.value, idle=run.idle, source=run.source)
         elif cue.kind == "sound":
             path = self.sounds_dir / cue.value
             self._audio.submit(self.backend.play_sound, path)
-            self._emit("sound_played", run.name, file=cue.value, idle=run.idle)
+            self._emit("sound_played", run.name, file=cue.value, idle=run.idle,
+                       source=run.source)
         elif cue.kind == "say":
             text = self._pick_line(cue.value, run.tone, run.context)
             if text is not None:
                 self._emit("line_requested", run.name, line_id=cue.value,
-                           tone=run.tone, text=text, idle=run.idle)
+                           tone=run.tone, text=text, idle=run.idle, source=run.source)
                 self._speech.submit(self.speech_callback, cue.value, text)
 
     def _pick_line(self, line_id: str, tone: str, context: dict) -> str | None:
@@ -740,9 +791,10 @@ class BehaviorPlayer:
             usable = [v for v in pool if set(re.findall(r"\{(\w+)\}", v)) <= set(context)]
             if not usable:
                 continue
-            fresh = [v for v in usable if v != self._last_lines.get(line_id)] or usable
-            choice = random.choice(fresh)
-            self._last_lines[line_id] = choice
+            with self._lines_lock:
+                fresh = [v for v in usable if v != self._last_lines.get(line_id)] or usable
+                choice = random.choice(fresh)
+                self._last_lines[line_id] = choice
             return re.sub(r"\{(\w+)\}", lambda m: str(context[m.group(1)]), choice)
         log.warning('Every wording of "%s" needs a value that was not given (%s).',
                     line_id, ", ".join(sorted(context)) or "no context")

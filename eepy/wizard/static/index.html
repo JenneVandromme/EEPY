@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EEPY Wizard</title>
+<!--
+  The whole Wizard-of-Oz panel: one file, no build step, no libraries.
+  Everything it shows comes from the server (/api/state and /api/stream), so
+  refreshing this page never loses anything. Buttons and keys are generated
+  from behaviors/*.yaml and config/wizard_panel.yaml -- nothing here needs
+  editing to add a behaviour or change a key.
+-->
+<style>
+  :root {
+    --bg: #f4f2ee; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dedad3;
+    --accent: #2f5bd3; --ok: #1f8a4c; --bad: #c62828; --warn: #b26a00; --key: #ecebe7;
+    --refocus: #2f5bd3; --bedtime: #6a3fb5; --basics: #1f8a4c; --lines: #8a5a1f; --markers: #b0306b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17171a; --panel: #212125; --ink: #ececef; --muted: #a0a0a8; --line: #34343a;
+            --key: #2e2e34; --accent: #6e92ff; --refocus: #6e92ff; --bedtime: #a985f0;
+            --basics: #4cc785; --lines: #d9a35a; --markers: #ec6fa8; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         padding-bottom: 104px; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel);
+           border-bottom: 1px solid var(--line); padding: 10px 16px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+  .brand { font-weight: 700; letter-spacing: .02em; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+          border-radius: 999px; background: var(--key); font-size: 13px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  .pill.bad { background: var(--bad); color: #fff; font-weight: 600; }
+  .pill.rec { background: var(--bad); color: #fff; font-weight: 600; }
+  .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .muted { color: var(--muted); }
+  .spacer { flex: 1; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .small { border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+           padding: 5px 12px; }
+  .small:hover { border-color: var(--accent); }
+  input[type=text] { font: inherit; padding: 6px 10px; border: 1px solid var(--line);
+                     border-radius: 8px; background: var(--panel); color: var(--ink); }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+  .session { margin-top: 8px; }
+  .error { margin-top: 8px; border-left: 4px solid var(--bad); background: rgba(198,40,40,.08);
+           padding: 8px 12px; border-radius: 6px; }
+  .error pre { margin: 6px 0 0; white-space: pre-wrap; font: 12.5px/1.4 ui-monospace, Menlo, monospace;
+               max-height: 240px; overflow: auto; }
+  .warnings { margin-top: 8px; border-left: 4px solid var(--warn); background: rgba(178,106,0,.08);
+              padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+            padding: 12px 14px; margin-bottom: 16px; }
+  h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+       color: var(--muted); display: flex; align-items: center; gap: 10px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .act { position: relative; min-width: 92px; padding: 10px 12px 9px 40px; text-align: left;
+         border: 1px solid var(--line); border-left: 5px solid var(--c, var(--accent));
+         border-radius: 10px; background: var(--panel); transition: transform .05s; }
+  .act:hover { border-color: var(--c, var(--accent)); }
+  .act:active, .act.flash { transform: scale(.97); background: var(--key); }
+  .act.playing { background: var(--c); color: #fff; }
+  .act.playing .sub { color: rgba(255,255,255,.85); }
+  .act .k { position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+            min-width: 24px; height: 24px; padding: 0 5px; border-radius: 6px; background: var(--key);
+            color: var(--ink); font: 600 13px/24px ui-monospace, Menlo, monospace; text-align: center; }
+  .act .k.auto { outline: 2px dashed var(--warn); }
+  .act .t { font-weight: 600; display: block; }
+  .act .sub { font-size: 12px; color: var(--muted); display: block; }
+  .g-basics { --c: var(--basics); } .g-refocus { --c: var(--refocus); } .g-bedtime { --c: var(--bedtime); }
+  .g-lines { --c: var(--lines); } .g-markers { --c: var(--markers); }
+  .idle-btn.on { background: var(--basics); color: #fff; }
+  .idle-btn.on .sub { color: rgba(255,255,255,.85); }
+  .slider { display: flex; align-items: center; gap: 12px; }
+  .slider input { flex: 1; accent-color: var(--accent); }
+  .slider b { font: 600 18px ui-monospace, Menlo, monospace; min-width: 3ch; }
+  .tone { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .tone button { border: 0; padding: 4px 12px; background: var(--panel); }
+  .tone button.on { background: var(--lines); color: #fff; }
+  .inline { display: flex; gap: 8px; margin-top: 10px; }
+  .inline input { flex: 1; }
+  #log { font: 12.5px/1.5 ui-monospace, Menlo, monospace; max-height: 520px; overflow: auto; }
+  .ev { display: grid; grid-template-columns: 92px 64px 1fr; gap: 6px; padding: 2px 0;
+        border-bottom: 1px dashed var(--line); }
+  .ev .src { font-weight: 600; } .src-wizard { color: var(--accent); } .src-idle { color: var(--muted); }
+  .src-system { color: var(--warn); }
+  .ev.annotation, .ev.note { background: rgba(176,48,107,.08); }
+  .ev.err { color: var(--bad); }
+  #stop { position: fixed; left: 16px; right: 16px; bottom: 14px; height: 76px; z-index: 10;
+          border: 0; border-radius: 14px; background: var(--bad); color: #fff;
+          font-size: 26px; font-weight: 800; letter-spacing: .12em;
+          box-shadow: 0 6px 20px rgba(198,40,40,.35); }
+  #stop:active, #stop.flash { filter: brightness(.85); transform: scale(.995); }
+  #stop small { font-size: 14px; font-weight: 600; letter-spacing: 0; opacity: .85; margin-left: 10px; }
+  #toast { position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%); z-index: 20;
+           padding: 10px 16px; border-radius: 10px; background: var(--ink); color: var(--bg);
+           max-width: min(90vw, 720px); opacity: 0; transition: opacity .2s; pointer-events: none;
+           white-space: pre-wrap; }
+  #toast.show { opacity: 1; } #toast.bad { background: var(--bad); color: #fff; }
+  #toast.warn { background: var(--warn); color: #fff; }
+  #offline { display: none; background: var(--bad); color: #fff; text-align: center;
+             padding: 6px; font-weight: 600; }
+  .help { font-size: 12px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="offline">The panel lost contact with its server. Reconnecting…</div>
+<header>
+  <div class="row">
+    <span class="brand">EEPY · Wizard</span>
+    <span class="pill" id="conn"><span class="dot"></span><span>…</span></span>
+    <span class="pill">playing: <b id="playing">—</b></span>
+    <span class="pill">idle: <b id="idle">—</b></span>
+    <span class="spacer"></span>
+    <button class="small" id="reload" tabindex="-1">Reload files</button>
+    <button class="small" id="reconnect" tabindex="-1">Reconnect robot</button>
+  </div>
+  <div class="row session" id="session-row"></div>
+  <div id="error" class="error" hidden>
+    <b>Last problem</b> <span class="muted" id="error-time"></span>
+    <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
+    <pre id="error-text"></pre>
+  </div>
+  <div id="warnings" class="warnings" hidden></div>
+</header>
+
+<main>
+  <div>
+    <section class="g-basics" id="sec-basics">
+      <h2>Idle &amp; basics</h2>
+      <div class="grid" id="grid-basics"></div>
+    </section>
+    <div id="ladders"></div>
+    <section>
+      <h2>Intensity <span class="muted" style="text-transform:none;letter-spacing:0">— applied to the next behaviour</span></h2>
+      <div class="slider">
+        <span class="muted">subtle</span>
+        <input type="range" id="intensity" min="0" max="1" step="0.05" tabindex="-1">
+        <span class="muted">full</span>
+        <b id="intensity-val">0.7</b>
+      </div>
+    </section>
+    <section class="g-lines">
+      <h2>Say
+        <span class="tone" id="tone"><button data-tone="hedged" tabindex="-1">hedged</button><button data-tone="direct" tabindex="-1">direct</button></span>
+        <span class="muted" id="tone-key" style="text-transform:none;letter-spacing:0"></span>
+      </h2>
+      <div class="grid" id="grid-lines"></div>
+      <div class="inline">
+        <input type="text" id="say-text" placeholder="Say this… (Enter)">
+        <button class="small" id="say-btn" tabindex="-1">Say</button>
+      </div>
+    </section>
+  </div>
+  <div>
+    <section class="g-markers">
+      <h2>I observed…</h2>
+      <div class="grid" id="grid-markers"></div>
+      <div class="inline">
+        <input type="text" id="note-text" placeholder="Note… (Enter)">
+        <button class="small" id="note-btn" tabindex="-1">Add note</button>
+      </div>
+      <div class="help">Press the key the moment you see it — the time of the key press is what gets recorded.</div>
+    </section>
+    <section>
+      <h2>Live log</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+
+<button id="stop" tabindex="-1">■ STOP<small id="stop-keys">Esc</small></button>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let state = null, keymap = {}, tone = "hedged", panelVersion = -1, sessionStart = null;
+
+// ---------------------------------------------------------------- requests
+async function post(path, body) {
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify(body || {}) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) {
+      toast(data.message || data.detail?.[0]?.msg || `Something went wrong (${r.status}).`, "bad");
+      return null;
+    }
+    return data;
+  } catch (e) {
+    toast("Could not reach the panel's server. Is it still running?", "bad");
+    return null;
+  }
+}
+
+let toastTimer;
+function toast(text, kind = "") {
+  const t = $("toast"); t.textContent = text; t.className = "show " + kind;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = kind, kind === "bad" ? 5000 : 1800);
+}
+
+function flash(el) { if (!el) return; el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 140); }
+
+// ---------------------------------------------------------------- actions
+const actions = {
+  stop: (via) => { flash($("stop")); post("/api/stop", { via }); },
+  behavior: (b, via) => post("/api/play", { behavior: b.target, intensity: +$("intensity").value, via }),
+  line: (b, via) => post("/api/say", { line_id: b.target, tone, via })
+                     .then((r) => r && toast(`Saying: “${r.text}”`)),
+  marker: (b, via) => post("/api/annotate", { marker: b.target, via }).then((r) => {
+    if (!r) return;
+    r.saved ? toast(`Marked: ${b.label}`) : toast(`Marked “${b.label}” — but NO session is running, so it was not saved.`, "warn");
+  }),
+  idle: (via) => post("/api/idle", { on: !state.status.idle_on, via }),
+  tone: () => setTone(tone === "hedged" ? "direct" : "hedged"),
+};
+
+function setTone(t) {
+  tone = t;
+  document.querySelectorAll("#tone button").forEach((b) => b.classList.toggle("on", b.dataset.tone === t));
+}
+
+// ---------------------------------------------------------------- rendering
+function keyLabel(k) {
+  return { escape: "Esc", space: "Space", tab: "Tab" }[k] || (k ? k.toUpperCase() : "—");
+}
+
+function makeButton(b, onPress, extraClass = "") {
+  const el = document.createElement("button");
+  el.className = "act " + extraClass; el.tabIndex = -1; el.dataset.id = b.id;
+  el.innerHTML = `<span class="k${b.auto_key ? " auto" : ""}" title="${b.auto_key ? "key picked automatically — add it to wizard_panel.yaml" : "shortcut"}">${keyLabel(b.key)}</span>
+                  <span class="t"></span><span class="sub"></span>`;
+  el.querySelector(".t").textContent = b.label;
+  el.querySelector(".sub").textContent = b.detail || "";
+  el.addEventListener("click", () => { el.blur(); onPress("click"); });
+  return el;
+}
+
+function renderPanel() {
+  const p = state.panel; keymap = {};
+  for (const k of p.stop_keys) keymap[k] = { run: (via) => actions.stop(via) };
+  keymap[p.idle_key] = { run: (via) => actions.idle(via), el: () => $("idle-btn") };
+  keymap[p.tone_key] = { run: () => actions.tone() };
+  $("stop-keys").textContent = p.stop_keys.map(keyLabel).join(" or ");
+  $("tone-key").textContent = `(${keyLabel(p.tone_key)} to switch)`;
+
+  const ladders = $("ladders"); ladders.innerHTML = "";
+  for (const g of p.groups) {
+    let grid;
+    if (g.id === "basics") grid = $("grid-basics");
+    else if (g.id === "lines") grid = $("grid-lines");
+    else if (g.id === "markers") grid = $("grid-markers");
+    else {
+      const sec = document.createElement("section");
+      sec.className = `g-${g.id}`;
+      sec.innerHTML = `<h2></h2><div class="grid"></div>`;
+      sec.querySelector("h2").textContent = g.title;
+      ladders.appendChild(sec); grid = sec.querySelector(".grid");
+    }
+    grid.innerHTML = "";
+    if (g.id === "basics" && state.status.idle) {
+      const idleBtn = makeButton({ id: "idle", key: p.idle_key, label: "idle", detail: state.status.idle.replaceAll("_", " ") },
+                                 (via) => actions.idle(via), "idle-btn");
+      idleBtn.id = "idle-btn"; grid.appendChild(idleBtn);
+    }
+    for (const b of g.buttons) {
+      const el = makeButton(b, (via) => actions[b.kind](b, via));
+      grid.appendChild(el);
+      if (b.key) keymap[b.key] = { run: (via) => actions[b.kind](b, via), el: () => el };
+    }
+    if (!g.buttons.length && g.id !== "basics") grid.innerHTML = `<span class="muted">nothing here</span>`;
+  }
+  const w = $("warnings");
+  w.hidden = !p.warnings.length;
+  w.innerHTML = p.warnings.map((m) => `• ${escapeHtml(m)}`).join("<br>");
+}
+
+function renderStatus(s) {
+  state.status = s;
+  const conn = $("conn");
+  conn.className = "pill" + (s.connected ? "" : " bad");
+  conn.querySelector(".dot").className = "dot " + (s.connected ? "ok" : "");
+  conn.querySelector("span:last-child").textContent =
+    `${s.backend} · ${s.connected ? "connected" : "NOT CONNECTED"}`;
+  $("playing").textContent = s.playing ? s.playing.replaceAll("_", " ") : "—";
+  $("idle").textContent = s.idle ? `${s.idle.replaceAll("_", " ")} (${s.idle_on ? "on" : "off"})` : "none";
+  const ib = $("idle-btn"); if (ib) ib.classList.toggle("on", !!s.idle_on);
+  document.querySelectorAll(".act.playing").forEach((e) => e.classList.remove("playing"));
+  if (s.playing) document.querySelector(`.act[data-id="b:${CSS.escape(s.playing)}"]`)?.classList.add("playing");
+
+  const e = $("error");
+  if (s.last_error && s.last_error.wall !== e.dataset.dismissed) {
+    e.hidden = false; $("error-text").textContent = s.last_error.message;
+    $("error-time").textContent = s.last_error.wall.slice(11, 19);
+  } else e.hidden = true;
+
+  renderSession(s.session);
+  if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
+}
+
+function renderSession(se) {
+  const row = $("session-row");
+  if (se.active) {
+    sessionStart = Date.now() - se.elapsed_s * 1000;
+    if (!row.dataset.active || row.dataset.session !== se.session) {
+      row.dataset.active = "1"; row.dataset.session = se.session;
+      row.innerHTML = `<span class="pill rec"><span class="dot"></span>RECORDING <b></b></span>
+        <span class="muted" id="elapsed"></span><span class="muted" id="ann-count"></span>
+        <span class="spacer"></span><button class="small" id="end" tabindex="-1">End session</button>`;
+      row.querySelector("b").textContent = se.participant;
+      $("end").onclick = () => { $("end").blur();
+        if (confirm(`End the session for ${se.participant}?`)) post("/api/session/end").then((r) => r && toast("Session ended and saved.")); };
+    }
+    $("ann-count").textContent = `· ${se.annotations} marker${se.annotations === 1 ? "" : "s"}`;
+  } else if (row.dataset.active !== "0") {
+    row.dataset.active = "0"; sessionStart = null;
+    row.innerHTML = `<span class="muted">No session — markers are not being saved.</span>
+      <input type="text" id="participant" placeholder="Participant ID, e.g. P03" size="22">
+      <button class="small" id="start" tabindex="-1">Start session</button>`;
+    const go = () => { $("start").blur(); post("/api/session/start", { participant: $("participant").value })
+                         .then((r) => r && toast(`Recording ${r.session}`)); };
+    $("start").onclick = go;
+    $("participant").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  }
+}
+
+setInterval(() => {
+  const el = $("elapsed"); if (!el || sessionStart === null) return;
+  const s = Math.floor((Date.now() - sessionStart) / 1000);
+  el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}, 500);
+
+function escapeHtml(t) { return String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function describe(r) {
+  const bits = [r.kind.replaceAll("_", " ")];
+  if (r.behavior) bits.push(r.behavior);
+  if (r.action) bits.push(r.action);
+  if (r.label) bits.push(`“${r.label}”`);
+  if (r.text) bits.push(`“${r.text}”`);
+  if (r.by) bits.push(`by ${r.by}`);
+  if (r.reason) bits.push(`— ${r.reason}`);
+  if (r.intensity !== undefined && r.kind !== "behavior_started") bits.push(`@${r.intensity}`);
+  if (r.status) bits.push(r.status);
+  if (r.participant) bits.push(r.participant);
+  return bits.join("  ");
+}
+
+function addLog(records) {
+  const box = $("log");
+  for (const r of records) {
+    if (r.kind === "keyframe_reached") continue;   // too chatty for the panel; still in the file
+    const row = document.createElement("div");
+    row.className = `ev ${r.kind}` + (r.kind.includes("refused") || r.status === "lost" || r.ok === false ? " err" : "");
+    row.innerHTML = `<span class="muted"></span><span class="src src-${r.source}"></span><span></span>`;
+    row.children[0].textContent = (r.wall || "").slice(11, 23);
+    row.children[1].textContent = r.source;
+    row.children[2].textContent = describe(r);
+    box.prepend(row);
+  }
+  while (box.children.length > 20) box.lastChild.remove();
+}
+
+// ---------------------------------------------------------------- keyboard
+function normal(e) {
+  if (e.key === "Escape") return "escape";
+  if (e.key === " ") return "space";
+  if (e.key === "Tab") return "tab";
+  return e.key.length === 1 ? e.key.toLowerCase() : "";
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!state || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = normal(e);
+  const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName);
+  // Escape is STOP, always -- even while typing. It also leaves the text box.
+  if (k === "escape") { e.preventDefault(); document.activeElement?.blur(); actions.stop("key"); return; }
+  if (typing) return;              // every other key types normally in a text box
+  const bound = keymap[k];
+  if (!bound) return;
+  e.preventDefault();               // no scrolling on Space, no focus jump on Tab
+  if (e.repeat) return;             // holding a key down fires it once, not 30 times
+  bound.run("key"); flash(bound.el?.());
+});
+
+$("stop").addEventListener("click", () => { $("stop").blur(); actions.stop("click"); });
+$("intensity").addEventListener("input", (e) => $("intensity-val").textContent = (+e.target.value).toFixed(2));
+document.querySelectorAll("#tone button").forEach((b) => b.addEventListener("click", () => { b.blur(); setTone(b.dataset.tone); }));
+function sayText() {
+  const t = $("say-text"); if (!t.value.trim()) return;
+  post("/api/say", { text: t.value, tone }).then((r) => { if (r) { toast(`Saying: “${r.text}”`); t.value = ""; } });
+}
+function addNote() {
+  const t = $("note-text"); if (!t.value.trim()) return;
+  post("/api/note", { text: t.value }).then((r) => {
+    if (!r) return; t.value = "";
+    r.saved ? toast("Note saved.") : toast("Note shown — but NO session is running, so it was not saved.", "warn");
+  });
+}
+$("say-text").addEventListener("keydown", (e) => { if (e.key === "Enter") sayText(); });
+$("note-text").addEventListener("keydown", (e) => { if (e.key === "Enter") addNote(); });
+$("say-btn").onclick = () => { $("say-btn").blur(); sayText(); };
+$("note-btn").onclick = () => { $("note-btn").blur(); addNote(); };
+$("reload").onclick = () => { $("reload").blur(); toast("Reloading…");
+  post("/api/reload").then((r) => r && toast(r.ok ? "Reloaded." : "Kept the last good version — see the problem at the top.", r.ok ? "" : "bad")); };
+$("reconnect").onclick = () => { $("reconnect").blur(); toast("Reconnecting to the robot…");
+  post("/api/reconnect").then((r) => r && toast(r.ok ? "Connected." : `Still not connected: ${r.message}`, r.ok ? "" : "bad")); };
+$("error-clear").onclick = () => { $("error").dataset.dismissed = state.status.last_error?.wall; $("error").hidden = true; };
+
+// ---------------------------------------------------------------- start up
+async function loadState() {
+  const r = await fetch("/api/state", { cache: "no-store" });
+  const fresh = await r.json();
+  const first = state === null;
+  state = fresh;
+  if (first) {
+    $("intensity").value = state.panel.default_intensity;
+    $("intensity-val").textContent = (+state.panel.default_intensity).toFixed(2);
+    setTone("hedged");
+  }
+  panelVersion = state.status.panel_version;
+  renderPanel(); renderStatus(state.status);
+  if (first) addLog(state.log);
+}
+
+function connectStream() {
+  const es = new EventSource("/api/stream");
+  es.addEventListener("log", (e) => addLog(JSON.parse(e.data)));
+  es.addEventListener("status", (e) => state && renderStatus(JSON.parse(e.data)));
+  es.onopen = () => { $("offline").style.display = "none"; };
+  es.onerror = () => { $("offline").style.display = "block"; };
+}
+
+loadState().then(connectStream).catch(() => { $("offline").style.display = "block"; setTimeout(() => location.reload(), 2000); });
+</script>
+</body>
+</html>

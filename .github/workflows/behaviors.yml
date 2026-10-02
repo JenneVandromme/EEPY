@@ -8,7 +8,7 @@
 # reachability check needs only the small Rust kinematics wheel plus the
 # 7.4 KB geometry file vendored in eepy/behaviors/data/.
 #
-# If you add an import to eepy/behaviors/, add it in BOTH places: here, and
+# If you add an import anywhere under eepy/, add it in BOTH places: here, and
 # requirements-robot.txt.
 name: behaviours
 
@@ -17,6 +17,7 @@ on:
     paths:
       - "behaviors/**"
       - "sounds/**"
+      - "config/**"                 # the Wizard panel's keys and markers
       - "eepy/**"
       - "robot/safety_limits.py"   # the validator reads its limits from here
       - "tests/**"
@@ -46,6 +47,8 @@ jobs:
             numpy \
             scipy \
             reachy_mini_rust_kinematics \
+            fastapi \
+            httpx \
             pytest
 
       - name: Confirm the reachability check is active
@@ -63,6 +66,9 @@ jobs:
 
       - name: Validate the behaviour files
         run: python -m eepy.behaviors.validate
+
+      - name: Check the Wizard panel's config
+        run: python -c "from eepy.wizard.config import load_config; load_config(); print('wizard_panel.yaml is valid')"
 
       - name: Tests
         run: python -m pytest tests/ -q

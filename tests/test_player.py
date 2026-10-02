@@ -614,3 +614,47 @@ def test_every_frame_sent_obeys_every_limit(harness):
     for (t0, a), (t1, b) in zip(frames, frames[1:]):
         assert not safety.check_pose(b), b
         assert not safety.check_tick_speed(a, b, t1 - t0)
+
+
+# --- added for the Wizard panel -----------------------------------------------------
+
+
+def test_source_is_carried_on_every_event_of_a_behaviour(harness):
+    h = harness()
+    h.player.play("talker", source="wizard", wait=True)
+    h.player.events.flush()
+    mine = [e for e in h.events if e.behavior == "talker"]
+    assert mine and all(e.data.get("source") == "wizard" for e in mine)
+
+
+def test_idle_events_are_marked_as_idle(harness):
+    h = harness()
+    h.player.set_idle("idle_breath")
+    h.wait_until(lambda: "behavior_started" in h.kinds("idle_breath"))
+    assert h.first("behavior_started", "idle_breath").data["source"] == "idle"
+
+
+def test_say_a_line_without_a_behaviour(harness):
+    h = harness()
+    text = h.player.say("greet", tone="direct", source="wizard")
+    assert text == "Hello."
+    h.wait_until(lambda: h.spoken)
+    assert h.spoken == [("greet", "Hello.")]
+    assert h.first("line_requested").data["source"] == "wizard"
+
+
+def test_say_free_text(harness):
+    h = harness()
+    assert h.player.say(text="  Back to work?  ") == "Back to work?"
+    h.wait_until(lambda: h.spoken)
+    assert h.spoken == [("free_text", "Back to work?")]
+
+
+def test_say_explains_its_mistakes(harness):
+    h = harness()
+    with pytest.raises(PlayerError, match='Did you mean "greet"'):
+        h.player.say("gret")
+    with pytest.raises(PlayerError, match="either a line_id or some text"):
+        h.player.say()
+    with pytest.raises(PlayerError, match="empty"):
+        h.player.say(text="   ")

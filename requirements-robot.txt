@@ -20,3 +20,10 @@ python-dotenv
 pyyaml
 pydantic>=2
 pytest
+
+# The Wizard-of-Oz panel (eepy/wizard/). Like pyyaml and pydantic above, these
+# already arrive with reachy-mini -- listed because the panel imports them
+# directly. httpx is only needed by the panel's tests.
+fastapi
+uvicorn
+httpx

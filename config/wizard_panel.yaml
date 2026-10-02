@@ -1,0 +1,65 @@
+# ===========================================================================
+#  wizard_panel.yaml -- settings for the Wizard-of-Oz control panel.
+#
+#  Change a key, a marker or the default intensity here, then press Reload on
+#  the panel (or restart it). If you make a mistake, the panel says exactly
+#  what and where, and keeps using the last good version of this file.
+#
+#  KEYS are a single character -- a letter, a digit, or one of  , . / ; ' - =
+#  [ ] `  -- or one of the names: escape, space, tab.
+#  Every key may be used for one thing only.
+#
+#  Behaviours you add to behaviors/*.yaml appear on the panel by themselves
+#  after Reload. If you do not give one a key here, the panel picks a free key
+#  for it and shows a reminder to add it to this file.
+# ===========================================================================
+
+# Where the intensity slider starts. 0.0 (barely moves) to 1.0 (as written).
+default_intensity: 0.7
+
+# The behaviour the robot loops when nothing else is playing. The panel's
+# idle button switches it on and off.
+idle: study_buddy_idle
+
+keys:
+  # STOP. Escape always works, even while typing in a text box. Space is the
+  # biggest key on the keyboard, so it is the easiest to hit in a hurry -- but
+  # it only stops the robot when you are NOT typing.
+  stop: [escape, space]
+  idle_toggle: a
+  tone_toggle: tab          # switches spoken lines between hedged and direct
+
+  # Behaviours that are not on a ladder, by name.
+  behaviors:
+    approving_nod: s
+
+  # Ladder rungs, by ladder and LEVEL (not by name), so renaming a behaviour in
+  # its YAML file does not lose its key.
+  ladders:
+    refocus: { 0: "1", 1: "2", 2: "3", 3: "4", 4: "5" }
+    bedtime: { 0: q, 1: w, 2: e, 3: r, 4: t, 5: y }
+
+  # Spoken lines from behaviors/lines.yaml, by line ID.
+  lines:
+    refocus_check: "6"
+    refocus_break_offer: "7"
+    bedtime_check: "8"
+    bedtime_negotiate: "9"
+    bedtime_goodnight: "0"
+    approving: "-"
+
+# What the operator can mark as OBSERVED. Each press is written to the session
+# log with an exact timestamp; these become the labels the HMM is fitted to,
+# so keep the ids stable once real sessions have been recorded.
+#   id     goes into the log. lower_case_with_underscores.
+#   label  what the button says.
+#   key    the shortcut.
+markers:
+  - { id: phone_picked_up,  label: "phone picked up",  key: z }
+  - { id: looked_away,      label: "looked away",      key: x }
+  - { id: back_on_task,     label: "back on task",     key: c }
+  - { id: yawn,             label: "yawn",             key: v }
+  - { id: eyes_closing,     label: "eyes closing",     key: b }
+  - { id: user_replied,     label: "user replied",     key: n }
+  - { id: user_dismissed,   label: "user dismissed",   key: m }
+  - { id: user_went_to_bed, label: "user went to bed", key: "," }

@@ -334,8 +334,13 @@ EEPY/
 │   └── lines.yaml         # everything the robot can say
 ├── sounds/                # the sounds behaviours play (see sounds/README.md)
 ├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ — how it works: eepy/behaviors/README.md
+├── eepy/wizard/           # the Wizard-of-Oz control panel — how it works: eepy/wizard/README.md
+├── config/
+│   └── wizard_panel.yaml  # the panel's keys, markers and defaults
+├── logs/                  # session logs from the panel (gitignored: participant data)
 ├── docs/
-│   └── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
+│   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
+│   └── WIZARD_PANEL_GUIDE.md # how to run a session with the Wizard panel
 ├── tests/                 # pytest: python -m pytest tests/
 ├── models/                 # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
@@ -377,6 +382,15 @@ python -m eepy.behaviors.play refocus_curious --backend sim --watch
 
 `--watch` replays it every time you save a behaviour file, so you can tune
 values and watch the result immediately. The guide covers the details.
+
+### Driving the robot by hand (Wizard-of-Oz panel)
+
+```bash
+python -m eepy.wizard --backend sim       # or real, or dry
+```
+
+Then open the address it prints — on this machine, or on any laptop on the same
+network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
 
 ## Stuck?
 
