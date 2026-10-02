@@ -83,24 +83,60 @@ cannot be merged even if you forget. When it fails, its log names the file, the
 behaviour and the keyframe, and usually suggests the fix — the same output the
 validator gives you locally.
 
-### Comparing before and after
+### Watching it move
 
-The obvious way to judge `roll: 12` against `roll: 18` is to watch both. You
-cannot do that yet: **nothing plays these files on the robot or the simulator
-so far.** The part that reads a behaviour and drives the robot is a separate
-job, still to be built. Until it exists, `preview` is what you have, and it
-prints numbers rather than movement:
+This is the loop for tuning: edit a number, save, watch it happen in the
+simulator. Two terminals, both in the EEPY folder with `.venv-robot` active.
+
+**Terminal 1 — the simulator.** A window opens with the robot in it. Leave it
+running.
 
 ```bash
-python -m eepy.behaviors.preview refocus_curious
+mjpython $(which reachy-mini-daemon) --sim      # macOS
+reachy-mini-daemon --sim                        # Linux / Windows
 ```
 
-That is genuinely useful for timing — you can see that the tilt takes 0.5 s and
-is held for 0.8 s, and that the whole behaviour runs 4.7 s — and it will tell
-you if a pose is impossible. It cannot tell you whether 18 degrees *looks*
-right. For now, change one number at a time and keep the ones you want to
-compare written down, so they are easy to try side by side once the player
-lands.
+**Terminal 2 — play the behaviour, in watch mode:**
+
+```bash
+python -m eepy.behaviors.play refocus_curious --backend sim --watch
+```
+
+It plays once, then waits. Now edit `behaviors/refocus.yaml` and **save** —
+it replays straight away with your change. Press **Enter** to replay without
+changing anything. **Ctrl+C** returns the robot to neutral and quits.
+
+If you save a mistake, it explains it exactly like the validator does and
+keeps playing the last good version until you fix it. You cannot break the
+running session by saving a typo.
+
+Useful extras:
+
+```bash
+python -m eepy.behaviors.play --ladder bedtime --level 2 --backend sim --watch
+python -m eepy.behaviors.play refocus_curious --backend sim --intensity 0.5
+python -m eepy.behaviors.play refocus_verbal --backend sim --tone direct
+```
+
+Put `EEPY_BACKEND=sim` in your `.env` and you can leave off `--backend sim`.
+Without any backend, the tool uses `dry`: nothing moves, and it just prints
+when each keyframe, sound and line would happen.
+
+**Two things you will notice in the simulator:**
+
+- **The head lags a little behind what you wrote.** The simulated motors have
+  weight and take time to get there, so a fast move looks softer and slightly
+  later than its numbers — up to about 15 degrees behind on a quick cartoon
+  flick. The real robot will do the same. Judge by eye, not by the numbers.
+- **Some moves take longer than written.** If a behaviour starts while the
+  robot is somewhere unusual — antennas still drooped from a bedtime nudge, say
+  — a quick move from there could be dangerously fast, so the player makes it
+  take longer and tells you so ("slowed down to stay under the speed limit").
+  It never changes *where* the move goes, only how long it takes.
+
+In the simulator, sounds go to your computer's own audio output. The files
+in `sounds/` are still silent placeholders, so you will hear nothing until
+someone replaces them with real recordings.
 
 ---
 
