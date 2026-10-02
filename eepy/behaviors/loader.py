@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import yaml
 
@@ -208,17 +208,48 @@ class Library:
 
     # --- resolution -------------------------------------------------------
 
-    def resolve(self, behavior: Behavior) -> list[Step]:
+    def resolve(
+        self,
+        behavior: Behavior,
+        start: Any = None,
+        gaze: Callable[[str], HeadPose] | None = None,
+        intensity_scale: float = 1.0,
+    ) -> list[Step]:
         """Expand a behaviour into a flat list of absolute steps.
 
         Building blocks are inlined, omitted values inherit from the previous
         keyframe, `relative` offsets are added to the previous pose, and
         `intensity` scales every angle.
 
+        The three optional arguments are for the player; the validator and the
+        preview leave them alone and get the same result as before.
+
+          start            the pose the robot is in when the behaviour begins.
+                           Anything with yaw/pitch/roll/z/antenna_right/
+                           antenna_left/body_yaw attributes (a pose.Pose).
+                           Relative keyframes and omitted values build on it.
+                           Default: neutral.
+          gaze             how to turn a look_at name into a head pose. The
+                           player passes its TargetProvider here, so face
+                           tracking can supply a live "user". Default: the
+                           fixed angles in _blocks.yaml.
+          intensity_scale  multiplies the behaviour's own `intensity`, for
+                           play(name, intensity=0.5). Must be 0-1, like the
+                           field it scales.
+
         One pass through a looping behaviour is returned; looping is the
         player's job, not this function's.
         """
+        if not 0.0 <= intensity_scale <= 1.0:
+            raise ValueError(
+                f"intensity must be between 0 and 1, got {intensity_scale}"
+            )
         pose = _Pose()
+        if start is not None:
+            for name in ("yaw", "pitch", "roll", "z", "antenna_right",
+                         "antenna_left", "body_yaw"):
+                setattr(pose, name, float(getattr(start, name)))
+        self._gaze = gaze or (lambda name: self.gaze_targets[name])
         steps: list[Step] = []
         clock = 0.0
         for index, keyframe in enumerate(behavior.keyframes):
@@ -227,7 +258,7 @@ class Library:
                 pose,
                 steps,
                 clock,
-                behavior.intensity,
+                behavior.intensity * intensity_scale,
                 f"{behavior.name}[{index + 1}]",
             )
         return steps
@@ -314,7 +345,7 @@ class Library:
         # Resolve the head. look_at is just a named absolute pose.
         head = keyframe.head
         if keyframe.look_at is not None:
-            head = self.gaze_targets[keyframe.look_at]
+            head = self._gaze(keyframe.look_at)
             relative = False
 
         if head is not None:

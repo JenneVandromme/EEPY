@@ -80,7 +80,12 @@ def _solver():
 
 
 def head_pose_matrix(
-    yaw: float = 0.0, pitch: float = 0.0, roll: float = 0.0, z_mm: float = 0.0
+    yaw: float = 0.0,
+    pitch: float = 0.0,
+    roll: float = 0.0,
+    z_mm: float = 0.0,
+    x_mm: float = 0.0,
+    y_mm: float = 0.0,
 ) -> np.ndarray:
     """A 4x4 head pose from designer units (degrees, millimetres).
 
@@ -92,7 +97,7 @@ def head_pose_matrix(
 
     pose = np.eye(4)
     pose[:3, :3] = R.from_euler("xyz", [roll, pitch, yaw], degrees=True).as_matrix()
-    pose[2, 3] = z_mm / 1000.0
+    pose[:3, 3] = [x_mm / 1000.0, y_mm / 1000.0, z_mm / 1000.0]
     return pose
 
 
@@ -102,6 +107,8 @@ def is_reachable(
     roll: float = 0.0,
     z_mm: float = 0.0,
     body_yaw: float = 0.0,
+    x_mm: float = 0.0,
+    y_mm: float = 0.0,
 ) -> bool:
     """Can the head actually hold this pose, given where the body is?
 
@@ -114,7 +121,9 @@ def is_reachable(
     needs a leg outside its URDF range.
     """
     kin, head_z_offset = _solver()
-    pose = head_pose_matrix(yaw, pitch, roll, z_mm)
+    # x and y are never set by a behaviour file; they only appear while the
+    # player blends out of the SDK's sleep pose, which uses a sideways shift.
+    pose = head_pose_matrix(yaw, pitch, roll, z_mm, x_mm, y_mm)
     pose[2, 3] += head_z_offset
     try:
         legs = kin.inverse_kinematics(pose.tolist(), np.deg2rad(body_yaw))

@@ -539,12 +539,36 @@ behaviors:
 # --- warnings vs errors ---------------------------------------------------
 
 
-def test_a_fast_movement_warns_but_does_not_fail(write_behaviors, run_validator):
+def test_a_brisk_movement_warns_but_does_not_fail(write_behaviors, run_validator):
+    """Over the 150 deg/s advisory speed, under the 300 deg/s hard limit.
+
+    Linear easing, so peak speed equals average speed: 40 deg in 0.2 s is
+    200 deg/s -- brisk enough to look twitchy, legal enough to play.
+    """
+    write_behaviors(
+        """
+behaviors:
+  - name: brisk
+    description: Fast but legal.
+    keyframes:
+      - head: { yaw: 0 }
+        duration: 1.0
+      - head: { yaw: 40 }
+        duration: 0.2
+        easing: linear
+"""
+    )
+    validator = run_validator()
+    assert validator.warnings, "200 deg/s should warn"
+    assert not validator.errors, "but it is under the hard limit, so it must not fail"
+
+
+def test_a_movement_over_the_hard_speed_limit_fails(write_behaviors, run_validator):
     write_behaviors(
         """
 behaviors:
   - name: twitchy
-    description: Very fast head movement.
+    description: Far too fast.
     keyframes:
       - head: { yaw: 0 }
         duration: 1.0
@@ -552,9 +576,45 @@ behaviors:
         duration: 0.05
 """
     )
-    validator = run_validator()
-    assert validator.warnings, "a 800 deg/s move should warn"
-    assert not validator.errors, "but speed alone should not fail the build"
+    assert "over the 300 deg/s limit" in messages(run_validator())
+
+
+def test_peak_speed_not_average_is_what_counts(write_behaviors, run_validator):
+    """30 deg in 0.4 s averages 75 deg/s -- but cartoon peaks at 5.6x that."""
+    write_behaviors(
+        """
+behaviors:
+  - name: snappy
+    description: Harmless average, dangerous peak.
+    keyframes:
+      - head: { yaw: 0 }
+        duration: 1.0
+      - head: { yaw: 30 }
+        duration: 0.4
+        easing: cartoon
+"""
+    )
+    assert "peak at" in messages(run_validator())
+
+
+def test_cartoon_overshoot_past_a_limit_fails(write_behaviors, run_validator):
+    """Both keyframes are legal; the curve between them is not."""
+    write_behaviors(
+        """
+behaviors:
+  - name: overshoot
+    description: Cartoon winds up past the pitch limit.
+    keyframes:
+      - head: { pitch: 38 }
+        duration: 1.0
+      - head: { pitch: 0 }
+        duration: 1.5
+        easing: cartoon
+"""
+    )
+    report = messages(run_validator())
+    assert "on the way to this keyframe" in report
+    assert "overshoots" in report
 
 
 # --- spoken lines ---------------------------------------------------------
@@ -769,3 +829,27 @@ def test_every_sound_file_is_referenced_by_a_behaviour():
     on_disk = {p.name for p in SOUNDS_DIR.glob("*.wav")}
     assert on_disk - referenced == set(), "unreferenced sound file(s)"
     assert referenced - on_disk == set(), "sound(s) referenced but missing"
+
+
+def test_a_problem_inside_a_block_names_the_behaviours_keyframe(write_behaviors, run_validator):
+    """The keyframe number must be one a designer can find in THEIR file.
+
+    Keyframe 3 here uses a block; a problem in it used to be reported as
+    "keyframe 1" -- the block's own first keyframe -- which points nowhere.
+    """
+    write_behaviors(
+        """
+behaviors:
+  - name: findable
+    description: The problem is in keyframe 3, which uses a block.
+    keyframes:
+      - head: { yaw: 0 }
+        duration: 1.0
+      - head: { pitch: 33 }
+        duration: 1.0
+      - use: nod_small
+"""
+    )
+    report = messages(run_validator())
+    assert "keyframe 3" in report, report
+    assert 'in block "nod_small"' in report

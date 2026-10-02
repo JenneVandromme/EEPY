@@ -333,7 +333,7 @@ EEPY/
 │   ├── bedtime.yaml       # the "time to sleep" ladder, levels 0-5
 │   └── lines.yaml         # everything the robot can say
 ├── sounds/                # the sounds behaviours play (see sounds/README.md)
-├── eepy/behaviors/        # the code that reads, checks and previews behaviors/
+├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ — how it works: eepy/behaviors/README.md
 ├── docs/
 │   └── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
 ├── tests/                 # pytest: python -m pytest tests/
@@ -367,6 +367,16 @@ python -m eepy.behaviors.preview refocus_curious    # what one will actually do
 
 A GitHub Action runs that same check on every pull request, so a broken
 behaviour file cannot be merged.
+
+To **see** a behaviour move, start the simulator in one terminal (see "Test
+the robot connection" above), then in another:
+
+```bash
+python -m eepy.behaviors.play refocus_curious --backend sim --watch
+```
+
+`--watch` replays it every time you save a behaviour file, so you can tune
+values and watch the result immediately. The guide covers the details.
 
 ## Stuck?
 

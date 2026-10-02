@@ -79,6 +79,33 @@ ADVISORY_HEAD_SPEED_DEG_PER_S: float = 150.0
 ADVISORY_BODY_SPEED_DEG_PER_S: float = 150.0
 ADVISORY_ANTENNA_SPEED_DEG_PER_S: float = 300.0
 
+# --- Hard speed limits ----------------------------------------------------
+# Unlike the advisory ones above, these are ERRORS in the validator and are
+# REFUSED by the player at runtime. They apply to the PEAK speed of a move,
+# not its average: easing curves peak well above average (minjerk 1.9x,
+# cartoon 5.6x -- see easing.py), and the peak is what the motors feel.
+# All sit under the 458 deg/s (8 rad/s) URDF rating of every actuated joint.
+# The translation limit has no URDF rating to anchor it; 100 mm/s is
+# generous for a head that only travels about 70 mm end to end, and exists
+# so that blending out of the sleep pose (x = -21, z = -44 mm) is never a jolt.
+HARD_HEAD_SPEED_DEG_PER_S: float = 300.0
+HARD_BODY_SPEED_DEG_PER_S: float = 200.0
+HARD_ANTENNA_SPEED_DEG_PER_S: float = 400.0
+HARD_TRANSLATION_SPEED_MM_PER_S: float = 100.0
+
+# Hard limit per unit kind, as used by pose.Pose.delta().
+HARD_SPEED: dict[str, float] = {
+    "head": HARD_HEAD_SPEED_DEG_PER_S,
+    "body": HARD_BODY_SPEED_DEG_PER_S,
+    "antenna": HARD_ANTENNA_SPEED_DEG_PER_S,
+    "translation": HARD_TRANSLATION_SPEED_MM_PER_S,
+}
+
+# When the player has to blend from wherever the robot is into a new
+# behaviour, it aims for this fraction of the hard limit, so a preemption is
+# never only just legal. See player.py, "blend-in".
+BLEND_SPEED_FRACTION: float = 0.6
+
 # --- Reference poses, decoded from the SDK -------------------------------
 # reachy_mini/reachy_mini.py: INIT_ANTENNAS_JOINT_POSITIONS = [-0.1745, 0.1745]
 # Mirrored, with a deliberate ~10 deg offset "to reduce shaking at vertical".

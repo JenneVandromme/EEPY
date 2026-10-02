@@ -39,6 +39,8 @@ from typing import Iterable, Literal
 from pydantic import ValidationError
 
 from . import limits, reach
+from .pose import NEUTRAL
+from .trajectory import Trajectory
 from .loader import (
     BEHAVIORS_DIR,
     SOUNDS_DIR,
@@ -284,6 +286,21 @@ def _known_fields_at(loc: tuple, raw: dict) -> set[str]:
 
 
 # --- The checks ------------------------------------------------------------
+
+
+def _keyframe_label(where: str, source: str) -> str:
+    """'behaviour "x", keyframe 4 (in block "return_to_neutral")'.
+
+    A Step's source looks like "x[4]" for a keyframe written in the behaviour,
+    or "x[4] -> return_to_neutral[1]" for one that came from a block. The
+    number a designer can find is the BEHAVIOUR's (4), not the block's (1).
+    """
+    head, _, block = source.partition(" -> ")
+    index = head[head.find("[") + 1: head.find("]")] if "[" in head else "?"
+    label = f"{where}, keyframe {index}"
+    if block:
+        label += f' (in block "{block.split("[")[0]}")'
+    return label
 
 
 class Validator:
@@ -694,9 +711,10 @@ class Validator:
             # A dangling reference; already reported by check_references.
             return
 
+        before = len(self.errors)
         previous: Step | None = None
         for step in steps:
-            spot = f"{where}, keyframe {step.source.split('[')[-1].rstrip(']')}"
+            spot = _keyframe_label(where, step.source)
             in_range = self._check_ranges(path, spot, step)
             # Only ask about reachability once the values are individually
             # legal. Otherwise an out-of-range pitch draws a second error whose
@@ -707,6 +725,26 @@ class Validator:
             if previous is not None:
                 self._check_speed(path, spot, previous, step)
             previous = step
+
+        # The keyframes are fine; now check the motion BETWEEN them, exactly
+        # the way the player will perform it. This catches two things the
+        # keyframe checks cannot: cartoon easing overshooting a limit on its
+        # way to a legal keyframe, and a move whose PEAK speed is over the hard
+        # limit even though its average looks harmless. It uses the player's
+        # own trajectory code, so "it validates" means "it plays".
+        if len(self.errors) == before and steps:
+            trajectory = Trajectory.build(steps, NEUTRAL, stretch="first")
+            for segment, violation in trajectory.violations(check_reach=self.check_reach):
+                spot = _keyframe_label(where, segment.step.source)
+                hint = None
+                if violation.kind == "speed":
+                    hint = "Give this keyframe a longer duration, or a gentler easing."
+                elif segment.easing == "cartoon":
+                    hint = ("cartoon easing overshoots its target by 10% and comes "
+                            "back. Move the keyframe further from the limit, or use "
+                            "minjerk, which does not overshoot.")
+                self.error(path, spot,
+                           "on the way to this keyframe, " + violation.message, hint)
 
     def _check_ranges(self, path: Path, where: str, step: Step) -> bool:
         """Check every hard limit. Returns True if the step is within them."""
