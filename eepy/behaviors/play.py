@@ -23,7 +23,6 @@ _require()
 
 import argparse
 import logging
-import os
 import signal
 import sys
 import threading
@@ -36,8 +35,11 @@ from .player import BehaviorPlayer, PlayerError
 from .validate import Validator, report
 
 
-def _load_dotenv() -> None:
-    """Read .env, so EEPY_BACKEND and REACHY_MINI_HOST can live there."""
+def load_env_file() -> None:
+    """Read the repo's .env, so EEPY_BACKEND and REACHY_MINI_HOST can live there.
+
+    Public because the Wizard panel's entry point uses it too.
+    """
     try:
         from dotenv import load_dotenv
     except ImportError:
@@ -108,7 +110,7 @@ def _install_signal_handlers() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    _load_dotenv()
+    load_env_file()
     _install_signal_handlers()
     parser = argparse.ArgumentParser(
         prog="python -m eepy.behaviors.play",

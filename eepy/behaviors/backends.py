@@ -297,14 +297,16 @@ class _SDKBackend:
     def close(self) -> None:
         if self.mini is None:
             return
+        # Closing is best effort: we are often here BECAUSE the link died, and
+        # a failure to tidy up a dead connection must not hide the real error.
         try:
             self.mini.set_automatic_body_yaw(True)  # the SDK's default, restored
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            log.debug("could not restore automatic body yaw: %s", exc)
         try:
             self.mini.__exit__(None, None, None)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            log.debug("could not close the SDK client cleanly: %s", exc)
         self.mini = None
 
 

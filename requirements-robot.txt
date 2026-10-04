@@ -27,3 +27,8 @@ pytest
 fastapi
 uvicorn
 httpx
+
+# Loading recorded sessions for analysis (eepy/logs/load.py). Only the loader
+# needs it: the logger itself is standard-library only, so it also runs in the
+# vision environment.
+pandas

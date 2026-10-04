@@ -82,6 +82,7 @@ from .loader import BEHAVIORS_DIR, SOUNDS_DIR, Library, Step, load_library
 from .pose import NEUTRAL, Pose
 from .schema import Behavior
 from .targets import StaticTargetProvider, TargetProvider
+from eepy.logs.clock import monotonic as shared_clock
 from .trajectory import Trajectory
 
 log = logging.getLogger("eepy.player")
@@ -457,7 +458,9 @@ class BehaviorPlayer:
             raise PlayerError("The player is not running. Call start() first.")
 
     def _emit(self, kind: str, behavior: str | None, **data: Any) -> None:
-        self.events.publish(Event(kind, time.monotonic(), behavior, data))
+        # The shared clock, not time.monotonic(): these timestamps are lined up
+        # with other processes' (see eepy/logs/clock.py for why it matters).
+        self.events.publish(Event(kind, shared_clock(), behavior, data))
 
     # ======================================================================
     # The control thread

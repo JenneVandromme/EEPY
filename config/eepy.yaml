@@ -1,0 +1,36 @@
+# ===========================================================================
+#  eepy.yaml -- settings for the whole system (not just the panel).
+#  Changes take effect the next time the panel starts.
+# ===========================================================================
+
+# The experimental condition. This is what a session MEANS, so it is chosen
+# when the panel starts and cannot change mid-session. It goes into the session
+# folder's name and its meta.json. `python -m eepy.wizard --mode rules`
+# overrides it for one run.
+#
+#   wizard       a human operator drives the robot through the panel
+#   rules        rule-based escalation (A14)              -- not built yet
+#   hmm          HMM-driven decisions                     -- not built yet
+#   hmm_bandit   HMM plus a bandit choosing the action    -- not built yet
+#
+# In a mode that is not built yet, the panel still works by hand, shows the
+# mode in amber, and records that no controller was running.
+mode: wizard
+
+# Where session folders go. data/ is gitignored: participant data must never
+# be committed.
+data_dir: data/sessions
+
+# Participant IDs must look like this -- a pseudonym, never a name. The
+# default allows P01 ... P999. Change it only together with the study's ID list.
+participant_pattern: "^P[0-9]{2,3}$"
+
+privacy:
+  # What a participant SAYS (once speech is added) is personal data. With this
+  # off, only the category of a reply is logged, never its words.
+  store_raw_speech: false
+
+logging:
+  # How often buffered events and features are written to disk, in seconds.
+  # A crash can lose at most this much.
+  flush_seconds: 1.0
