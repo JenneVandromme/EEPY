@@ -4,7 +4,17 @@
 #  These are NOT on a ladder. The decision logic plays them as background
 #  presence, not as nudges, so they have no "ladder" or "level" field.
 #
-#  After editing run:  python -m eepy.behaviors.validate
+#  Design Principles (Industrial & Interaction Design):
+#    1. Calm presence: Micro-motions (subtle breathing) keep the robot alive
+#       without grabbing attention away from work.
+#    2. Studying along: Looking down at notes establishes shared activity.
+#    3. Approving nod: Positive reinforcement when the user resumes work,
+#       acknowledging effort non-verbally.
+#
+#  After editing run:
+#      python -m eepy.behaviors.validate
+#      python -m eepy.behaviors.preview study_buddy_idle
+#      python -m eepy.behaviors.preview approving_nod
 # ===========================================================================
 behaviors:
 
@@ -17,11 +27,12 @@ behaviors:
     loop: forever          # runs until the player stops it
     intensity: 0.7         # deliberately under 1.0: calmer than written
     keyframes:
+      # Slow breathing rhythm: gentle chest rise (+3mm) and fall
       - use: breathe_in
       - use: breathe_out
       - use: breathe_in
       - use: breathe_out
-      # ... and now a glance at the work, then back to level.
+      # Studying along: glance down at work/notes, then smoothly return to level
       - use: glance_at_notes
       - use: return_to_neutral
 
@@ -32,7 +43,11 @@ behaviors:
       own, so the robot is not only ever the one interrupting.
     loop: once
     keyframes:
+      # 1. Establish brief eye contact with the student
       - use: glance_at_user
+      # 2. A slow, warm acknowledging nod
       - use: nod_slow
+      # 3. Encouraging antenna perk (alert and friendly)
       - use: antenna_perk
+      # 4. Smoothly settle back into the calm neutral rest pose
       - use: return_to_neutral
