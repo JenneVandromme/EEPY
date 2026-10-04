@@ -343,12 +343,15 @@ EEPY/
 ├── sounds/                # the sounds behaviours play (see sounds/README.md)
 ├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ — how it works: eepy/behaviors/README.md
 ├── eepy/wizard/           # the Wizard-of-Oz control panel — how it works: eepy/wizard/README.md
+├── eepy/logs/             # recording and loading session data — how it works: eepy/logs/README.md
 ├── config/
+│   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
-├── logs/                  # session logs from the panel (gitignored: participant data)
+├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── docs/
 │   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
-│   └── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
+│   ├── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
+│   └── DATA_GUIDE.md      # where session data is, and how to load it
 ├── tests/                 # pytest: python -m pytest tests/
 ├── models/                # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
@@ -377,9 +380,11 @@ head can physically reach a pose and how fast it moves. Details in
 | set up your computer, or run the sanity checks | this README |
 | edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
+| find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
 | understand how the Wizard panel is built, and why | [eepy/wizard/README.md](eepy/wizard/README.md) |
+| understand how logging and the mode switch are built, and why | [eepy/logs/README.md](eepy/logs/README.md) |
 
 ### Editing what the robot does
 
@@ -418,6 +423,17 @@ python -m eepy.wizard --backend sim       # or real, or dry
 
 Then open the address it prints — on this machine, or on any laptop on the same
 network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
+
+Every session is saved in `data/sessions/`, under the **mode** — the
+experimental condition — set in `config/eepy.yaml` (or `--mode wizard|rules|hmm|hmm_bandit`).
+To look at the data:
+
+```bash
+python -m eepy.logs.list                  # every session, with a verdict
+python -m eepy.logs.summary P03           # one session
+```
+
+See **[docs/DATA_GUIDE.md](docs/DATA_GUIDE.md)**.
 
 ## Stuck?
 

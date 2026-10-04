@@ -49,6 +49,7 @@ jobs:
             reachy_mini_rust_kinematics \
             fastapi \
             httpx \
+            pandas \
             pytest
 
       - name: Confirm the reachability check is active
@@ -72,3 +73,18 @@ jobs:
 
       - name: Tests
         run: python -m pytest tests/ -q
+
+  # The logger's writing side runs in the vision process: the OTHER virtualenv,
+  # on Python 3.9, without pydantic, pyyaml or pandas. This job proves it still
+  # does -- a 3.10+ feature or a stray import in eepy/logs fails it.
+  logging-on-python-3_9:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install (pytest only, on purpose)
+        run: pip install pytest
+      - name: Logging core tests on a bare Python 3.9
+        run: python -m pytest tests/test_logs_core.py -q

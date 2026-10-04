@@ -20,10 +20,18 @@ is not — see "If something goes wrong".
 
 ## Run a session
 
-1. Type the **participant ID** (e.g. `P03`) and press **Start session**. The
-   bar turns red and says **RECORDING**.
+1. Type the **participant code** (e.g. `P03` — always the code, never a name;
+   the panel refuses anything else) and press **Start session**. The bar turns
+   red and says **RECORDING**.
 2. Watch the student. Trigger behaviours, and mark what you observe (below).
-3. Press **End session** when they leave. The file is saved in `logs/sessions/`.
+3. Press **End session** when they leave. You can add a note about the
+   session as a whole (or leave it empty); **Cancel** keeps recording. It is
+   saved in `data/sessions/` — see [DATA_GUIDE.md](DATA_GUIDE.md).
+
+The **mode** pill in the top bar shows the experimental condition. Normally it
+says `wizard`. If it is **amber** ("not built, manual only"), the panel was
+started in a mode whose controller does not exist yet: everything still works
+by hand, and the session is recorded under that mode.
 
 Markers pressed with **no session running are not saved** — the panel warns
 you in orange. Start the session first.
@@ -72,6 +80,7 @@ The markers are the ground truth the HMM learns from, so:
 | STOP seems slow at bedtime level 5 | The goodnight routine cannot be interrupted. It finishes in a few seconds. |
 | Page says it lost contact with its server | The panel was stopped on the desktop. Start it again; nothing recorded so far is lost. |
 | Page looks stuck | Refresh it. The session keeps running on the desktop. |
+| "The last session did not end cleanly" | The panel crashed during that session. Its data is kept. Tell whoever handles the data. |
 | Page is completely white | You reached a different program. Use the exact address the panel printed (`127.0.0.1`, not `localhost`). |
 | "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
 | Laptop cannot open the address | Same Wi-Fi as the desktop? On the desktop, allow "Python" when macOS asks about incoming connections. |

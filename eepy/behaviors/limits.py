@@ -116,8 +116,5 @@ NEUTRAL_ANTENNA_LEFT_DEG: float = 10.0
 # (reachy_mini/utils/interpolation.py, InterpolationTechnique).
 EASINGS: tuple[str, ...] = ("linear", "minjerk", "ease_in_out", "cartoon")
 
-# Built-in robot actions a keyframe may hand over to.
-ACTIONS: tuple[str, ...] = ("goto_sleep", "wake_up")
-
 # Placeholders a spoken line may contain.
 ALLOWED_PLACEHOLDERS: tuple[str, ...] = ("minutes", "evidence")

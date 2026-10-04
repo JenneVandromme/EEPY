@@ -127,7 +127,7 @@ def is_reachable(
     pose[2, 3] += head_z_offset
     try:
         legs = kin.inverse_kinematics(pose.tolist(), np.deg2rad(body_yaw))
-    except Exception:
+    except Exception:  # the solver raises when a pose has no solution at all
         return False
     legs = np.asarray(legs, dtype=float)
     if legs.size != 6 or not np.all(np.isfinite(legs)):
