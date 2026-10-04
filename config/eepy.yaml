@@ -34,3 +34,25 @@ logging:
   # How often buffered events and features are written to disk, in seconds.
   # A crash can lose at most this much.
   flush_seconds: 1.0
+
+# How the robot speaks. Choose a voice by listening to them all:
+#     python -m eepy.speech.voices --line refocus_check
+speech:
+  # piper   local neural voice: fast, offline, works on every OS (recommended)
+  # system  the computer's own voice (macOS say, Windows SAPI, Linux espeak)
+  # google  online, no key needed, but unofficial -- it may stop working
+  # gemini  online, needs GEMINI_API_KEY in .env
+  # none    never make a sound; the words only appear in the panel and the log
+  engine: piper
+  voice: en_US-lessac-medium
+  # If the engine above fails or is missing (e.g. the Piper voice is not
+  # downloaded yet), use the computer's own voice instead of staying silent.
+  fallback: system
+  # auto     the robot's speaker when connected to one, else this computer
+  # robot    always the robot (in the simulator: this computer's speakers)
+  # desktop  always this computer
+  # none     no audio
+  output: auto
+  # Generate every fixed line in lines.yaml ahead of time, so it starts
+  # instantly. Lines are regenerated automatically when lines.yaml changes.
+  pregenerate: true

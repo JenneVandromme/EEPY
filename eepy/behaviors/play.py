@@ -132,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="replay every time a behaviour file is saved")
     parser.add_argument("--show-poses", action="store_true",
                         help="also print the pose five times a second")
+    parser.add_argument("--no-speech", action="store_true",
+                        help="show spoken lines as text instead of saying them")
     parser.add_argument("--timing", action="store_true",
                         help="print frame timing statistics at the end")
     parser.add_argument("--behaviors-dir", type=Path, default=BEHAVIORS_DIR)
@@ -172,8 +174,18 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         backend = make_backend(args.backend, robot_host=args.robot_host)
+        speaker = None
+        if not args.no_speech:
+            from eepy.settings import SettingsError, load_settings
+            from eepy.speech import make_speaker
+
+            try:
+                speaker = make_speaker(load_settings().speech)
+            except SettingsError as exc:
+                print(f"\n  Speech is off: config/eepy.yaml has a problem.\n  {exc}\n")
         player = BehaviorPlayer(backend, behaviors_dir=args.behaviors_dir,
-                                sounds_dir=args.sounds_dir, print_events=True)
+                                sounds_dir=args.sounds_dir, speaker=speaker,
+                                print_events=True)
         print(f"\n  Connecting ({backend.name})...")
         player.start()
     except BackendError as exc:

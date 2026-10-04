@@ -59,6 +59,11 @@ Every table has three time columns: **`t`** (seconds since the session
 started — usually what you want), **`t_mono`** (for lining up with other
 data), and **`t_wall`** (the local date and time).
 
+Everything the robot *said* is in `s.events` too: `speech_started` has the exact
+words, which engine spoke them, and `latency_ms`; `speech_interrupted` and
+`speech_failed` say when words were cut off or never came out. These are the
+robot's words, not the participant's.
+
 `source` says who caused something: `wizard` (the operator), `auto` (the
 autonomous system, once it exists), `idle`, `system`, or `perception`.
 

@@ -101,6 +101,7 @@ class Wizard:
         mode: str = "wizard",
         session_log: SessionLog | None = None,
         speech_callback: Callable[[str, str], None] | None = None,
+        speaker_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.backend_factory = backend_factory
         self.backend_name = backend_name
@@ -108,6 +109,9 @@ class Wizard:
         self.sounds_dir = Path(sounds_dir)
         self.config_path = Path(config_path)
         self.speech_callback = speech_callback
+        # A new Speaker per connection: its output (robot or desktop) depends on
+        # what the backend can do. None: text only, through speech_callback.
+        self.speaker_factory = speaker_factory
         self.mode = mode
         self.mode_implemented = mode in IMPLEMENTED_MODES
         # The central logger, unless a test passes its own.
@@ -196,6 +200,10 @@ class Wizard:
         self._push(record)
         if event.kind == "behavior_refused":
             self._error(f'"{event.behavior}" was refused: {data.get("reason")}')
+        elif event.kind == "speech_failed":
+            # The words still reach the operator, who can say them if need be.
+            words = f'\n\n    "{data["text"]}"' if data.get("text") else ""
+            self._error(f"The robot could not speak{words}\n\n({data.get('error')})")
 
     # --------------------------------------------------------------- the robot
 
@@ -204,8 +212,9 @@ class Wizard:
         # happens with no lock held; only the swap at the end is locked.
         try:
             backend = self.backend_factory()
+            speaker = self.speaker_factory() if self.speaker_factory else None
             player = BehaviorPlayer(backend, behaviors_dir=self.behaviors_dir,
-                                    sounds_dir=self.sounds_dir,
+                                    sounds_dir=self.sounds_dir, speaker=speaker,
                                     speech_callback=self.speech_callback)
             unsubscribe = player.events.subscribe(self._on_event)
             player.start()
@@ -653,6 +662,9 @@ def make_wizard(backend: str | None, robot_host: str | None, settings: Any = Non
               participant_pattern=settings.participant_pattern,
               store_raw_speech=settings.privacy.store_raw_speech,
               flush_seconds=settings.logging.flush_seconds)
+    from eepy.speech import make_speaker
+
     name = (backend or os.environ.get(BACKEND_ENV) or "dry").lower()
     return Wizard(lambda: make_backend(name, robot_host=robot_host),
-                  backend_name=name, mode=settings.mode, **kwargs)
+                  backend_name=name, mode=settings.mode,
+                  speaker_factory=lambda: make_speaker(settings.speech), **kwargs)

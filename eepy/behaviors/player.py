@@ -40,10 +40,19 @@ interrupted half way.
 THREADS
 
 play() and stop() only post a request and return; they never wait for the
-robot. One control thread owns the robot and runs the 50 Hz loop. Sounds,
-speech and event delivery each get a worker thread of their own, so a slow
-upload, a slow text-to-speech call or a slow event subscriber can never
-delay a frame of motion.
+robot. One control thread owns the robot and runs the 50 Hz loop. Sounds and
+event delivery each get a worker thread of their own, and speech is handled by
+the Speaker on its own thread (eepy/speech), so a slow upload, a slow
+text-to-speech call or a slow event subscriber can never delay a frame of
+motion.
+
+SPEECH
+
+The `say:` line of a keyframe is handed to the Speaker when that keyframe
+starts. The robot plays one clip at a time, so speech and a sound effect cannot
+overlap: words matter more, so while the robot is speaking a sound effect is
+skipped (the validator warns about keyframes that ask for both). Stopping --
+stop(), a new behaviour interrupting this one, close() -- also cuts speech.
 
 SAFETY -- nothing is ever clamped
 
@@ -66,8 +75,6 @@ from __future__ import annotations
 import difflib
 import logging
 import queue
-import random
-import re
 import threading
 import time
 from collections import deque
@@ -83,6 +90,7 @@ from .pose import NEUTRAL, Pose
 from .schema import Behavior
 from .targets import StaticTargetProvider, TargetProvider
 from eepy.logs.clock import monotonic as shared_clock
+from eepy.speech import Speaker, SpeechError
 from .trajectory import Trajectory
 
 log = logging.getLogger("eepy.player")
@@ -91,7 +99,7 @@ SpeechCallback = Callable[[str, str], None]
 
 
 def log_speech(line_id: str, text: str) -> None:
-    """The default speech hook: speech is task A5, so for now just say so."""
+    """What a text-only speaker does with the words: log them."""
     log.info('[speech] %s: "%s"', line_id, text)
 
 
@@ -191,6 +199,7 @@ class BehaviorPlayer:
         behaviors_dir: Path | str = BEHAVIORS_DIR,
         sounds_dir: Path | str = SOUNDS_DIR,
         targets: TargetProvider | None = None,
+        speaker: Speaker | None = None,
         speech_callback: SpeechCallback | None = None,
         events: EventBus | None = None,
         print_events: bool = False,
@@ -202,8 +211,13 @@ class BehaviorPlayer:
         self.sounds_dir = Path(sounds_dir)
         self._library: Library = load_library(self.behaviors_dir)
         self.targets: TargetProvider = targets or StaticTargetProvider(lambda: self._library)
-        self.speech_callback: SpeechCallback = speech_callback or log_speech
         self.events = events or EventBus()
+        # The voice. Without one, a text-only Speaker: words go to
+        # speech_callback (or the log) and nothing is played -- what tests and
+        # dry runs without audio want.
+        self.speaker: Speaker = speaker or Speaker(None, on_text=speech_callback or log_speech)
+        self.speaker.set_lines(lambda: self._library.lines)
+        self.speaker.emit = self._speech_event
         self._owns_events = events is None
         if print_events:
             self.events.subscribe(EventPrinter())
@@ -223,10 +237,6 @@ class BehaviorPlayer:
         self._pending_plays = 0
         self._commanded: Pose = NEUTRAL
         self._last_send: float | None = None
-        self._last_lines: dict[str, str] = {}
-        # Its own lock: say() runs on the caller's thread and behaviours speak
-        # from the control thread, and both remember the last wording used.
-        self._lines_lock = threading.Lock()
         self._lateness: deque[float] = deque(maxlen=20000)
         self._thread: threading.Thread | None = None
         self._running = threading.Event()
@@ -234,7 +244,6 @@ class BehaviorPlayer:
         self.error: str | None = None
 
         self._audio = _Worker("eepy-audio")
-        self._speech = _Worker("eepy-speech")
 
     # ======================================================================
     # Public API
@@ -254,6 +263,9 @@ class BehaviorPlayer:
         if self._thread is not None:
             return self
         self._commanded = self.backend.connect()
+        # After connecting: the speaker can only tell whether the robot can
+        # play sound once it is connected.
+        self.speaker.start(self.backend)
         self._running.set()
         self._thread = threading.Thread(target=self._loop, name="eepy-player", daemon=True)
         self._thread.start()
@@ -311,33 +323,22 @@ class BehaviorPlayer:
             source: str | None = None) -> str:
         """Speak a line on its own, without playing a behaviour. Returns at once.
 
-        Give EITHER a line_id from lines.yaml -- a wording is picked the same
+        Give EITHER a line_id from lines.yaml -- a wording is chosen the same
         way as inside a behaviour (random, not the last one used, placeholders
-        filled from context) -- OR free text to say as-is.
+        filled from context) -- OR free text to say as it is.
 
-        Goes through the same speech_callback, and emits the same
-        line_requested event, as a line inside a behaviour. Returns the text
-        that was handed to speech.
+        Returns the words chosen. Raises PlayerError, explained, if there is
+        nothing that can be said.
         """
         if (line_id is None) == (text is None):
             raise PlayerError("say() needs either a line_id or some text, not both.")
-        if tone not in ("hedged", "direct"):
-            raise PlayerError(f'tone must be "hedged" or "direct", not {tone!r}.')
-        if text is not None:
-            spoken = text.strip()
-            if not spoken:
-                raise PlayerError("There is nothing to say -- the text is empty.")
-            line_id = "free_text"
-        else:
-            if line_id not in self._library.lines:
-                match = difflib.get_close_matches(line_id, self._library.lines, n=1, cutoff=0.5)
-                hint = f' Did you mean "{match[0]}"?' if match else ""
-                raise PlayerError(f'There is no line called "{line_id}" in lines.yaml.{hint}')
-            spoken = self._pick_line(line_id, tone, dict(context or {}))
-        self._emit("line_requested", None, line_id=line_id, tone=tone, text=spoken,
-                   source=source)
-        self._speech.submit(self.speech_callback, line_id, spoken)
-        return spoken
+        try:
+            if text is not None:
+                return self.speaker.speak_text(text, source=source).text
+            return self.speaker.speak_line(line_id, tone, source=source,
+                                           **dict(context or {})).text
+        except SpeechError as exc:
+            raise PlayerError(str(exc)) from None
 
     def stop(self, return_to_neutral: bool = True) -> None:
         """Interrupt whatever is playing, idle included. Returns at once.
@@ -409,8 +410,8 @@ class BehaviorPlayer:
             self._commands.put(("close", return_to_neutral))
             self._thread.join(timeout)
         self._running.clear()
+        self.speaker.close()
         self._audio.close()
-        self._speech.close()
         try:
             self.backend.close()
         finally:
@@ -515,6 +516,9 @@ class BehaviorPlayer:
                 self._start_behavior(behavior, intensity, tone, context, playback, source)
             elif kind == "stop":
                 self._interrupt_all("stop")
+                # Always, not only when a behaviour was running: the robot may
+                # be speaking a line from say() with nothing else playing.
+                self.speaker.stop(by="stop")
                 self._quiet = True
                 if command[1]:
                     self._return_to_neutral()
@@ -527,11 +531,14 @@ class BehaviorPlayer:
                 self._library = command[1]
                 self._idle_refused = None
                 log.info("Behaviour files reloaded.")
+                # Generate any line that changed; the rest is reused.
+                self.speaker.prepare_async()
             elif kind == "neutral":
                 self._return_to_neutral()
             elif kind == "close":
                 self._closing = True
                 self._interrupt_all("close")
+                self.speaker.stop(by="close")
                 if command[1]:
                     self._return_to_neutral()
 
@@ -658,6 +665,9 @@ class BehaviorPlayer:
                 interrupted_sound = True
         if interrupted_sound:
             self._audio.submit(self.backend.stop_sound)
+            # A new behaviour takes over the robot's voice too: whatever it was
+            # saying is cut, so two lines never overlap.
+            self.speaker.stop(by=by)
 
     def _end_run(self, run: _Run, outcome: str, by: str | None = None,
                  reason: str | None = None) -> None:
@@ -766,42 +776,28 @@ class BehaviorPlayer:
             self._emit("keyframe_reached", run.name, index=cue.segment + 1,
                        keyframe=cue.value, idle=run.idle, source=run.source)
         elif cue.kind == "sound":
+            if self.speaker.is_speaking():
+                # One clip at a time on the robot: a sound effect would cut the
+                # words off. Words win; the sound is skipped.
+                log.info('"%s": skipped sound %s -- the robot is speaking.', run.name, cue.value)
+                return
             path = self.sounds_dir / cue.value
             self._audio.submit(self.backend.play_sound, path)
             self._emit("sound_played", run.name, file=cue.value, idle=run.idle,
                        source=run.source)
         elif cue.kind == "say":
-            text = self._pick_line(cue.value, run.tone, run.context)
-            if text is not None:
-                self._emit("line_requested", run.name, line_id=cue.value,
-                           tone=run.tone, text=text, idle=run.idle, source=run.source)
-                self._speech.submit(self.speech_callback, cue.value, text)
+            try:
+                self.speaker.speak_line(cue.value, run.tone, source=run.source,
+                                        behavior=run.name, **run.context)
+            except SpeechError as exc:
+                log.error('"%s": %s', run.name, exc)
+                self._emit("speech_failed", run.name, line_id=cue.value, variant=run.tone,
+                           error=str(exc), idle=run.idle, source=run.source)
 
-    def _pick_line(self, line_id: str, tone: str, context: dict) -> str | None:
-        """A random wording, not the one used last time, with slots filled in.
-
-        Prefers the requested tone. A wording with a placeholder the caller gave
-        no value for -- say {minutes} with no context -- is passed over in
-        favour of one that can be said in full, rather than speaking a literal
-        "{minutes}".
-        """
-        line = self._library.lines.get(line_id)
-        if line is None:
-            log.error('No line "%s" in lines.yaml.', line_id)
-            return None
-        other = "direct" if tone == "hedged" else "hedged"
-        for pool in (getattr(line.variants, tone), getattr(line.variants, other)):
-            usable = [v for v in pool if set(re.findall(r"\{(\w+)\}", v)) <= set(context)]
-            if not usable:
-                continue
-            with self._lines_lock:
-                fresh = [v for v in usable if v != self._last_lines.get(line_id)] or usable
-                choice = random.choice(fresh)
-                self._last_lines[line_id] = choice
-            return re.sub(r"\{(\w+)\}", lambda m: str(context[m.group(1)]), choice)
-        log.warning('Every wording of "%s" needs a value that was not given (%s).',
-                    line_id, ", ".join(sorted(context)) or "no context")
-        return random.choice(getattr(line.variants, tone) or getattr(line.variants, other))
+    def _speech_event(self, kind: str, data: dict) -> None:
+        """The Speaker reports here; its events join the player's own."""
+        behavior = data.pop("behavior", None)
+        self._emit(kind, behavior, **{k: v for k, v in data.items() if v is not None})
 
 
 def _loops(behavior: Behavior) -> int | None:

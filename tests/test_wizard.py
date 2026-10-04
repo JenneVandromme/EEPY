@@ -61,9 +61,10 @@ class FlakyBackend(DryRunBackend):
 def make(files):
     made = []
 
-    def _make(factory=DryRunBackend, spoken=None, mode="wizard"):
+    def _make(factory=DryRunBackend, spoken=None, mode="wizard", speaker_factory=None):
         wizard = Wizard(factory, backend_name="dry", behaviors_dir=files["behaviors"],
                         sounds_dir=files["sounds"], config_path=files["config"],
+                        speaker_factory=speaker_factory,
                         mode=mode, session_log=SessionLog(data_dir=files["data"],
                                                           repo_root=REPO),
                         speech_callback=(lambda l, t: spoken.append((l, t))) if spoken is not None else None)
@@ -488,3 +489,41 @@ def test_a_crashed_earlier_session_is_reported_and_its_pointer_cleared(make, fil
     _, client = make()
     assert "did not end cleanly" in client.get("/api/state").json()["status"]["last_error"]["message"]
     assert not (files["data"] / "CURRENT").exists()
+
+
+# --- speech (A5) -----------------------------------------------------------------------
+
+
+def test_when_speech_fails_the_words_appear_on_the_panel(make, files, tmp_path):
+    """The brief: if TTS fails, log it, show the text in the panel, keep going."""
+    from eepy.speech import Speaker
+    from eepy.speech.cache import SpeechCache
+    from eepy.speech.engines import Engine
+    from eepy.speech.outputs import NullOutput
+
+    class Broken(Engine):
+        name = "broken"
+
+        def _synthesize(self, text):
+            raise RuntimeError("no voice today")
+
+    wizard, client = make(speaker_factory=lambda: Speaker(
+        Broken(), output=NullOutput(), cache=SpeechCache(tmp_path / "c"), prepare=False))
+    client.post("/api/session/start", json={"participant": "P30"})
+    r = client.post("/api/say", json={"text": "Shall we take a break?"}).json()
+    assert r["ok"], "the request itself is accepted"
+    wait_for(lambda: (client.get("/api/state").json()["status"]["last_error"] or {})
+             .get("message", "").startswith("The robot could not speak"))
+    message = client.get("/api/state").json()["status"]["last_error"]["message"]
+    assert '"Shall we take a break?"' in message and "no voice today" in message
+    assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"], \
+        "and everything else keeps working"
+    client.post("/api/session/end")
+    failed = [r for r in lines(files) if r["type"] == "speech_failed"]
+    assert failed and failed[0]["text"] == "Shall we take a break?"
+
+
+def test_a_line_needing_a_value_is_explained_on_the_panel(make):
+    _, client = make()
+    r = client.post("/api/say", json={"line_id": "bedtime_negotiate", "tone": "direct"})
+    assert r.status_code == 409 and "{minutes}" in r.json()["message"]

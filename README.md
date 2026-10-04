@@ -162,6 +162,25 @@ running a robot script later fails with an error mentioning `Gst` or
 sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gir1.2-gst-plugins-base-1.0
 ```
 
+**Then, once: download the robot's voice** (about 60 MB — it shows progress,
+and picks up where it left off if your connection drops):
+
+```bash
+python -m eepy.speech.voices --download en_US-lessac-medium
+```
+
+Until you do, the robot still talks — in your computer's built-in voice — and
+says so in the log. On **Linux**, speech playback also needs
+`sudo apt install libportaudio2`.
+
+**On an Intel Mac, or a Mac older than macOS 14:** check which robot SDK you
+ended up with, with `pip show reachy_mini`. The version this project is built
+and tested against (1.11.0) needs `onnxruntime 1.27.0`, which only exists for
+**Apple Silicon Macs on macOS 14+**, Windows and Linux. On other Macs, pip may
+quietly install an *older* `reachy_mini` instead — different code from what
+everyone else runs. If yours is not 1.11.0, say so in the team chat before
+relying on the robot or simulator on that machine.
+
 **If `pip install -r requirements-robot.txt` fails with something like**
 `ERROR: Could not find a version that satisfies the requirement
 reachy-mini[mujoco] (from versions: none)` — this looks like a mujoco/
@@ -344,6 +363,7 @@ EEPY/
 ├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ — how it works: eepy/behaviors/README.md
 ├── eepy/wizard/           # the Wizard-of-Oz control panel — how it works: eepy/wizard/README.md
 ├── eepy/logs/             # recording and loading session data — how it works: eepy/logs/README.md
+├── eepy/speech/           # the robot's voice (text-to-speech) — how it works: eepy/speech/README.md
 ├── config/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
@@ -382,9 +402,11 @@ head can physically reach a pose and how fast it moves. Details in
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
 | find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
+| choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
 | understand how the Wizard panel is built, and why | [eepy/wizard/README.md](eepy/wizard/README.md) |
 | understand how logging and the mode switch are built, and why | [eepy/logs/README.md](eepy/logs/README.md) |
+| understand how speech is built, and why | [eepy/speech/README.md](eepy/speech/README.md) |
 
 ### Editing what the robot does
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -39,12 +40,26 @@ class Logging(_Strict):
     flush_seconds: float = Field(default=1.0, gt=0, le=60)
 
 
+class Speech(_Strict):
+    """How the robot speaks. See eepy/speech/README.md."""
+
+    engine: Literal["piper", "system", "google", "gemini", "none"] = "piper"
+    # None means the engine's default: en_US-lessac-medium for piper, the
+    # system's own voice for system, "en" for google, "Kore" for gemini.
+    voice: Optional[str] = "en_US-lessac-medium"
+    fallback: Literal["system", "none"] = "system"
+    fallback_voice: Optional[str] = None
+    output: Literal["auto", "robot", "desktop", "none"] = "auto"
+    pregenerate: bool = True
+
+
 class Settings(_Strict):
     mode: str = "wizard"
     data_dir: str = "data/sessions"
     participant_pattern: str = r"^P[0-9]{2,3}$"
     privacy: Privacy = Field(default_factory=Privacy)
     logging: Logging = Field(default_factory=Logging)
+    speech: Speech = Field(default_factory=Speech)
 
     @field_validator("mode")
     @classmethod
@@ -99,7 +114,8 @@ def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None) -> Settin
             where = ".".join(str(p) for p in err["loc"])
             if err["type"] == "extra_forbidden":
                 known = ["mode", "data_dir", "participant_pattern", "privacy", "logging",
-                         "store_raw_speech", "flush_seconds"]
+                         "store_raw_speech", "flush_seconds", "speech", "engine", "voice",
+                         "fallback", "fallback_voice", "output", "pregenerate"]
                 match = difflib.get_close_matches(str(err["loc"][-1]), known, n=1)
                 hint = f' Did you mean "{match[0]}"?' if match else ""
                 lines.append(f'eepy.yaml: "{err["loc"][-1]}" is not a setting I know.{hint}')

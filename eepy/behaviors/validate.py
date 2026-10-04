@@ -573,6 +573,14 @@ class Validator:
                 )
             if keyframe.sound is not None:
                 self._check_sound(path, spot, keyframe.sound)
+            if keyframe.sound is not None and keyframe.say is not None:
+                self.warn(
+                    path, spot,
+                    f'this keyframe both says "{keyframe.say}" and plays {keyframe.sound}, '
+                    "but the robot can only play one at a time -- the sound will be skipped "
+                    "while it speaks.",
+                    "Move the sound to the keyframe before or after the line.",
+                )
 
     def _check_sound(self, path: Path, where: str, sound: str) -> None:
         allowed = (".wav", ".mp3", ".ogg", ".oga", ".opus", ".flac", ".m4a", ".aac")

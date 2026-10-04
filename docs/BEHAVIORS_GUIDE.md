@@ -506,6 +506,39 @@ alongside the behaviour that names it.
 
 ---
 
+## Words and sounds together
+
+A keyframe's `say:` line is spoken when that keyframe **starts** moving, and so
+is its `sound:`. The robot can only play one of them at a time, so **while it
+is speaking, a sound effect is skipped** — words matter more. The validator
+warns if one keyframe asks for both. Put the sound on the keyframe after the
+line instead, as `bedtime_goodnight` does.
+
+You hear the lines while tuning with `--watch` too. Add `--no-speech` to see
+them as text only.
+
+## Choosing the robot's voice
+
+Hear one line in every available voice, one after another, with each voice's
+name shown:
+
+```bash
+python -m eepy.speech.voices --line refocus_check        # a line from lines.yaml
+python -m eepy.speech.voices --line refocus_3            # whatever refocus level 3 says
+python -m eepy.speech.voices --text "Shall we take a break?"
+```
+
+More Piper voices — American, British, and Flemish — can be downloaded:
+
+```bash
+python -m eepy.speech.voices --list                      # what there is
+python -m eepy.speech.voices --download en_GB-alba-medium
+```
+
+When you have picked one, put it in `config/eepy.yaml`, under `speech:` — the
+tool prints the exact lines to copy. Restart the panel; every line is
+regenerated in the new voice by itself.
+
 ## Your behaviour on the Wizard panel
 
 Every behaviour automatically becomes a button on the Wizard-of-Oz panel — no

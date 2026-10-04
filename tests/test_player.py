@@ -468,7 +468,7 @@ def test_sounds_and_lines_fire_at_their_keyframe(harness):
     h.player.play("talker", tone="direct", wait=True)
     h.player.events.flush()
     started = h.first("behavior_started", "talker").t
-    line = h.first("line_requested", "talker")
+    line = h.first("speech_requested", "talker")
     sound = h.first("sound_played", "talker")
     assert abs(line.t - started) < SLACK                # keyframe 1 starts at 0
     assert abs(sound.t - started - 0.1) < SLACK         # keyframe 2 starts at 0.1
@@ -640,7 +640,7 @@ def test_say_a_line_without_a_behaviour(harness):
     assert text == "Hello."
     h.wait_until(lambda: h.spoken)
     assert h.spoken == [("greet", "Hello.")]
-    assert h.first("line_requested").data["source"] == "wizard"
+    assert h.first("speech_requested").data["source"] == "wizard"
 
 
 def test_say_free_text(harness):
@@ -658,3 +658,97 @@ def test_say_explains_its_mistakes(harness):
         h.player.say()
     with pytest.raises(PlayerError, match="empty"):
         h.player.say(text="   ")
+
+
+# --- speech (A5) -----------------------------------------------------------------------
+
+
+def _speaker(seconds=0.2):
+    """A real Speaker with a silent mock engine and an output that only records."""
+    import io
+    import wave
+
+    from eepy.speech import Speaker
+    from eepy.speech.cache import SpeechCache
+    from eepy.speech.engines import Engine
+    from eepy.speech.outputs import Output
+
+    class Silent(Engine):
+        name = "mock"
+
+        def _synthesize(self, text):
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as clip:
+                clip.setnchannels(1)
+                clip.setsampwidth(2)
+                clip.setframerate(8000)
+                clip.writeframes(b"\0\0" * int(8000 * seconds))
+            return buffer.getvalue()
+
+    class Recording(Output):
+        name = "mock"
+
+        def __init__(self):
+            self.played, self.stops = [], 0
+
+        def play(self, path):
+            self.played.append(path)
+
+        def stop(self):
+            self.stops += 1
+
+    import tempfile
+    return Speaker(Silent("v"), output=Recording(),
+                   cache=SpeechCache(Path(tempfile.mkdtemp())), prepare=False)
+
+
+def test_a_behaviours_line_goes_through_the_speaker(harness):
+    h = harness(speaker=_speaker())
+    h.player.play("talker", tone="direct", source="wizard", wait=True)
+    h.wait_until(lambda: "speech_finished" in h.kinds("talker"))
+    started = h.first("speech_started", "talker")
+    assert started.data["text"] == "Hello." and started.data["source"] == "wizard"
+    assert started.data["engine"] == "mock / v"
+
+
+def test_a_sound_is_skipped_while_the_robot_speaks(harness):
+    h = harness(speaker=_speaker(seconds=1.0))
+    h.player.play("talker", wait=True)       # says at 0.0 s, sound at 0.1 s
+    assert h.backend.sounds == [], "the sound would have cut the words off"
+    assert "sound_played" not in h.kinds("talker")
+
+
+def test_stop_cuts_speech_even_when_nothing_else_plays(harness):
+    speaker = _speaker(seconds=5.0)
+    h = harness(speaker=speaker)
+    h.player.say(text="This is a very long sentence.")
+    h.wait_until(lambda: "speech_started" in h.kinds())
+    h.player.stop()
+    h.wait_until(lambda: "speech_interrupted" in h.kinds(), timeout=1.0)
+    assert h.first("speech_interrupted").data["by"] == "stop"
+
+
+def test_a_new_behaviour_cuts_the_old_ones_words(harness):
+    h = harness(speaker=_speaker(seconds=5.0))
+    h.player.play("talker")
+    h.wait_until(lambda: "speech_started" in h.kinds("talker"))
+    h.player.play("short")
+    h.wait_until(lambda: "speech_interrupted" in h.kinds("talker"), timeout=1.0)
+    assert h.first("speech_interrupted", "talker").data["by"] == "short"
+
+
+def test_say_explains_a_missing_placeholder(harness, dirs):
+    lines = dirs[0] / "lines.yaml"
+    lines.write_text(lines.read_text() + """
+  countdown:
+    description: Every wording needs a number.
+    variants:
+      direct:
+        - "Stop in {minutes} minutes."
+""")
+    h = harness(speaker=_speaker())
+    assert h.player.reload().ok
+    time.sleep(0.05)
+    with pytest.raises(PlayerError, match=r"needs \{minutes\}"):
+        h.player.say("countdown", tone="direct")
+    assert h.player.say("countdown", tone="direct", context={"minutes": 5}) == "Stop in 5 minutes."
