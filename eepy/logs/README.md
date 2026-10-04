@@ -57,7 +57,8 @@ All event types live in `schema.py`, in four groups plus reserved ones:
 | Group | Types |
 |---|---|
 | Session | `session_start`, `session_end`, `mode_not_implemented` |
-| Robot | `behavior_started`, `keyframe_reached`, `behavior_finished`, `behavior_interrupted`, `behavior_refused`, `line_requested`, `sound_played` |
+| Robot | `behavior_started`, `keyframe_reached`, `behavior_finished`, `behavior_interrupted`, `behavior_refused`, `sound_played` (and `line_requested`, in sessions from before speech) |
+| Speech | `speech_requested`, `speech_started`, `speech_finished`, `speech_interrupted`, `speech_failed` |
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
 | **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |

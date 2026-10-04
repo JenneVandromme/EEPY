@@ -36,6 +36,10 @@ datasets/
 !eepy/behaviors/data/
 !eepy/behaviors/data/**
 
+# Generated speech audio and downloaded voice models (60 MB each). Both are
+# rebuilt or re-downloaded on demand; neither belongs in git.
+/.cache/
+
 # Early pilot logs from the Wizard-of-Oz panel, before sessions moved to
 # data/sessions/. Participant data: never commit.
 # The leading slash matters: without it, "logs/" also matches eepy/logs/ -- the

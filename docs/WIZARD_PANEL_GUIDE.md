@@ -55,6 +55,11 @@ The key for every button is printed on it. With the default settings:
   confident ("Back to it?"). Pick per moment.
 - **Say this…** speaks anything you type, and **Note…** adds a free-text note.
   Press Enter to send either.
+- Speech comes out of the robot (or, with the dry backend, this computer).
+  **Esc cuts speech too.** A new behaviour cuts whatever the robot was saying.
+- A line that needs a number (like "…in {minutes} minutes") cannot be sent
+  from its button in that tone; the panel says so. Use the other tone, or type
+  it in **Say this…**.
 - While you are typing in a box, the other keys type letters instead of doing
   things. Esc leaves the box — and stops the robot.
 
@@ -81,6 +86,8 @@ The markers are the ground truth the HMM learns from, so:
 | Page says it lost contact with its server | The panel was stopped on the desktop. Start it again; nothing recorded so far is lost. |
 | Page looks stuck | Refresh it. The session keeps running on the desktop. |
 | "The last session did not end cleanly" | The panel crashed during that session. Its data is kept. Tell whoever handles the data. |
+| Red box "The robot could not speak" | Speech failed (the box says why). The words are in the box — say them yourself if it matters. Everything else keeps working. |
+| The robot's voice sounds different from usual | The chosen voice is not downloaded on this computer, so it fell back to the computer's own voice. See the README, Step 3. |
 | Page is completely white | You reached a different program. Use the exact address the panel printed (`127.0.0.1`, not `localhost`). |
 | "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
 | Laptop cannot open the address | Same Wi-Fi as the desktop? On the desktop, allow "Python" when macOS asks about incoming connections. |

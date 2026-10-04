@@ -66,7 +66,22 @@ EVENT_TYPES: Dict[str, EventType] = {
     "behavior_refused": EventType("robot", ("behavior", "reason"),
                                   "A behaviour was refused: unsafe from the current pose."),
     "line_requested": EventType("robot", ("line_id", "text"),
-                                "A line was handed to speech (the ROBOT's words)."),
+                                "A line was handed to speech. Written by sessions recorded "
+                                "before speech existed (A5); now speech_requested."),
+
+    # --- the robot's voice (eepy/speech). All words here are the ROBOT's. --------
+    "speech_requested": EventType("speech", ("line_id", "text"),
+                                  "Words were chosen: a line's wording, or free text "
+                                  "(line_id free_text)."),
+    "speech_started": EventType("speech", ("line_id", "engine"),
+                                "Audio began. latency_ms is from the request to here; "
+                                "cached says whether it was pre-generated."),
+    "speech_finished": EventType("speech", ("line_id",), "The clip played to the end."),
+    "speech_interrupted": EventType("speech", ("line_id", "by"),
+                                    "Speech was cut short: by stop, a new behaviour, newer speech."),
+    "speech_failed": EventType("speech", ("line_id", "error"),
+                               "Nothing could be played. The words are still in `text`, "
+                               "shown in the panel instead."),
     "sound_played": EventType("robot", ("file",), "A sound was sent to the speaker."),
 
     # --- the operator ------------------------------------------------------------

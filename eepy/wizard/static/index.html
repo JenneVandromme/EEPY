@@ -352,6 +352,7 @@ function describe(r) {
   if (r.action) bits.push(r.action);
   if (r.label) bits.push(`“${r.label}”`);
   if (r.text) bits.push(`“${r.text}”`);
+  if (r.type === "speech_started" && r.latency_ms !== undefined) bits.push(`${Math.round(r.latency_ms)} ms${r.cached ? ", cached" : ""}`);
   if (r.by) bits.push(`by ${r.by}`);
   if (r.reason) bits.push(`— ${r.reason}`);
   if (r.message) bits.push(`— ${r.message.split("\n")[0]}`);
@@ -364,9 +365,10 @@ function describe(r) {
 function addLog(records) {
   const box = $("log");
   for (const r of records) {
-    if (r.type === "keyframe_reached") continue;   // too chatty for the panel; still in the file
+    // Too chatty for the panel; all of them are still in the session file.
+    if (["keyframe_reached", "speech_requested", "speech_finished"].includes(r.type)) continue;
     const row = document.createElement("div");
-    row.className = `ev ${r.type}` + (r.type.includes("refused") || r.type === "error" || r.status === "lost" || r.ok === false ? " err" : "");
+    row.className = `ev ${r.type}` + (r.type.includes("refused") || r.type.includes("failed") || r.type === "error" || r.status === "lost" || r.ok === false ? " err" : "");
     row.innerHTML = `<span class="muted"></span><span class="src src-${r.source}"></span><span></span>`;
     row.children[0].textContent = (r.t_wall || "").slice(11, 23);
     row.children[1].textContent = r.source;

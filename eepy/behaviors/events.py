@@ -9,7 +9,8 @@ Event kinds:
 
     behavior_started      a behaviour begins (data: intensity, tone, idle, ...)
     keyframe_reached      a keyframe's pose has been reached (index, source)
-    line_requested        a spoken line was handed to speech (line_id, text)
+    speech_requested ...  the robot's voice: requested, started, finished,
+    speech_failed         interrupted, failed (from the Speaker, eepy/speech)
     sound_played          a sound was sent to the speaker (file)
     behavior_finished     a behaviour played to its end
     behavior_interrupted  something cut it short (by: what interrupted it)

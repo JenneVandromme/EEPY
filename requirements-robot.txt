@@ -32,3 +32,13 @@ httpx
 # needs it: the logger itself is standard-library only, so it also runs in the
 # vision environment.
 pandas
+
+# Speech (eepy/speech/). piper-tts is the offline neural voice; it reuses the
+# onnxruntime the robot SDK already installs, so it changes nothing there. Its
+# voices (~60 MB each) are downloaded separately, into the gitignored .cache/:
+#     python -m eepy.speech.voices --download en_US-lessac-medium
+# sounddevice plays speech on this computer within ~10 ms, instead of the
+# ~0.8 s a separate player process takes. On Linux it also needs:
+#     sudo apt install libportaudio2
+piper-tts
+sounddevice
