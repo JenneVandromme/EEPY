@@ -506,9 +506,9 @@ class BehaviorPlayer:
             kind = command[0]
             if kind == "play":
                 _, behavior, intensity, tone, context, playback, source = command
-                with self._lock:
-                    self._pending_plays -= 1
                 if self._closing:
+                    with self._lock:
+                        self._pending_plays -= 1
                     playback._end("interrupted", by="close")
                     continue
                 self._quiet = False
@@ -567,6 +567,8 @@ class BehaviorPlayer:
         except KeyError as exc:  # e.g. the TargetProvider does not know a name
             reason = str(exc).strip('"')
         if reason is not None:
+            with self._lock:
+                self._pending_plays -= 1
             # Refused before it began, so whatever was playing carries on.
             log.error('Refused to play "%s" from the current pose: %s', behavior.name, reason)
             playback._end("refused", reason=reason)
@@ -582,6 +584,7 @@ class BehaviorPlayer:
         run.started = run.t0
         with self._lock:
             self._active = run
+            self._pending_plays -= 1
         self._announce(run)
 
     def _maybe_start_idle(self) -> None:
