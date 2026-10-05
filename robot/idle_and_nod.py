@@ -30,46 +30,19 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+from reachy_mini import ReachyMini
+from reachy_mini.utils import create_head_pose
 
-# Ensure robot directory is on sys.path for direct and package execution
+# Ensure robot directory is on sys.path for direct script execution
 _ROBOT_DIR = Path(__file__).resolve().parent
 if str(_ROBOT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROBOT_DIR))
 
-try:
-    from . import connection, safety_limits
-except ImportError:
-    import connection, safety_limits
-
-# reachy-mini SDK utilities
-try:
-    from reachy_mini import ReachyMini
-    from reachy_mini.utils import create_head_pose
-except ImportError:
-    ReachyMini = None
-    from scipy.spatial.transform import Rotation as R
-
-    def create_head_pose(
-        roll: float = 0.0,
-        pitch: float = 0.0,
-        yaw: float = 0.0,
-        x: float = 0.0,
-        y: float = 0.0,
-        z: float = 0.0,
-        mm: bool = False,
-        degrees: bool = True,
-    ) -> np.ndarray:
-        """Create a 4x4 head pose matrix from Euler angles and translations."""
-        scale = 0.001 if mm else 1.0
-        r_rad = np.deg2rad(roll) if degrees else roll
-        p_rad = np.deg2rad(pitch) if degrees else pitch
-        y_rad = np.deg2rad(yaw) if degrees else yaw
-        mat = np.eye(4)
-        mat[:3, :3] = R.from_euler("xyz", [r_rad, p_rad, y_rad]).as_matrix()
-        mat[:3, 3] = [x * scale, y * scale, z * scale]
-        return mat
+import connection
+import safety_limits
 
 # --- Resting / Default Poses ------------------------------------------------
 # Antennas rest at -10 deg (right) and +10 deg (left), mirrored for symmetry.
@@ -108,14 +81,14 @@ def move_safely(
         current_body_yaw=current_body_yaw_rad,
     )
 
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "head": safe_head,
         "duration": duration,
         "method": method,
+        "body_yaw": safe_body,
     }
 
     if safe_body is not None:
-        kwargs["body_yaw"] = safe_body
         current_body_yaw_rad = safe_body
 
     if antennas_deg is not None:
@@ -328,16 +301,25 @@ def main():
     )
     args = parser.parse_args()
 
-    if ReachyMini is None:
+    print("Connecting to Reachy Mini...")
+    try:
+        mini_ctx = ReachyMini(**connection.connection_kwargs(args))
+    except (ConnectionError, Exception) as exc:
+        print(f"\n[!] Could not connect to Reachy Mini: {exc}\n", file=sys.stderr)
         print(
-            "ERROR: reachy_mini is not installed in this environment.\n"
-            "Activate the robot venv first: .venv-robot\\Scripts\\Activate.ps1",
+            "Please make sure the Reachy Mini daemon is running:\n"
+            "  1. Start the simulator in a separate terminal:\n"
+            "     .venv-robot\\Scripts\\Activate.ps1\n"
+            "     reachy-mini-daemon --sim\n"
+            "  2. Or if using a real robot over USB:\n"
+            "     reachy-mini-daemon\n"
+            "  3. Or if using wireless:\n"
+            "     python robot/idle_and_nod.py --robot-host <ip>\n",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return 1
 
-    print("Connecting to Reachy Mini...")
-    with ReachyMini(**connection.connection_kwargs(args)) as mini:
+    with mini_ctx as mini:
         print("Connected! Initializing safe neutral pose...")
         current_body_yaw = return_to_neutral(mini, 0.0)
 
@@ -376,12 +358,14 @@ def main():
                 )
 
             print("Done! Robot returned to safe neutral pose.")
+            return 0
 
         except KeyboardInterrupt:
             print("\nInterrupted by user. Safely returning to neutral pose...")
             return_to_neutral(mini, current_body_yaw)
             print("Safe neutral reached. Goodbye!")
+            return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
