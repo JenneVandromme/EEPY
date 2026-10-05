@@ -1,164 +1,162 @@
-# Refocus ladder, levels 0-4, based on the midterm presentation.
-# Angles: degrees. Head height: millimetres. Durations/holds: seconds.
-# Positive pitch looks down; mirrored antennas keep the expression symmetric.
-# Each behaviour establishes its own starting pose and keeps the body at 0.
-# Validate ranges, reachability, interpolation and speed before playback:
+# Energetic refocus variant: same levels, names and keyframe sequences.
+# Angles: degrees. Height: millimetres. Timing: seconds.
+# All levels play once and return to neutral. Body yaw stays at zero.
+# Speech pauses are preserved; level 4 remains slower than levels 1-3.
+# Validate physical reachability and peak speeds before playback:
 #   python -m eepy.behaviors.validate --strict
 behaviors:
-
   - name: refocus_study_buddy
     ladder: refocus
     level: 0
     group: refocus
-    description: >
-      Quiet company: two tiny breathing cycles, then a slow glance at the
-      notes as if reading along. Returns to neutral after one complete cycle.
-      No speech or sound; this should blend into the background.
+    description: >-
+      More visible study company: two breathing cycles with small antenna lifts, followed
+      by a deliberate look at the notes. Completes one cycle and returns to neutral. No
+      speech or sound.
     loop: once
     keyframes:
-      - head: { yaw: 0, pitch: -1.5, roll: 0, z: 1.5 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: -4, roll: 0, z: 4}
+        antennas: {right: -20, left: 20}
         body_yaw: 0
-        duration: 2.4
+        duration: 1.8
         easing: ease_in_out
-      - head: { pitch: 0, z: 0 }
-        duration: 2.8
-        easing: ease_in_out
-      - head: { pitch: -1.5, z: 1.5 }
-        duration: 2.4
-        easing: ease_in_out
-      - head: { pitch: 0, z: 0 }
-        duration: 2.8
-        easing: ease_in_out
-      - look_at: notes
+      - head: {pitch: 0, z: 0}
         duration: 2.0
+        easing: ease_in_out
+        antennas: {right: -10, left: 10}
+      - head: {pitch: -4, z: 4}
+        duration: 1.8
+        easing: ease_in_out
+        antennas: {right: -20, left: 20}
+      - head: {pitch: 0, z: 0}
+        duration: 2.0
+        easing: ease_in_out
+        antennas: {right: -10, left: 10}
+      - duration: 1.4
         easing: minjerk
         hold: 2.0
-      - head: { yaw: 0, pitch: 0, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+        head: {pitch: 24, z: 0}
+      - head: {yaw: 0, pitch: 0, roll: 0, z: 0}
+        antennas: {right: -10, left: 10}
         body_yaw: 0
-        duration: 2.0
+        duration: 1.4
         easing: minjerk
         hold: 2.0
-
   - name: refocus_joint_attention
     ladder: refocus
     level: 1
     group: refocus
-    description: >
-      Looks up at the student, then deliberately down at the notes to invite
-      shared attention. Holds the notes gaze, then quietly returns to neutral.
-      No speech or sound.
+    description: >-
+      An alert look up at the student with a small head lift and antenna spread, then
+      a decisive look down at the notes. Holds the shared attention cue and returns to
+      neutral. No speech or sound.
     loop: once
     keyframes:
-      - head: { yaw: 0, pitch: -12, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: -18, roll: 0, z: 4}
+        antennas: {right: -28, left: 28}
         body_yaw: 0
-        duration: 1.2
+        duration: 0.9
         easing: minjerk
         hold: 0.7
-      - look_at: notes
-        duration: 1.6
+      - duration: 1.0
         easing: minjerk
         hold: 1.2
+        head: {pitch: 24, z: 0}
+        antennas: {right: -18, left: 18}
       - use: return_to_neutral
-
   - name: refocus_curious
     ladder: refocus
     level: 2
     group: refocus
-    description: >
-      Looks at the student, raises its antennas a little and tilts its head
-      with a soft questioning sound. Waits for a response, straightens its
-      head while keeping eye contact, then settles. No spoken words.
+    description: >-
+      A more expressive questioning tilt: makes eye contact, tips its head noticeably
+      and spreads its antennas with the existing soft questioning cue. Waits, straightens
+      while maintaining eye contact, then settles. No spoken words.
     loop: once
     keyframes:
-      - head: { yaw: 0, pitch: -12, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: -16, roll: 0, z: 3}
+        antennas: {right: -20, left: 20}
         body_yaw: 0
-        duration: 1.2
+        duration: 0.9
         easing: minjerk
         hold: 0.3
-      - head: { pitch: -12, roll: 14, z: 2 }
-        antennas: { right: -25, left: 25 }
-        duration: 0.9
+      - head: {pitch: -16, roll: 24, z: 4}
+        antennas: {right: -45, left: 45}
+        duration: 0.75
         easing: ease_in_out
         sound: questioning.wav
         hold: 1.2
-      - head: { pitch: -12, roll: 0, z: 0 }
-        antennas: { right: -15, left: 15 }
-        duration: 0.9
+      - head: {pitch: -16, roll: 0, z: 1}
+        antennas: {right: -20, left: 20}
+        duration: 0.75
         easing: minjerk
         hold: 0.6
       - use: return_to_neutral
-
   - name: refocus_verbal
     ladder: refocus
     level: 3
     group: refocus
-    description: >
-      Makes eye contact and adopts a small inviting tilt before speaking the
-      refocus check. Holds still for the line, adds one gentle encouraging
-      nod, then returns to neutral. Wording stays in lines.yaml.
+    description: >-
+      An animated invitation to refocus: lifts its head to make eye contact, adds a larger
+      welcoming tilt and antenna spread, speaks, then gives a distinct encouraging nod.
+      Returns to neutral after the same sequence. Wording stays in lines.yaml.
     loop: once
     keyframes:
-      - head: { yaw: 0, pitch: -12, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: -16, roll: 0, z: 3}
+        antennas: {right: -20, left: 20}
         body_yaw: 0
-        duration: 1.2
+        duration: 0.9
         easing: minjerk
         hold: 0.4
-      - head: { pitch: -10, roll: 4, z: 1 }
-        antennas: { right: -18, left: 18 }
-        duration: 0.8
+      - head: {pitch: -14, roll: 12, z: 4}
+        antennas: {right: -35, left: 35}
+        duration: 0.65
         easing: minjerk
         say: refocus_check
         hold: 2.8
-      - head: { pitch: -3, roll: 0 }
+      - head: {pitch: 2, roll: 0, z: 1}
+        duration: 0.45
+        easing: ease_in_out
+      - head: {pitch: -14, z: 3}
         duration: 0.5
         easing: ease_in_out
-      - head: { pitch: -10 }
-        duration: 0.6
-        easing: ease_in_out
         hold: 0.3
-      - head: { yaw: 0, pitch: 0, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: 0, roll: 0, z: 0}
+        antennas: {right: -10, left: 10}
         body_yaw: 0
-        duration: 1.4
+        duration: 1.1
         easing: minjerk
-
   - name: refocus_break_offer
     ladder: refocus
     level: 4
     group: refocus
-    description: >
-      Changes from prompting work to offering a breather: a slower sideways
-      tilt and slight settling of the head, with relaxed antennas. Holds the
-      offer, gives one slow reassuring nod, then settles back to neutral.
-      Speech uses refocus_break_offer from lines.yaml.
+    description: >-
+      A clearly visible but unhurried break offer: makes eye contact, gives a larger sideways
+      tilt and settles lower with relaxed antennas. Holds the spoken offer, adds a deeper
+      reassuring nod, then returns to neutral. Uses the same speech ID and sequence.
     loop: once
     keyframes:
-      - head: { yaw: 0, pitch: -12, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: -16, roll: 0, z: 2}
+        antennas: {right: -18, left: 18}
         body_yaw: 0
-        duration: 1.4
+        duration: 1.1
         easing: minjerk
         hold: 0.5
-      - head: { pitch: -8, roll: -10, z: -3 }
-        antennas: { right: -25, left: 25 }
-        duration: 1.4
+      - head: {pitch: -12, roll: -20, z: -5}
+        antennas: {right: -40, left: 40}
+        duration: 1.1
         easing: minjerk
         say: refocus_break_offer
         hold: 4.0
-      - head: { pitch: 2, roll: -4 }
-        duration: 0.7
+      - head: {pitch: 6, roll: -6, z: -3}
+        duration: 0.6
         easing: ease_in_out
-      - head: { pitch: -8, roll: 0 }
-        duration: 0.9
+      - head: {pitch: -12, roll: 0, z: -4}
+        duration: 0.8
         easing: ease_in_out
         hold: 0.5
-      - head: { yaw: 0, pitch: 0, roll: 0, z: 0 }
-        antennas: { right: -10, left: 10 }
+      - head: {yaw: 0, pitch: 0, roll: 0, z: 0}
+        antennas: {right: -10, left: 10}
         body_yaw: 0
-        duration: 1.8
+        duration: 1.4
         easing: minjerk

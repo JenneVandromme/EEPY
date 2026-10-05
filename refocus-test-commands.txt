@@ -1,4 +1,4 @@
-EEPY - Test refocus levels one at a time
+EEPY - Energetic refocus version: test one level at a time
 
 Keep the MuJoCo simulator open. Run only one movement command at a time.
 Every level plays once. Wait for "Done." before starting the next command.
@@ -10,28 +10,28 @@ First, open Terminal and activate the robot environment:
 cd "/Users/rodrigogonzalez/Documents/Embodying Project/EEPY"
 source .venv-robot/bin/activate
 
-Level 0 - Study buddy (about 18 seconds)
-Two tiny breathing cycles, a slow look at the notes, then back to neutral.
+Level 0 - Study buddy (about 14 seconds)
+Two more visible breathing cycles, a slow look at the notes, then back to neutral.
 
 python -m eepy.behaviors.play refocus_study_buddy --backend sim
 
-Level 1 - Joint attention (about 6 seconds)
+Level 1 - Joint attention (about 5 seconds)
 Looks at the student, then at the notes, then back to neutral.
 
 python -m eepy.behaviors.play refocus_joint_attention --backend sim
 
 Level 2 - Curious (about 6 seconds)
-Tilts its head, moves its antennas, waits, then returns to neutral.
+Gives a larger head tilt, spreads its antennas, waits, then returns to neutral.
 The questioning sound is currently a silent placeholder.
 
 python -m eepy.behaviors.play refocus_curious --backend sim
 
-Level 3 - Verbal nudge (about 8 seconds)
+Level 3 - Verbal nudge (about 7 seconds)
 Makes eye contact, speaks, nods, then returns to neutral.
 
 python -m eepy.behaviors.play refocus_verbal --backend sim --tone direct
 
-Level 4 - Break offer (about 11 seconds)
+Level 4 - Break offer (about 10 seconds)
 Slowly tilts and settles, offers a break, nods, then returns to neutral.
 
 python -m eepy.behaviors.play refocus_break_offer --backend sim --tone direct --minutes 5
