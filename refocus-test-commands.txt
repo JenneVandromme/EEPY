@@ -1,0 +1,47 @@
+EEPY - Test refocus levels one at a time
+
+Keep the MuJoCo simulator open. Run only one movement command at a time.
+Every level plays once. Wait for "Done." before starting the next command.
+Press Ctrl+C to stop a movement early and return the robot to neutral.
+Do not add --watch for these single-play tests.
+
+First, open Terminal and activate the robot environment:
+
+cd "/Users/rodrigogonzalez/Documents/Embodying Project/EEPY"
+source .venv-robot/bin/activate
+
+Level 0 - Study buddy (about 18 seconds)
+Two tiny breathing cycles, a slow look at the notes, then back to neutral.
+
+python -m eepy.behaviors.play refocus_study_buddy --backend sim
+
+Level 1 - Joint attention (about 6 seconds)
+Looks at the student, then at the notes, then back to neutral.
+
+python -m eepy.behaviors.play refocus_joint_attention --backend sim
+
+Level 2 - Curious (about 6 seconds)
+Tilts its head, moves its antennas, waits, then returns to neutral.
+The questioning sound is currently a silent placeholder.
+
+python -m eepy.behaviors.play refocus_curious --backend sim
+
+Level 3 - Verbal nudge (about 8 seconds)
+Makes eye contact, speaks, nods, then returns to neutral.
+
+python -m eepy.behaviors.play refocus_verbal --backend sim --tone direct
+
+Level 4 - Break offer (about 11 seconds)
+Slowly tilts and settles, offers a break, nods, then returns to neutral.
+
+python -m eepy.behaviors.play refocus_break_offer --backend sim --tone direct --minutes 5
+
+If the simulator is not already running, open a SEPARATE terminal:
+
+cd "/Users/rodrigogonzalez/Documents/Embodying Project/EEPY"
+source .venv-robot/bin/activate
+python .venv-robot/bin/mjpython .venv-robot/bin/reachy-mini-daemon --sim
+
+Leave that terminal and the MuJoCo window open while testing.
+The simulator stays running after a movement finishes; that is normal.
+Press Ctrl+C in the simulator terminal when you want to shut it down.
