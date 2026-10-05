@@ -38,12 +38,15 @@ class MockDetector(AUDetector):
         self.seen: List[int] = []
         self.closed = False
         self.busy = 0.0                                # seconds spent "computing"
+        self.refill = None                             # called after each result (see below)
 
     def predict(self, image_bgr, box):
-        start = time.monotonic()
+        start = time.perf_counter()                    # high resolution on every OS
         time.sleep(self.delay)
         self.seen.append(int(image_bgr[0, 0, 0]))     # the frame index, painted into the pixels
-        self.busy += time.monotonic() - start
+        self.busy += time.perf_counter() - start
+        if self.refill is not None:
+            self.refill()
         return dict(self.values)
 
     def close(self):
@@ -295,27 +298,35 @@ def test_results_are_not_more_frequent_than_max_rate():
 
 
 def test_the_model_is_never_left_idle_while_faces_keep_coming():
-    """Adaptive rate: with faces always waiting and max_rate out of the way, the
-    worker must keep the model busy back-to-back -- the machine, not our code,
-    sets the rate. Measured as the share of time the model was busy, which holds
-    on slow CI machines too: a timer that oversleeps does so INSIDE the model's
-    busy time. (Counting results against wall-clock targets was flaky on
-    GitHub's macOS runners.)"""
+    """Adaptive rate: with a face always waiting and max_rate out of the way, the
+    worker must run the model back-to-back -- the machine, not our code, sets the
+    rate.
+
+    Built so that NO timer precision matters (CI taught us: macOS runners
+    oversleep, Windows sleeps in ~15 ms steps): the mock hands in the next face
+    itself the moment it finishes, so a face is guaranteed to be waiting, and
+    busy time is measured with perf_counter. The only thing that can leave the
+    model idle is the extractor's own overhead -- which is what is tested."""
     detector = MockDetector(delay=0.01)
     au = make(detector, max_rate=1000.0)
     assert wait_until(lambda: au.status == "running")
+    counter = [1]
+
+    def next_face():
+        counter[0] += 1
+        au.update(face(counter[0], t=time.monotonic()), BASE)
+
+    detector.refill = next_face
     au.update(face(1, t=time.monotonic()), BASE)
-    assert wait_until(lambda: detector.seen)           # warmed up
-    detector.busy, started, index = 0.0, time.monotonic(), 1
-    while time.monotonic() < started + 1.5:
-        index += 1
-        au.update(face(index, t=time.monotonic()), BASE)
-        time.sleep(0.002)                              # a new face is (nearly) always waiting
-    elapsed = time.monotonic() - started
-    rate = au.achieved_rate()
+    assert wait_until(lambda: len(detector.seen) >= 3)  # running back-to-back
+    detector.busy = 0.0
+    started = time.perf_counter()
+    time.sleep(1.0)
+    elapsed = time.perf_counter() - started
+    busy = detector.busy
     au.close()
-    assert detector.busy / elapsed >= 0.6              # back-to-back, no idle gaps of our making
-    assert rate > 0
+    assert busy / elapsed >= 0.8                       # back-to-back, no idle gaps of our making
+    assert detector.seen == sorted(detector.seen)
 
 
 def test_too_slow_pauses_the_aus_and_then_retries():
