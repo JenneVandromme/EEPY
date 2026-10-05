@@ -119,7 +119,7 @@ pip install -r requirements-vision.txt
 
 ```bash
 # A
-python -m pytest tests/test_camera.py -q
+python -m pytest tests/test_camera.py tests/test_perception.py -q
 # B
 python -m pytest tests/ -q
 ```
@@ -148,6 +148,9 @@ python -m eepy.camera.preview
 view (the box's content) in the top-right corner, and about `15 fps` at the top.
 The third line says *head position unknown: box centred*, which is right
 because the panel isn't running yet. Leave the preview open.
+At the bottom-left you'll also see the **face values** (eye and mouth
+openness, head angles). Testing those has its own tutorial in
+[eepy/perception/README.md](../perception/README.md#tutorial-test-the-face-features-about-10-minutes).
 **macOS, first time:** a grey window explains that the camera is not allowed.
 Allow it (System Settings → Privacy & Security → Camera → switch on your
 terminal or editor), **quit that app with Cmd+Q, reopen it**, and run the

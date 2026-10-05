@@ -10,23 +10,113 @@ on the face (*landmarks*), 52 expression scores (*blendshapes*) and the
 head's position, in about 5 ms per frame on a laptop. No GPU is needed.
 **Images are never saved or logged**, only the numbers.
 
-## Try it
+## Tutorial: test the face features (about 10 minutes)
 
-In the **vision** environment (macOS/Linux `source .venv-vision/bin/activate`,
-Windows `.venv-vision\Scripts\Activate.ps1`):
+Do this once after pulling the face-feature changes, on every laptop, and on
+the robot's camera when you're at the robot. Each step says what you should see.
+
+### Start here: open two terminals
+
+Open **two** terminal windows, both in the `EEPY` folder, and paste the line
+for your system into each one:
+
+| | macOS / Linux | Windows (PowerShell) |
+|---|---|---|
+| **Terminal A** (camera, face) | `source .venv-vision/bin/activate` | `.venv-vision\Scripts\Activate.ps1` |
+| **Terminal B** (robot, panel) | `source .venv-robot/bin/activate` | `.venv-robot\Scripts\Activate.ps1` |
+
+From here on, **every command is the same on every system**. Type it in the
+terminal named before it (A or B). The camera must already work: see
+[eepy/camera/README.md](../camera/README.md) if it doesn't.
+
+**0. Install (once).**
 
 ```bash
-pip install -r requirements-vision.txt     # once
-python -m eepy.camera.preview              # live view with all values on screen
-python -m eepy.perception.selftest         # guided test, ~1 minute (see below)
+# A
+pip install -r requirements-vision.txt
 ```
 
-The first run downloads the face model (3.7 MB, once) into `.cache/models/`.
+**1. The automated tests.** No camera needed.
 
-**In the preview** you see:
-- the face's landmarks (press **L** to hide or show them);
-- the values below (in the bottom-left corner);
-- a coloured flash with a label whenever a **blink**, **yawn** or **nod** is detected.
+```bash
+# A
+python -m pytest tests/test_perception.py -q
+```
+
+✅ Ends in `passed` (one `skipped` is normal). The test that runs the real
+MediaPipe model downloads the face model the first time (3.7 MB, needs
+internet once).
+
+**2. Watch the values live.**
+
+```bash
+# A
+python -m eepy.camera.preview
+```
+
+✅ Grey dots on your face (the landmarks; **L** hides them) and, bottom-left,
+the values. Now try each of these:
+
+| Do this | You should see |
+|---|---|
+| Look at the screen normally | `closed` near 0 %, `EAR` about 0.25–0.35; `face size` grows when you lean in |
+| Close your eyes | `closed` near 100 %, and both `blink model` values high (0.5 or more) |
+| Blink | a cyan flash: **BLINK 120 ms** (around 80–300 ms) |
+| Open your mouth wide for ~2 s | `MAR` above 0.5, then a yellow flash: **YAWN** |
+| Talk normally | `MAR` moves, but **no** YAWN flash |
+| Turn your head to **your** left | `yaw` goes **+** (to your right: −) |
+| Let your head drop, then lift it | `pitch` goes **+**, then a pink flash: **NOD** |
+
+After a minute, the bottom line shows the last 60 s: PERCLOS, blinks per
+minute, yawns, nods. Press **Q** to stop.
+
+**3. The guided self-test.**
+
+```bash
+# A
+python -m eepy.perception.selftest
+```
+
+✅ All five steps say **PASS**, and the frame rate is about 15.
+❌ **CHECK** on a step: try it again more clearly (a slower blink, a longer
+yawn, a deeper nod). If it keeps failing, tune that threshold (see *Tuning*
+below). If it suggests a different `eyes.ear_open`, that's your personal
+value; leave the shared config as it is unless the blink step fails.
+
+**4. Record during a session.**
+
+```bash
+# B
+python -m eepy.wizard --backend dry
+# A
+python -m eepy.perception
+```
+
+Open `http://127.0.0.1:8080` and start a session with a test code (e.g.
+`P99`).
+✅ Within 5 s, terminal A prints `recording into 2026-..._P99_...`.
+Blink and yawn a few times, end the session in the panel, then check the files:
+
+```bash
+# B
+python -m eepy.logs.check
+```
+
+✅ The test session is listed as **OK**. Its folder in `data/sessions/` has a
+`features.csv` and an `events.vision.jsonl` with your blinks. You can delete
+that test folder afterwards; `data/` is never committed.
+
+**5. On the robot's camera** (needs the real robot).
+
+```bash
+# B
+python -m eepy.wizard --backend real
+# A
+python -m eepy.perception.selftest --camera robot
+```
+
+✅ As in step 3. If blinks are missed, look at the frame rate it reports: below
+about 15, blinks are too short to catch (see *How fast must the camera be?*).
 
 ## What the values mean
 

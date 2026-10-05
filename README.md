@@ -290,6 +290,9 @@ preview above also shows the face features live: eye and mouth openness, head
 angles, and a flash on every blink, yawn or nod. What every value means, in
 plain words, is in [`eepy/perception/README.md`](eepy/perception/README.md).
 
+**Testing the face features properly?** Follow the step-by-step tutorial for
+macOS, Windows and Linux: [eepy/perception/README.md → Tutorial: test the face features](eepy/perception/README.md#tutorial-test-the-face-features-about-10-minutes).
+
 ### Test the robot connection
 
 This needs **two terminals at once**: one running the robot's "daemon"
