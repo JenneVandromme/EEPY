@@ -21,13 +21,16 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from eepy.behaviors import reach  # noqa: E402
 from eepy.behaviors.backends import BackendError, DryRunBackend  # noqa: E402
+from eepy.logs import SessionLog  # noqa: E402
+from eepy.logs.check import check_session  # noqa: E402
+from eepy.logs.clock import monotonic  # noqa: E402
 from eepy.wizard.config import ConfigError, load_config  # noqa: E402
 from eepy.wizard.server import Wizard, create_app  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not reach.available(), reason="the player needs the IK solver")
 
 REPO = Path(__file__).resolve().parents[1]
-CORE = ("t", "wall", "session", "kind", "source")
+CORE = ("v", "seq", "t_mono", "t_wall", "type", "source")
 
 
 @pytest.fixture
@@ -37,7 +40,7 @@ def files(tmp_path: Path) -> dict[str, Path]:
     (tmp_path / "config").mkdir()
     shutil.copy(REPO / "config" / "wizard_panel.yaml", tmp_path / "config" / "wizard_panel.yaml")
     return {"behaviors": tmp_path / "behaviors", "sounds": tmp_path / "sounds",
-            "config": tmp_path / "config" / "wizard_panel.yaml", "logs": tmp_path / "logs"}
+            "config": tmp_path / "config" / "wizard_panel.yaml", "data": tmp_path / "data"}
 
 
 class FlakyBackend(DryRunBackend):
@@ -58,10 +61,12 @@ class FlakyBackend(DryRunBackend):
 def make(files):
     made = []
 
-    def _make(factory=DryRunBackend, spoken=None):
+    def _make(factory=DryRunBackend, spoken=None, mode="wizard", speaker_factory=None):
         wizard = Wizard(factory, backend_name="dry", behaviors_dir=files["behaviors"],
                         sounds_dir=files["sounds"], config_path=files["config"],
-                        logs_dir=files["logs"],
+                        speaker_factory=speaker_factory,
+                        mode=mode, session_log=SessionLog(data_dir=files["data"],
+                                                          repo_root=REPO),
                         speech_callback=(lambda l, t: spoken.append((l, t))) if spoken is not None else None)
         client = TestClient(create_app(wizard))
         client.__enter__()
@@ -74,8 +79,13 @@ def make(files):
     FlakyBackend.alive = True
 
 
+def session_folder(files) -> Path:
+    (folder,) = [p for p in files["data"].iterdir() if p.is_dir()]
+    return folder
+
+
 def lines(files) -> list[dict]:
-    (path,) = files["logs"].glob("*.jsonl")
+    path = session_folder(files) / "events.jsonl"
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
@@ -242,22 +252,24 @@ def test_session_file_name_and_format(make, files):
     time.sleep(0.3)
     client.post("/api/session/end")
 
-    (path,) = files["logs"].glob("*.jsonl")
-    assert path.name.startswith("P07_") and path.suffix == ".jsonl"
-    datetime.strptime(path.stem[4:], "%Y-%m-%d_%H-%M-%S")
+    folder = session_folder(files)
+    date, participant, mode = folder.name.split("_")
+    datetime.strptime(date, "%Y-%m-%d")
+    assert (participant, mode) == ("P07", "wizard"), "<date>_<participant>_<mode>"
+    assert {p.name for p in folder.iterdir()} >= {"meta.json", "events.jsonl", "snapshot"}
 
     rows = lines(files)
     assert all(all(k in row for k in CORE) for row in rows), "core fields on every line"
-    assert rows[0]["kind"] == "session_start" and rows[-1]["kind"] == "session_end"
-    assert {row["session"] for row in rows} == {path.stem}
-    assert [r["t"] for r in rows] == sorted(r["t"] for r in rows), "lines are in time order"
+    assert rows[0]["type"] == "session_start" and rows[-1]["type"] == "session_end"
+    assert [r["seq"] for r in rows] == list(range(1, len(rows) + 1)), "no line missing"
     assert {r["source"] for r in rows} <= {"wizard", "idle", "system", "auto"}
+    assert check_session(folder).status == "OK"
 
-    annotation = next(r for r in rows if r["kind"] == "annotation")
+    annotation = next(r for r in rows if r["type"] == "annotation")
     assert annotation["marker"] == "yawn" and annotation["source"] == "wizard"
-    started = next(r for r in rows if r["kind"] == "behavior_started" and r["behavior"] == "approving_nod")
+    started = next(r for r in rows if r["type"] == "behavior_started" and r["behavior"] == "approving_nod")
     assert started["source"] == "wizard", "operator-triggered behaviours are marked as such"
-    assert any(r["kind"] == "note" and r["text"] == "rubbed eyes" for r in rows)
+    assert any(r["type"] == "note" and r["text"] == "rubbed eyes" for r in rows)
 
 
 def test_t_and_wall_describe_the_same_moment(make, files):
@@ -268,25 +280,25 @@ def test_t_and_wall_describe_the_same_moment(make, files):
     client.post("/api/annotate", json={"marker": "yawn"})
     client.post("/api/session/end")
     rows = lines(files)
-    first, mark = rows[0], next(r for r in rows if r["kind"] == "annotation")
-    wall_gap = (datetime.fromisoformat(mark["wall"]) - datetime.fromisoformat(first["wall"])).total_seconds()
-    assert abs(wall_gap - (mark["t"] - first["t"])) < 0.002
+    first, mark = rows[0], next(r for r in rows if r["type"] == "annotation")
+    wall_gap = (datetime.fromisoformat(mark["t_wall"]) - datetime.fromisoformat(first["t_wall"])).total_seconds()
+    assert abs(wall_gap - (mark["t_mono"] - first["t_mono"])) < 0.002
 
 
 def test_annotations_and_player_events_share_one_clock(make, files):
     """The whole point of running the panel in the player's process."""
     _, client = make()
     client.post("/api/session/start", json={"participant": "P09"})
-    before = time.monotonic()
+    before = monotonic()
     client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5})
     time.sleep(0.2)
     client.post("/api/annotate", json={"marker": "user_replied"})
-    after = time.monotonic()
+    after = monotonic()
     client.post("/api/session/end")
     rows = lines(files)
-    started = next(r for r in rows if r["kind"] == "behavior_started" and r["source"] == "wizard")
-    mark = next(r for r in rows if r["kind"] == "annotation")
-    assert before <= started["t"] < mark["t"] <= after
+    started = next(r for r in rows if r["type"] == "behavior_started" and r["source"] == "wizard")
+    mark = next(r for r in rows if r["type"] == "annotation")
+    assert before <= started["t_mono"] < mark["t_mono"] <= after
 
 
 def test_a_rejected_command_is_not_logged_as_one(make, files):
@@ -294,7 +306,7 @@ def test_a_rejected_command_is_not_logged_as_one(make, files):
     client.post("/api/session/start", json={"participant": "P10"})
     client.post("/api/play", json={"behavior": "no_such_thing", "intensity": 0.5})
     client.post("/api/session/end")
-    assert not any(r["kind"] == "wizard_command" and r.get("behavior") == "no_such_thing"
+    assert not any(r["type"] == "wizard_command" and r.get("behavior") == "no_such_thing"
                    for r in lines(files))
 
 
@@ -302,7 +314,7 @@ def test_markers_outside_a_session_are_shown_but_not_saved(make, files):
     _, client = make()
     r = client.post("/api/annotate", json={"marker": "yawn"}).json()
     assert r["ok"] and r["saved"] is False
-    assert not list(files["logs"].glob("*.jsonl")) if files["logs"].exists() else True
+    assert not files["data"].exists() or not [p for p in files["data"].iterdir() if p.is_dir()]
 
 
 def test_the_session_survives_a_page_refresh(make):
@@ -316,15 +328,16 @@ def test_the_session_survives_a_page_refresh(make):
 
 def test_a_bad_participant_id_is_explained(make):
     _, client = make()
-    r = client.post("/api/session/start", json={"participant": "P 01/../x"})
-    assert r.status_code == 409 and "letters, numbers" in r.json()["message"]
+    for bad in ("P 01/../x", "Jenne", "anna.smith@uni.be", "P1"):
+        r = client.post("/api/session/start", json={"participant": bad})
+        assert r.status_code == 409 and "pseudonymous" in r.json()["message"], bad
 
 
 def test_stopping_the_panel_closes_the_session(make, files):
     wizard, client = make()
     client.post("/api/session/start", json={"participant": "P13"})
     wizard.shutdown()
-    assert lines(files)[-1]["kind"] == "session_end"
+    assert lines(files)[-1]["type"] == "session_end"
     assert lines(files)[-1]["reason"] == "panel stopped"
 
 
@@ -348,9 +361,9 @@ def test_a_dropped_robot_shows_red_and_annotations_keep_working(make, files):
     assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"]
     client.post("/api/session/end")
 
-    statuses = [r.get("status") for r in lines(files) if r["kind"] == "connection"]
+    statuses = [r.get("status") for r in lines(files) if r["type"] == "connection"]
     assert "lost" in statuses and statuses[-1] == "connected"
-    assert sum(1 for r in lines(files) if r["kind"] == "session_start") == 1, "one session throughout"
+    assert sum(1 for r in lines(files) if r["type"] == "session_start") == 1, "one session throughout"
 
 
 def test_the_panel_starts_even_if_the_robot_is_unreachable(make):
@@ -393,7 +406,7 @@ def test_a_reconnect_does_not_log_a_drop_that_never_happened(make, files):
         client.post("/api/reconnect")
         client.get("/api/state")
     client.post("/api/session/end")
-    assert not [r for r in lines(files) if r["kind"] == "connection" and r["status"] == "lost"]
+    assert not [r for r in lines(files) if r["type"] == "connection" and r["status"] == "lost"]
 
 
 def test_a_port_held_on_ipv6_only_counts_as_taken():
@@ -425,3 +438,92 @@ def test_a_free_port_is_free():
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     assert _port_taken(port) is None
+
+
+# --- the mode switch (A7) ---------------------------------------------------------
+
+
+def test_the_mode_is_shown_and_recorded(make, files):
+    _, client = make()
+    status = client.get("/api/state").json()["status"]
+    assert status["mode"] == "wizard" and status["mode_implemented"]
+    client.post("/api/session/start", json={"participant": "P20"})
+    client.post("/api/session/end")
+    folder = session_folder(files)
+    assert folder.name.endswith("_P20_wizard")
+    meta = json.loads((folder / "meta.json").read_text())
+    assert meta["mode"] == "wizard" and meta["backend"] == "dry"
+    assert lines(files)[0]["mode"] == "wizard"
+
+
+def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files):
+    _, client = make(mode="rules")
+    status = client.get("/api/state").json()["status"]
+    assert status["mode"] == "rules" and not status["mode_implemented"]
+    assert "no controller" in status["last_error"]["message"]
+    client.post("/api/session/start", json={"participant": "P21"})
+    assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"]
+    client.post("/api/session/end")
+    assert session_folder(files).name.endswith("_P21_rules")
+    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "rules" for r in lines(files))
+
+
+def test_session_metadata_is_complete(make, files):
+    _, client = make()
+    client.post("/api/session/start", json={"participant": "P22", "notes": "pilot, quiet room"})
+    client.post("/api/session/end", json={"notes": "participant was tired"})
+    meta = json.loads((session_folder(files) / "meta.json").read_text())
+    assert meta["participant"] == "P22" and meta["schema_version"] == 1
+    assert meta["notes"] == ["pilot, quiet room", "participant was tired"]
+    assert meta["code"]["commit"] and "dirty" in meta["code"]
+    assert "behaviors/refocus.yaml" in meta["snapshot"]
+    assert "config/wizard_panel.yaml" in meta["snapshot"]
+    assert meta["ended"]["reason"] == "operator"
+    assert meta["counts"]["session_start"] == 1
+
+
+def test_a_crashed_earlier_session_is_reported_and_its_pointer_cleared(make, files):
+    files["data"].mkdir(parents=True)
+    (files["data"] / "CURRENT").write_text(json.dumps(
+        {"session": "2026-10-01_P05_wizard", "folder": str(files["data"]), "pid": 999999}))
+    _, client = make()
+    assert "did not end cleanly" in client.get("/api/state").json()["status"]["last_error"]["message"]
+    assert not (files["data"] / "CURRENT").exists()
+
+
+# --- speech (A5) -----------------------------------------------------------------------
+
+
+def test_when_speech_fails_the_words_appear_on_the_panel(make, files, tmp_path):
+    """The brief: if TTS fails, log it, show the text in the panel, keep going."""
+    from eepy.speech import Speaker
+    from eepy.speech.cache import SpeechCache
+    from eepy.speech.engines import Engine
+    from eepy.speech.outputs import NullOutput
+
+    class Broken(Engine):
+        name = "broken"
+
+        def _synthesize(self, text):
+            raise RuntimeError("no voice today")
+
+    wizard, client = make(speaker_factory=lambda: Speaker(
+        Broken(), output=NullOutput(), cache=SpeechCache(tmp_path / "c"), prepare=False))
+    client.post("/api/session/start", json={"participant": "P30"})
+    r = client.post("/api/say", json={"text": "Shall we take a break?"}).json()
+    assert r["ok"], "the request itself is accepted"
+    wait_for(lambda: (client.get("/api/state").json()["status"]["last_error"] or {})
+             .get("message", "").startswith("The robot could not speak"))
+    message = client.get("/api/state").json()["status"]["last_error"]["message"]
+    assert '"Shall we take a break?"' in message and "no voice today" in message
+    assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"], \
+        "and everything else keeps working"
+    client.post("/api/session/end")
+    failed = [r for r in lines(files) if r["type"] == "speech_failed"]
+    assert failed and failed[0]["text"] == "Shall we take a break?"
+
+
+def test_a_line_needing_a_value_is_explained_on_the_panel(make):
+    _, client = make()
+    r = client.post("/api/say", json={"line_id": "bedtime_negotiate", "tone": "direct"})
+    assert r.status_code == 409 and "{minutes}" in r.json()["message"]

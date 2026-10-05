@@ -23,6 +23,8 @@ dist/
 *.safetensors
 *.h5
 *.pkl
+# data/ also holds every recorded session (data/sessions/): participant data,
+# which must never be committed. tests/test_logs.py fails if this stops being so.
 data/
 datasets/
 
@@ -34,9 +36,15 @@ datasets/
 !eepy/behaviors/data/
 !eepy/behaviors/data/**
 
-# Session logs from the Wizard-of-Oz panel hold participant data -- they must
-# never end up in git. Share them through the team's agreed storage instead.
-logs/
+# Generated speech audio and downloaded voice models (60 MB each). Both are
+# rebuilt or re-downloaded on demand; neither belongs in git.
+/.cache/
+
+# Early pilot logs from the Wizard-of-Oz panel, before sessions moved to
+# data/sessions/. Participant data: never commit.
+# The leading slash matters: without it, "logs/" also matches eepy/logs/ -- the
+# logging package's source code -- and silently drops it from git.
+/logs/
 
 # IDE
 .vscode/

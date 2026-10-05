@@ -18,7 +18,7 @@ from.
  laptop browser ─┐                  ┌──────────── one Python process (lab desktop) ────────────┐
  laptop browser ─┼─ HTTP buttons ──►│  Wizard  ──► BehaviorPlayer ──► backend ──► robot / sim  │
  desktop browser─┘◄─ live updates ──│    │              │ events                                 │
-                     (SSE)          │    └──► Sessions ◄┘──► logs/sessions/P03_….jsonl          │
+                     (SSE)          │    └──► eepy.logs ◄┘──► data/sessions/<date>_P03_wizard/  │
                                     └──────────────────────────────────────────────────────────┘
 ```
 
@@ -40,7 +40,6 @@ from.
 | `__main__.py` | `python -m eepy.wizard` — starts everything, prints the addresses to open. |
 | `server.py` | `Wizard` (owns the player, session and state — no web code) and the web routes. |
 | `config.py` | Reads and checks `config/wizard_panel.yaml`; builds the buttons from it. |
-| `sessions.py` | Session start/end, and the log format, behind a `SessionWriter` interface. |
 | `static/index.html` | The whole page: one file, plain HTML, CSS and JavaScript. |
 | `config/wizard_panel.yaml` | Keys, markers, default intensity, idle — editable by designers. |
 
@@ -52,10 +51,12 @@ single file a designer can open and read. NiceGUI was the alternative; it would
 have been a new dependency, and it builds the page from Python, which is harder
 for designers to follow.
 
-**The panel runs in the same process as the player.** This is the decision
-the study depends on. An operator's "yawn" and the robot's `behavior_started`
-are stamped by the *same* `time.monotonic()` clock, so they can be lined up to
-the millisecond when fitting the HMM. A separate server would have its own clock.
+**The panel runs in the same process as the player.** An operator's "yawn"
+and the robot's `behavior_started` are stamped by the same clock —
+`eepy.logs.clock.monotonic()`, shared by every process on the machine, including
+the vision process — so they can be lined up to the millisecond when fitting
+the HMM. (Not `time.monotonic()`: on macOS, Python 3.9's restarts at zero in
+every process. See [eepy/logs/README.md](../logs/README.md).)
 
 **All state lives on the server.** The session, the idle setting, the live log
 and the last error are all kept on the desktop. Refreshing the page, or
@@ -78,26 +79,25 @@ the moment the button was pressed.
 
 ## The session log
 
-One JSON Lines file per session, named `P03_2026-10-06_14-03-12.jsonl`. Every
-line carries `t` (the shared monotonic clock), `wall` (the same moment as a
-readable time), `session`, `kind` and `source`.
+The panel logs through the central logger, `eepy.logs.log` — it has no log
+writer of its own any more (task A7 replaced the temporary one). Every press,
+observation and robot event becomes one line in the session's `events.jsonl`,
+with `source="wizard"` for anything the operator did, so wizard-triggered and
+autonomous behaviour can be told apart.
 
-- `source` is who caused it: `wizard` (the operator), `idle`, `system`, and later
-  `auto` for the autonomous system — so wizard-triggered and autonomous
-  behaviours can be compared.
-- `kind` is what happened: the player's event kinds plus `wizard_command`,
-  `annotation`, `note`, `session_start`, `session_end`, `connection`, `reload`.
-- `wall` is derived from `t` through a single anchor taken when the panel
-  starts, so the two can never disagree about the order of events.
-- **Each line is written to disk immediately**, so a crash loses nothing that
-  was already logged.
-- **The writing sits behind `SessionWriter`**, so the logging module (A7) can
-  replace it.
+- A session is a folder, `data/sessions/<date>_<participant>_<mode>/`, holding
+  `meta.json` (participant, mode, backend, code version, snapshot, notes),
+  `events.jsonl`, and a `snapshot/` of the YAML files in use.
+- **The mode** is the experimental condition, shown in the status bar and
+  recorded in the folder name and `meta.json`.
+- Commands are logged only once the player has **accepted** them, stamped with
+  the moment of the press.
+- **Annotations are stamped when the desktop receives the key press** — a few
+  milliseconds after the press, which is small next to the operator's own
+  reaction time of roughly 300–500 ms. Worth remembering when fitting the HMM.
 
-**Annotations are stamped when the desktop receives the key press.** That is a
-few milliseconds of Wi-Fi after the press — small next to the operator's own
-reaction time of roughly 300–500 ms, which is worth remembering when fitting
-the HMM.
+The format, the event types and the tools are documented in
+[eepy/logs/README.md](../logs/README.md) and [docs/DATA_GUIDE.md](../../docs/DATA_GUIDE.md).
 
 ## What the panel needed from the player
 

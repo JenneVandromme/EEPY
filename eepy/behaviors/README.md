@@ -71,7 +71,8 @@ delivery each have their own thread, so nothing slow can ever stall motion.
 **Three backends behind one interface**, defaulting to `dry`, so nobody moves a
 robot by accident. Sim and real refuse to run against each other.
 
-**Hooks for what comes next.** Speech (A5) plugs into `speech_callback`.
+**Hooks for what comes next.** Speech is a `Speaker` handed to the player (see
+[eepy/speech/README.md](../speech/README.md)); without one, lines are only logged.
 Logging (A7) subscribes to the event bus. Face tracking replaces the
 `TargetProvider`. None of them needs to touch the player.
 
@@ -168,7 +169,8 @@ upstream can't go unnoticed.
   the system's.
 - **`player.say(line_id)` or `player.say(text="...")`**: speak a line from
   `lines.yaml`, or free text, without playing a behaviour. It goes through the
-  same `speech_callback` and emits the same `line_requested` event.
+  same Speaker as a behaviour's lines, so it emits the same `speech_*` events.
+  (Before speech existed it emitted `line_requested`; old sessions still have it.)
 - **`backend.is_connected()`**: a cheap check of whether the robot link is alive,
   so a dropped robot shows up even while nothing is playing.
 - **One rename:** in `keyframe_reached` events, the YAML location (`"x[2] ->

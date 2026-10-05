@@ -9,7 +9,7 @@ of snapping it there on the first frame.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields
 
 import numpy as np
 
@@ -63,9 +63,6 @@ class Pose:
             change = abs(getattr(other, name) - getattr(self, name))
             out[kind] = max(out.get(kind, 0.0), change)
         return out
-
-    def with_(self, **changes: float) -> "Pose":
-        return replace(self, **changes)
 
     def is_close(self, other: "Pose", tolerance: float = 0.5) -> bool:
         return all(

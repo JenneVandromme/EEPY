@@ -128,9 +128,11 @@ behaviors:
         duration: 0.8
         easing: ease_in_out
         say: bedtime_goodnight
-        sound: goodnight.wav
         hold: 2.0
+      # The settling-down sound comes once the words are finished: the robot
+      # can only play one clip at a time, and speech would cut it off.
       - use: antenna_droop_deep
+        sound: goodnight.wav
       - use: head_sag
       # Hand over to the robot's built-in sleep. Nothing may follow this.
       - action: goto_sleep

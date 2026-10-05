@@ -36,6 +36,7 @@
   .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
   .pill.bad { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.rec { background: var(--bad); color: #fff; font-weight: 600; }
+  .pill.amber { background: var(--warn); color: #fff; font-weight: 600; }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
   @keyframes blink { 50% { opacity: .25; } }
   .muted { color: var(--muted); }
@@ -116,6 +117,7 @@
   <div class="row">
     <span class="brand">EEPY · Wizard</span>
     <span class="pill" id="conn"><span class="dot"></span><span>…</span></span>
+    <span class="pill" id="mode" title="the experimental condition">mode: <b>…</b></span>
     <span class="pill">playing: <b id="playing">—</b></span>
     <span class="pill">idle: <b id="idle">—</b></span>
     <span class="spacer"></span>
@@ -290,6 +292,9 @@ function renderStatus(s) {
   conn.querySelector(".dot").className = "dot " + (s.connected ? "ok" : "");
   conn.querySelector("span:last-child").textContent =
     `${s.backend} · ${s.connected ? "connected" : "NOT CONNECTED"}`;
+  const mode = $("mode");
+  mode.querySelector("b").textContent = s.mode_implemented ? s.mode : `${s.mode} — not built, manual only`;
+  mode.className = "pill" + (s.mode_implemented ? "" : " amber");
   $("playing").textContent = s.playing ? s.playing.replaceAll("_", " ") : "—";
   $("idle").textContent = s.idle ? `${s.idle.replaceAll("_", " ")} (${s.idle_on ? "on" : "off"})` : "none";
   const ib = $("idle-btn"); if (ib) ib.classList.toggle("on", !!s.idle_on);
@@ -317,13 +322,14 @@ function renderSession(se) {
         <span class="spacer"></span><button class="small" id="end" tabindex="-1">End session</button>`;
       row.querySelector("b").textContent = se.participant;
       $("end").onclick = () => { $("end").blur();
-        if (confirm(`End the session for ${se.participant}?`)) post("/api/session/end").then((r) => r && toast("Session ended and saved.")); };
+        const notes = prompt(`End the session for ${se.participant}?\n\nAnything to note about the session as a whole? (optional)\nOK ends it. Cancel keeps recording.`, "");
+        if (notes !== null) post("/api/session/end", { notes }).then((r) => r && toast("Session ended and saved.")); };
     }
     $("ann-count").textContent = `· ${se.annotations} marker${se.annotations === 1 ? "" : "s"}`;
   } else if (row.dataset.active !== "0") {
     row.dataset.active = "0"; sessionStart = null;
     row.innerHTML = `<span class="muted">No session — markers are not being saved.</span>
-      <input type="text" id="participant" placeholder="Participant ID, e.g. P03" size="22">
+      <input type="text" id="participant" placeholder="Participant code, e.g. P03" size="22" autocomplete="off">
       <button class="small" id="start" tabindex="-1">Start session</button>`;
     const go = () => { $("start").blur(); post("/api/session/start", { participant: $("participant").value })
                          .then((r) => r && toast(`Recording ${r.session}`)); };
@@ -341,14 +347,16 @@ setInterval(() => {
 function escapeHtml(t) { return String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 function describe(r) {
-  const bits = [r.kind.replaceAll("_", " ")];
+  const bits = [r.type.replaceAll("_", " ")];
   if (r.behavior) bits.push(r.behavior);
   if (r.action) bits.push(r.action);
   if (r.label) bits.push(`“${r.label}”`);
   if (r.text) bits.push(`“${r.text}”`);
+  if (r.type === "speech_started" && r.latency_ms !== undefined) bits.push(`${Math.round(r.latency_ms)} ms${r.cached ? ", cached" : ""}`);
   if (r.by) bits.push(`by ${r.by}`);
   if (r.reason) bits.push(`— ${r.reason}`);
-  if (r.intensity !== undefined && r.kind !== "behavior_started") bits.push(`@${r.intensity}`);
+  if (r.message) bits.push(`— ${r.message.split("\n")[0]}`);
+  if (r.intensity !== undefined && r.type !== "behavior_started") bits.push(`@${r.intensity}`);
   if (r.status) bits.push(r.status);
   if (r.participant) bits.push(r.participant);
   return bits.join("  ");
@@ -357,11 +365,12 @@ function describe(r) {
 function addLog(records) {
   const box = $("log");
   for (const r of records) {
-    if (r.kind === "keyframe_reached") continue;   // too chatty for the panel; still in the file
+    // Too chatty for the panel; all of them are still in the session file.
+    if (["keyframe_reached", "speech_requested", "speech_finished"].includes(r.type)) continue;
     const row = document.createElement("div");
-    row.className = `ev ${r.kind}` + (r.kind.includes("refused") || r.status === "lost" || r.ok === false ? " err" : "");
+    row.className = `ev ${r.type}` + (r.type.includes("refused") || r.type.includes("failed") || r.type === "error" || r.status === "lost" || r.ok === false ? " err" : "");
     row.innerHTML = `<span class="muted"></span><span class="src src-${r.source}"></span><span></span>`;
-    row.children[0].textContent = (r.wall || "").slice(11, 23);
+    row.children[0].textContent = (r.t_wall || "").slice(11, 23);
     row.children[1].textContent = r.source;
     row.children[2].textContent = describe(r);
     box.prepend(row);

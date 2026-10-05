@@ -9,15 +9,17 @@ Event kinds:
 
     behavior_started      a behaviour begins (data: intensity, tone, idle, ...)
     keyframe_reached      a keyframe's pose has been reached (index, source)
-    line_requested        a spoken line was handed to speech (line_id, text)
+    speech_requested ...  the robot's voice: requested, started, finished,
+    speech_failed         interrupted, failed (from the Speaker, eepy/speech)
     sound_played          a sound was sent to the speaker (file)
     behavior_finished     a behaviour played to its end
     behavior_interrupted  something cut it short (by: what interrupted it)
     behavior_refused      it was never started, because it would break a
                           safety rule from the robot's current pose (reason)
 
-`t` is time.monotonic() at the moment it happened -- not when the subscriber
-got round to it -- so events can be lined up precisely against each other.
+`t` is eepy.logs.clock.monotonic() at the moment it happened -- not when the
+subscriber got round to it -- so events can be lined up precisely against each
+other and against other processes' data.
 """
 
 from __future__ import annotations
@@ -30,15 +32,6 @@ from typing import Any, Callable
 
 log = logging.getLogger("eepy.events")
 
-KINDS = (
-    "behavior_started",
-    "keyframe_reached",
-    "line_requested",
-    "sound_played",
-    "behavior_finished",
-    "behavior_interrupted",
-    "behavior_refused",
-)
 
 
 @dataclass(frozen=True)

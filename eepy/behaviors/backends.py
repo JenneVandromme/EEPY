@@ -186,6 +186,9 @@ class _SDKBackend:
         self._http: str | None = None
         self._no_media = False
         self._uploaded: dict[Path, tuple[float, str]] = {}
+        # Sounds (player's audio thread) and speech (speaker's thread) upload
+        # concurrently.
+        self._upload_lock = threading.Lock()
         self._warned_no_media = False
 
     def connect(self) -> Pose:
@@ -247,6 +250,30 @@ class _SDKBackend:
         joints, antennas = self.mini.get_current_joint_positions()
         return Pose.from_robot(head, antennas, joints[0])
 
+    def upload_sound(self, path: Path) -> str:
+        """Put a clip on the daemon, once. Returns its name there.
+
+        Uploaded again only if the file changed. Speech pre-uploads every
+        cached line at connect, so the first time a line is spoken it does not
+        wait for an upload over Wi-Fi.
+        """
+        import requests
+
+        path = Path(path)
+        mtime = path.stat().st_mtime
+        with self._upload_lock:
+            cached = self._uploaded.get(path)
+            if cached is not None and cached[0] == mtime:
+                return cached[1]
+        with path.open("rb") as handle:
+            reply = requests.post(f"{self._http}/api/media/sounds/upload",
+                                  files={"file": (path.name, handle)}, timeout=10)
+        reply.raise_for_status()
+        remote = reply.json().get("path", path.name)
+        with self._upload_lock:
+            self._uploaded[path] = (mtime, remote)
+        return remote
+
     def play_sound(self, path: Path) -> None:
         import requests
 
@@ -256,17 +283,7 @@ class _SDKBackend:
                             "play sounds. Sounds are skipped.")
                 self._warned_no_media = True
             return
-        path = Path(path)
-        mtime = path.stat().st_mtime
-        cached = self._uploaded.get(path)
-        if cached is None or cached[0] != mtime:  # re-upload when the file changes
-            with path.open("rb") as handle:
-                reply = requests.post(f"{self._http}/api/media/sounds/upload",
-                                      files={"file": (path.name, handle)}, timeout=10)
-            reply.raise_for_status()
-            remote = reply.json().get("path", path.name)
-            self._uploaded[path] = (mtime, remote)
-        remote = self._uploaded[path][1]
+        remote = self.upload_sound(Path(path))
         requests.post(f"{self._http}/api/media/play_sound",
                       json={"file": remote}, timeout=5).raise_for_status()
 
@@ -297,14 +314,16 @@ class _SDKBackend:
     def close(self) -> None:
         if self.mini is None:
             return
+        # Closing is best effort: we are often here BECAUSE the link died, and
+        # a failure to tidy up a dead connection must not hide the real error.
         try:
             self.mini.set_automatic_body_yaw(True)  # the SDK's default, restored
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            log.debug("could not restore automatic body yaw: %s", exc)
         try:
             self.mini.__exit__(None, None, None)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            log.debug("could not close the SDK client cleanly: %s", exc)
         self.mini = None
 
 

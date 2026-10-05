@@ -7,10 +7,10 @@ Everything it needs is already installed with the robot SDK, there is no build
 step, and the page is one file a designer can open and read.
 
 Most importantly, the panel runs in the SAME Python process as the player.
-That is what lets an operator's "yawn" marker and the robot's
-"behavior_started" be stamped by the same time.monotonic() clock, so the two can
-be lined up exactly when fitting the HMM. A separate server would have a
-separate clock.
+Every timestamp -- an operator's "yawn" marker, the robot's
+"behavior_started", a perception feature from the vision process -- comes from
+eepy.logs.clock.monotonic(), so they can be lined up exactly when fitting the
+HMM. All logging goes through the central logger, eepy.logs.log.
 
 STATE LIVES HERE, NOT IN THE BROWSER
 
@@ -46,14 +46,20 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from eepy.behaviors.backends import Backend, BackendError, make_backend
+from eepy.behaviors.backends import Backend, make_backend
 from eepy.behaviors.events import Event
 from eepy.behaviors.loader import BEHAVIORS_DIR, SOUNDS_DIR, Library, load_library
 from eepy.behaviors.player import BehaviorPlayer, PlayerError
 from eepy.behaviors.validate import Validator, report
 
+from eepy.logs import SessionLog
+from eepy.logs import log as central_log
+from eepy.logs.check import clear_stale_pointer, stale_pointer
+from eepy.logs.clock import monotonic as shared_clock
+from eepy.logs.schema import IMPLEMENTED_MODES
+from eepy.logs.session import SessionError
+
 from .config import CONFIG_PATH, ConfigError, Panel, PanelConfig, build_panel, load_config
-from .sessions import Clock, JsonlSessionWriter, LOGS_DIR, SessionError, Sessions
 
 log = logging.getLogger("eepy.wizard")
 
@@ -92,8 +98,10 @@ class Wizard:
         behaviors_dir: Path = BEHAVIORS_DIR,
         sounds_dir: Path = SOUNDS_DIR,
         config_path: Path = CONFIG_PATH,
-        logs_dir: Path = LOGS_DIR,
+        mode: str = "wizard",
+        session_log: SessionLog | None = None,
         speech_callback: Callable[[str, str], None] | None = None,
+        speaker_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.backend_factory = backend_factory
         self.backend_name = backend_name
@@ -101,8 +109,14 @@ class Wizard:
         self.sounds_dir = Path(sounds_dir)
         self.config_path = Path(config_path)
         self.speech_callback = speech_callback
-        self.clock = Clock()
-        self.sessions = Sessions(JsonlSessionWriter(logs_dir), self.clock)
+        # A new Speaker per connection: its output (robot or desktop) depends on
+        # what the backend can do. None: text only, through speech_callback.
+        self.speaker_factory = speaker_factory
+        self.mode = mode
+        self.mode_implemented = mode in IMPLEMENTED_MODES
+        # The central logger, unless a test passes its own.
+        self.sessions = session_log if session_log is not None else central_log
+        self.clock = self.sessions.clock
 
         # Two locks, both only ever held for an instant -- never across a slow
         # call like connecting to the robot or running the validator. A lock
@@ -137,6 +151,19 @@ class Wizard:
         self.panel: Panel = build_panel(self.library, self.config)
         self.idle_on = self.panel.idle is not None
 
+        crashed = stale_pointer(self.sessions.data_dir)
+        if crashed:
+            # Its data is kept as it was. Clearing the pointer stops the vision
+            # process writing into it, and the check will mark it INCOMPLETE.
+            clear_stale_pointer(self.sessions.data_dir)
+            self._error(f'The last session ("{crashed}") did not end cleanly -- the panel '
+                        "probably crashed. Its data up to that point is kept. Check it with:\n"
+                        "    python -m eepy.logs.check")
+        if not self.mode_implemented:
+            self._error(f'Mode "{mode}" has no controller yet, so nothing decides on its own: '
+                        "the robot only does what you press. Sessions are still recorded "
+                        f'as mode "{mode}".')
+
         self._watching = True
         threading.Thread(target=self._watch_connection, name="eepy-wizard-watch",
                          daemon=True).start()
@@ -150,25 +177,33 @@ class Wizard:
             self._log.append((self._seq, record))
 
     def _note(self, kind: str, source: str, t: float | None = None, **data: Any) -> dict:
-        """Record something (to the session file if one is running) and show it."""
-        record = self.sessions.record(kind, source, t=t, **data)
+        """Log an event (saved if a session is running) and show it on the page."""
+        record = self.sessions.event(kind, source, t_mono=t, **data)
         self._push(record)
         return record
 
     def _error(self, message: str) -> None:
-        self.last_error = {"message": message, "wall": self.clock.wall(time.monotonic())}
+        self.last_error = {"message": message, "wall": self.clock.wall(shared_clock())}
         log.error(message)
+        try:
+            self._note("error", "system", message=message[:2000])
+        except Exception:  # noqa: BLE001 -- reporting an error must never raise one
+            pass
 
     def _on_event(self, event: Event) -> None:
         """Every player event goes to the live log, and to the session file."""
         data = dict(event.data)
         idle = data.pop("idle", False)
         source = data.pop("source", None) or ("idle" if idle else "system")
-        record = self.sessions.record(event.kind, source, t=event.t,
-                                      behavior=event.behavior, **data)
+        record = self.sessions.event(event.kind, source, t_mono=event.t,
+                                     behavior=event.behavior, **data)
         self._push(record)
         if event.kind == "behavior_refused":
             self._error(f'"{event.behavior}" was refused: {data.get("reason")}')
+        elif event.kind == "speech_failed":
+            # The words still reach the operator, who can say them if need be.
+            words = f'\n\n    "{data["text"]}"' if data.get("text") else ""
+            self._error(f"The robot could not speak{words}\n\n({data.get('error')})")
 
     # --------------------------------------------------------------- the robot
 
@@ -177,8 +212,9 @@ class Wizard:
         # happens with no lock held; only the swap at the end is locked.
         try:
             backend = self.backend_factory()
+            speaker = self.speaker_factory() if self.speaker_factory else None
             player = BehaviorPlayer(backend, behaviors_dir=self.behaviors_dir,
-                                    sounds_dir=self.sounds_dir,
+                                    sounds_dir=self.sounds_dir, speaker=speaker,
                                     speech_callback=self.speech_callback)
             unsubscribe = player.events.subscribe(self._on_event)
             player.start()
@@ -207,7 +243,7 @@ class Wizard:
             return False
         try:
             return player.backend.is_connected()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 -- a link that cannot even be asked is not connected
             return False
 
     def _check_connection(self) -> bool:
@@ -282,7 +318,7 @@ class Wizard:
         # Stamped at the moment of the press, but written only once the player
         # has ACCEPTED it: a misspelled or refused request must not appear in a
         # data log as something the operator played.
-        pressed = time.monotonic()
+        pressed = shared_clock()
         try:
             player.play(behavior, intensity=intensity, source="wizard")
         except PlayerError as exc:
@@ -313,7 +349,7 @@ class Wizard:
     def say(self, line_id: str | None, text: str | None, tone: str,
             via: str = "click") -> str:
         player = self._require_player()
-        pressed = time.monotonic()
+        pressed = shared_clock()
         try:
             spoken = player.say(line_id, text, tone=tone, source="wizard")
         except PlayerError as exc:
@@ -335,21 +371,24 @@ class Wizard:
             raise WizardError("The note is empty.")
         return self._note("note", "wizard", text=text)
 
-    def start_session(self, participant: str) -> dict:
+    def start_session(self, participant: str, notes: str | None = None) -> dict:
         try:
             record = self.sessions.start(
-                participant, backend=self.backend_name,
+                participant, mode=self.mode, backend=self.backend_name, notes=notes,
                 intensity_default=self.config.default_intensity,
-                behaviors=sorted(self.library.behaviors))
+                behaviors=sorted(self.library.behaviors),
+                markers=[m.id for m in self.config.markers])
         except SessionError as exc:
             raise WizardError(str(exc)) from None
         self._push(record)
+        if not self.mode_implemented:
+            self._note("mode_not_implemented", "system", mode=self.mode)
         self.panel_version += 1
         return record
 
-    def end_session(self, reason: str = "operator") -> dict:
+    def end_session(self, reason: str = "operator", notes: str | None = None) -> dict:
         try:
-            record = self.sessions.end(reason)
+            record = self.sessions.end(reason, notes=(notes or "").strip() or None)
         except SessionError as exc:
             raise WizardError(str(exc)) from None
         self._push(record)
@@ -420,6 +459,8 @@ class Wizard:
         connected = self._check_connection()
         return {
             "backend": self.backend_name,
+            "mode": self.mode,
+            "mode_implemented": self.mode_implemented,
             "connected": connected,
             "connection_error": None if connected else self.connection_error,
             "playing": player.current() if player else None,
@@ -493,6 +534,11 @@ class TextIn(BaseModel):
 
 class ParticipantIn(BaseModel):
     participant: str
+    notes: str | None = None
+
+
+class EndIn(BaseModel):
+    notes: str | None = None
 
 
 def _ok(**extra: Any) -> dict:
@@ -542,20 +588,20 @@ def create_app(wizard: Wizard) -> FastAPI:
     @app.post("/api/annotate")
     def annotate(body: AnnotateIn):
         record = wizard.annotate(body.marker, body.via)
-        return _ok(saved=record["session"] is not None, t=record["t"])
+        return _ok(saved=record["saved"], t=record["t_mono"])
 
     @app.post("/api/note")
     def note(body: TextIn):
         record = wizard.note(body.text)
-        return _ok(saved=record["session"] is not None, t=record["t"])
+        return _ok(saved=record["saved"], t=record["t_mono"])
 
     @app.post("/api/session/start")
     def session_start(body: ParticipantIn):
-        return _ok(session=wizard.start_session(body.participant)["session"])
+        return _ok(session=wizard.start_session(body.participant, body.notes)["session"])
 
     @app.post("/api/session/end")
-    def session_end():
-        wizard.end_session()
+    def session_end(body: EndIn | None = None):
+        wizard.end_session(notes=(body or EndIn()).notes)
         return _ok()
 
     @app.post("/api/reload")
@@ -602,10 +648,23 @@ def create_app(wizard: Wizard) -> FastAPI:
     return app
 
 
-def make_wizard(backend: str | None, robot_host: str | None, **kwargs: Any) -> Wizard:
-    from eepy.behaviors.backends import BACKEND_ENV
+def make_wizard(backend: str | None, robot_host: str | None, settings: Any = None,
+                **kwargs: Any) -> Wizard:
+    """Build the panel for real use: the central logger, configured from eepy.yaml."""
     import os
+
+    from eepy.behaviors.backends import BACKEND_ENV
+    from eepy.logs import configure
+    from eepy.settings import load_settings
+
+    settings = settings or load_settings()
+    configure(data_dir=settings.data_path,
+              participant_pattern=settings.participant_pattern,
+              store_raw_speech=settings.privacy.store_raw_speech,
+              flush_seconds=settings.logging.flush_seconds)
+    from eepy.speech import make_speaker
 
     name = (backend or os.environ.get(BACKEND_ENV) or "dry").lower()
     return Wizard(lambda: make_backend(name, robot_host=robot_host),
-                  backend_name=name, **kwargs)
+                  backend_name=name, mode=settings.mode,
+                  speaker_factory=lambda: make_speaker(settings.speech), **kwargs)

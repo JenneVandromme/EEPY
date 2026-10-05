@@ -162,6 +162,25 @@ running a robot script later fails with an error mentioning `Gst` or
 sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gir1.2-gst-plugins-base-1.0
 ```
 
+**Then, once: download the robot's voice** (about 60 MB — it shows progress,
+and picks up where it left off if your connection drops):
+
+```bash
+python -m eepy.speech.voices --download en_US-lessac-medium
+```
+
+Until you do, the robot still talks — in your computer's built-in voice — and
+says so in the log. On **Linux**, speech playback also needs
+`sudo apt install libportaudio2`.
+
+**On an Intel Mac, or a Mac older than macOS 14:** check which robot SDK you
+ended up with, with `pip show reachy_mini`. The version this project is built
+and tested against (1.11.0) needs `onnxruntime 1.27.0`, which only exists for
+**Apple Silicon Macs on macOS 14+**, Windows and Linux. On other Macs, pip may
+quietly install an *older* `reachy_mini` instead — different code from what
+everyone else runs. If yours is not 1.11.0, say so in the team chat before
+relying on the robot or simulator on that machine.
+
 **If `pip install -r requirements-robot.txt` fails with something like**
 `ERROR: Could not find a version that satisfies the requirement
 reachy-mini[mujoco] (from versions: none)` — this looks like a mujoco/
@@ -343,12 +362,16 @@ EEPY/
 ├── sounds/                # the sounds behaviours play (see sounds/README.md)
 ├── eepy/behaviors/        # reads, checks, previews and PLAYS behaviors/ — how it works: eepy/behaviors/README.md
 ├── eepy/wizard/           # the Wizard-of-Oz control panel — how it works: eepy/wizard/README.md
+├── eepy/logs/             # recording and loading session data — how it works: eepy/logs/README.md
+├── eepy/speech/           # the robot's voice (text-to-speech) — how it works: eepy/speech/README.md
 ├── config/
+│   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
-├── logs/                  # session logs from the panel (gitignored: participant data)
+├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── docs/
 │   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
-│   └── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
+│   ├── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
+│   └── DATA_GUIDE.md      # where session data is, and how to load it
 ├── tests/                 # pytest: python -m pytest tests/
 ├── models/                # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
@@ -377,9 +400,13 @@ head can physically reach a pose and how fast it moves. Details in
 | set up your computer, or run the sanity checks | this README |
 | edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
+| find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
+| choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
 | understand how the Wizard panel is built, and why | [eepy/wizard/README.md](eepy/wizard/README.md) |
+| understand how logging and the mode switch are built, and why | [eepy/logs/README.md](eepy/logs/README.md) |
+| understand how speech is built, and why | [eepy/speech/README.md](eepy/speech/README.md) |
 
 ### Editing what the robot does
 
@@ -418,6 +445,17 @@ python -m eepy.wizard --backend sim       # or real, or dry
 
 Then open the address it prints — on this machine, or on any laptop on the same
 network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
+
+Every session is saved in `data/sessions/`, under the **mode** — the
+experimental condition — set in `config/eepy.yaml` (or `--mode wizard|rules|hmm|hmm_bandit`).
+To look at the data:
+
+```bash
+python -m eepy.logs.list                  # every session, with a verdict
+python -m eepy.logs.summary P03           # one session
+```
+
+See **[docs/DATA_GUIDE.md](docs/DATA_GUIDE.md)**.
 
 ## Stuck?
 
