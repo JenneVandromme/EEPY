@@ -329,6 +329,23 @@ def test_the_model_is_never_left_idle_while_faces_keep_coming():
     assert detector.seen == sorted(detector.seen)
 
 
+def test_windows_clocks_do_not_slow_the_worker_down(monkeypatch):
+    """Regression test for a bug CI found on Windows: there (Python <= 3.12)
+    time.monotonic() advances in 15.6 ms steps and every timed wait lasts at
+    least one step. The rate limiter then paused needlessly after almost every
+    result and the model sat idle ~30 % of the time. Simulated here, so this is
+    caught on every OS."""
+    import math
+    import threading
+
+    tick = 0.015625
+    real_monotonic, real_wait = time.monotonic, threading.Event.wait
+    monkeypatch.setattr(time, "monotonic", lambda: math.floor(real_monotonic() / tick) * tick)
+    monkeypatch.setattr(threading.Event, "wait", lambda self, timeout=None: real_wait(
+        self, None if timeout is None or timeout <= 0 else math.ceil(timeout / tick) * tick))
+    test_the_model_is_never_left_idle_while_faces_keep_coming()
+
+
 def test_too_slow_pauses_the_aus_and_then_retries():
     detector = MockDetector(delay=0.6)                 # < 2 results/s possible
     au = make(detector)

@@ -19,6 +19,12 @@ When it is more than `stale_seconds` older than the frame being processed, it
 is stale: its values are not handed on (au_stale = 1) and not counted in the
 windows.
 
+TIMING. Durations inside the worker (rate limit, time per result, achieved
+rate) use time.perf_counter(), which is precise on every OS. time.monotonic()
+is NOT: on Windows with Python <= 3.12 it advances in 15.6 ms steps, which made
+the rate limiter pause needlessly (found by CI; the model sat idle ~30 % of the
+time on Windows). Frame timestamps stay on eepy.logs.clock (shared with the panel).
+
 RECORDS. Per result: a row in the session's aus.csv (t_mono = the SOURCE
 frame's time). About once a second: au_window (per AU: mean probability and
 share of time active, over the same 10 s / 60 s windows as A9; the achieved
@@ -174,7 +180,7 @@ class ActionUnitExtractor(Extractor):
 
     def achieved_rate(self) -> float:
         """AU results per second over the last few seconds."""
-        now = time.monotonic()
+        now = time.perf_counter()
         with self._lock:
             recent = [d for d in self._done if now - d <= RATE_WINDOW]
         if len(recent) < 2:
@@ -219,7 +225,7 @@ class ActionUnitExtractor(Extractor):
         min_interval = 1.0 / self.au.profile.max_rate
         last_start = 0.0
         while not self._stop.is_set():
-            if time.monotonic() < self._paused_until:
+            if time.perf_counter() < self._paused_until:
                 self._stop.wait(0.5)
                 continue
             if self.status == "paused":
@@ -232,19 +238,20 @@ class ActionUnitExtractor(Extractor):
                 obs, self._slot = self._slot, None
             if obs is None:
                 continue
-            wait = last_start + min_interval - time.monotonic()
-            if wait > 0:                      # max_rate: never faster than the profile allows
+            wait = last_start + min_interval - time.perf_counter()
+            if wait > 0.002:                  # max_rate: never faster than the profile allows
+                # (Tiny waits are skipped: on Windows any timed wait lasts >= 15.6 ms.)
                 self._stop.wait(wait)
                 with self._lock:              # a newer face may have arrived meanwhile
                     if self._slot is not None:
                         obs, self._slot = self._slot, None
-            last_start = time.monotonic()
+            last_start = time.perf_counter()
             try:
                 values = detector.predict(obs.frame.image, obs.face_box)
             except Exception as exc:  # noqa: BLE001
                 log.warning("AU model failed on a frame: %s", exc)
                 continue
-            infer = (time.monotonic() - last_start) * 1000
+            infer = (time.perf_counter() - last_start) * 1000
             self._deliver(obs, values, infer)
             self._check_speed()
 
@@ -257,7 +264,7 @@ class ActionUnitExtractor(Extractor):
             self._results.append(result)
             while self._results and self._results[0].t < horizon:
                 self._results.popleft()
-            self._done.append(time.monotonic())
+            self._done.append(time.perf_counter())
             while len(self._done) > 2 and self._done[-1] - self._done[0] > RATE_WINDOW:
                 self._done.popleft()
             self._infer.append(infer_ms)
@@ -271,7 +278,7 @@ class ActionUnitExtractor(Extractor):
         if possible is None or possible >= self.au.min_rate:
             self._slow_since = None
             return
-        now = time.monotonic()
+        now = time.perf_counter()
         self._slow_since = self._slow_since or now
         if now - self._slow_since >= self.au.slow_grace_seconds:
             self._paused_until = now + self.au.retry_seconds
