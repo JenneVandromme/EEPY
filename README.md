@@ -290,8 +290,8 @@ It prints PASS or CHECK per step and how long each frame takes to analyse.
 **Optional: action units** (frown, squint, eyes closed, jaw drop... with
 Py-Feat). An extra install of ~3 GB (Python 3.11+, a GPU recommended), never
 required:
-`pip install -r requirements-aus.txt` (on Windows, install the CUDA build of
-PyTorch first). Everything, per OS: [`eepy/perception/aus/README.md`](eepy/perception/aus/README.md). The
+`pip install -r requirements-aus.txt` (Windows/Ubuntu with an NVIDIA GPU: first
+`torch torchvision torchcodec` from PyTorch's CUDA index, see the link). Everything, per OS: [`eepy/perception/aus/README.md`](eepy/perception/aus/README.md). The
 preview above also shows the face features live: eye and mouth openness, head
 angles, and a flash on every blink, yawn or nod. What every value means, in
 plain words, is in [`eepy/perception/README.md`](eepy/perception/README.md).

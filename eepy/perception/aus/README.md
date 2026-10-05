@@ -54,21 +54,22 @@ pip install -r requirements-aus.txt
 **macOS, Intel:** not possible, because PyTorch no longer exists for Intel
 Macs. AUs simply stay off; nothing else is affected.
 
-**Windows with an NVIDIA GPU.** Install the **CUDA** build of PyTorch
-**first**. Otherwise pip installs a CPU-only PyTorch and the GPU sits unused:
-```powershell
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+**Windows and Ubuntu with an NVIDIA GPU.** Install PyTorch, torchvision **and
+torchcodec** together from PyTorch's CUDA index **first**, then the extra:
+```bash
+pip install torch torchvision torchcodec --index-url https://download.pytorch.org/whl/cu126
 pip install -r requirements-aus.txt
 ```
+Both halves matter:
+- **On Windows, without the first line, pip installs a CPU-only PyTorch** and the
+  GPU sits unused.
+- **All three must come from the same index.** A torchcodec from regular PyPI
+  is built for a different CUDA, and Py-Feat then fails to load (`libnvrtc… cannot
+  open shared object file`, or `AUs off: PyTorch and torchcodec do not match`).
 **RTX 50-series GPUs (e.g. RTX 5090) need `cu130` instead of `cu126`**: CUDA
 12.6 has no support for them. `cu126` works with older drivers, so use it for
 every other NVIDIA GPU. Not sure which you have? `nvidia-smi` shows the GPU's
 name.
-
-**Ubuntu with an NVIDIA GPU.** The normal PyTorch already includes CUDA:
-```bash
-pip install -r requirements-aus.txt
-```
 
 On Windows and Ubuntu only a recent **NVIDIA driver** is needed, not a
 separate CUDA install: PyTorch brings its own. If the driver is too old, CUDA

@@ -55,9 +55,19 @@ def import_pyfeat() -> Tuple[Any, Tuple[Any, Any]]:
     # this runs in the AU worker thread while MediaPipe starts in another).
     for noisy in (FutureWarning, DeprecationWarning, UserWarning):
         warnings.filterwarnings("ignore", category=noisy, module=r"(feat|timm|torchvision|torch|sklearn|skops)(\.|$)")
-    import torch
-    from feat.multitask.inference import MultitaskModel
-    from feat.utils.image_operations import extract_face_square_pad_torch
+    try:
+        import torch
+        from feat.multitask.inference import MultitaskModel
+        from feat.utils.image_operations import extract_face_square_pad_torch
+    except OSError as exc:
+        # Typically: torchcodec (which Py-Feat imports) was built for a different
+        # PyTorch -- e.g. a CUDA-13 torchcodec from PyPI next to a CPU or CUDA-12.6
+        # PyTorch ("libnvrtc.so.13: cannot open shared object file").
+        raise AUUnavailable(
+            "PyTorch and torchcodec do not match, so Py-Feat cannot load "
+            f"({str(exc.__cause__ or exc)[:160]}). Install all three from the SAME "
+            "PyTorch index, then the extra again -- see eepy/perception/aus/README.md, "
+            "'Install'.") from None
     return torch, (MultitaskModel, extract_face_square_pad_torch)
 
 

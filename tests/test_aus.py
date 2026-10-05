@@ -193,13 +193,55 @@ def test_the_real_extra_is_detected_correctly():
 
     from eepy.perception.aus.detector import import_pyfeat
 
+    from eepy.perception.aus.detector import AUUnavailable
+
     ok, why = aus_available()
     try:
         import_pyfeat()          # never `import feat` directly: torch must come first
         installed = True
     except ImportError:
         installed = False
+    except AUUnavailable as exc:  # installed, but broken (e.g. torch/torchcodec mismatch)
+        assert "same" in str(exc).lower() and "README" in str(exc)   # says how to fix it
+        installed = True
     assert ok == installed, why
+
+
+def test_a_mismatched_pytorch_install_gives_a_clear_message(monkeypatch):
+    """CI found this one: a CUDA-13 torchcodec next to a CPU PyTorch makes Py-Feat's
+    import raise OSError ("libnvrtc.so.13: cannot open shared object file"). It must
+    become a clear 'AUs off' reason, never a crash."""
+    import builtins
+
+    from eepy.perception.aus.detector import AUUnavailable, import_pyfeat
+
+    real_import = builtins.__import__
+
+    import types
+
+    def broken(name, *args, **kwargs):
+        if name == "torch":       # torch itself loads (a stand-in where it is not installed)
+            try:
+                return real_import(name, *args, **kwargs)
+            except ImportError:
+                return types.ModuleType("torch")
+        if name.startswith("feat"):
+            raise OSError("Could not load this library: libtorchcodec_image.so")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", broken)
+    with pytest.raises(AUUnavailable, match="do not match"):
+        import_pyfeat()
+    monkeypatch.setattr(builtins, "__import__", real_import)
+
+    # ...and the extractor turns it into "off", with that reason, instead of dying.
+    def factory(config):
+        raise AUUnavailable("PyTorch and torchcodec do not match ...")
+
+    au = ActionUnitExtractor(AUConfig(units=UNITS), detector_factory=factory)
+    assert wait_until(lambda: au.status == "off")
+    assert "do not match" in au.reason
+    au.close()
 
 
 # --- never blocking, latest face only ---------------------------------------------------------------

@@ -284,7 +284,6 @@ class ActionUnitExtractor(Extractor):
         return (at - result.t) > self.au.stale_seconds
 
     def _set_status(self, status: str, reason: str, level: str = "info") -> None:
-        self.status, self.reason = status, reason
         detector = self.detector
         fields: Dict[str, Any] = {
             "status": status, "reason": reason[:400], "profile": self.au.profile.name,
@@ -295,8 +294,9 @@ class ActionUnitExtractor(Extractor):
         if detector is not None and getattr(detector, "missing", ()):
             fields["missing_units"] = " ".join(detector.missing)
         getattr(log, level)("AUs %s: %s", status, reason)
-        with self._lock:
+        with self._lock:   # status and its record change together: never one without the other
             self._records.append(("au_status", fields))
+            self.status, self.reason = status, reason
 
     # --- windows and cross-checks -----------------------------------------------------------
 

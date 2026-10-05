@@ -8,13 +8,14 @@
 # Needs Python 3.11 or newer (Py-Feat 2.x). Not available on Intel Macs (no
 # PyTorch for them). Pulls in PyTorch: ~300 MB on a Mac, ~2.5 GB with CUDA.
 #
-# WINDOWS WITH AN NVIDIA GPU: install the CUDA build of PyTorch FIRST, or pip
-# installs a CPU-only PyTorch and the GPU sits unused:
-#     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+# WINDOWS OR UBUNTU WITH AN NVIDIA GPU: first install PyTorch, torchvision AND
+# torchcodec together, from ONE PyTorch CUDA index (a torchcodec from PyPI is
+# built for another CUDA and breaks the import):
+#     pip install torch torchvision torchcodec --index-url https://download.pytorch.org/whl/cu126
 #     pip install -r requirements-aus.txt
 # (RTX 50-series GPUs, e.g. an RTX 5090: use .../whl/cu130 instead.)
-# Ubuntu: the normal PyTorch already includes CUDA. Details and a check that the
-# GPU is used: eepy/perception/aus/README.md.
+# Macs: just the second line. Details and a check that the GPU is used:
+# eepy/perception/aus/README.md.
 
 # The vision requirements are included on purpose: installed on its own, Py-Feat
 # would upgrade numpy to 2.x, which breaks MediaPipe 0.10.14. Resolved together,
