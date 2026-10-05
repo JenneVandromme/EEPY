@@ -22,18 +22,30 @@ behaviors:
     group: idle
     description: >
       Quiet company. A slow breathing motion, and every few cycles it glances
-      down at the notes as if reading along. Must be boring to watch -- if you
-      notice it, it is too big.
+      down at the notes and lets its gaze drift across the page, as if reading
+      along. Must be boring to watch -- if you notice it, it is too big.
     loop: forever          # runs until the player stops it
     intensity: 0.7         # deliberately under 1.0: calmer than written
     keyframes:
-      # Slow breathing rhythm: gentle chest rise (+3mm) and fall
+      # Slow breathing: the head rises a few millimetres and settles again
       - use: breathe_in
       - use: breathe_out
       - use: breathe_in
       - use: breathe_out
-      # Studying along: glance down at work/notes, then smoothly return to level
+      # Studying along: look down at the notes...
       - use: glance_at_notes
+      # ...and scan a line of the page: a few degrees one way, then the other
+      # (relative: offsets from the notes glance, so it follows that target)
+      - head: { yaw: 3 }
+        relative: true
+        duration: 0.7
+        easing: minjerk
+      - head: { yaw: -6 }
+        relative: true
+        duration: 1.2
+        easing: minjerk
+        hold: 0.8
+      # ...then smoothly back to level
       - use: return_to_neutral
 
   - name: approving_nod
@@ -47,7 +59,14 @@ behaviors:
       - use: glance_at_user
       # 2. A slow, warm acknowledging nod
       - use: nod_slow
-      # 3. Encouraging antenna perk (alert and friendly)
-      - use: antenna_perk
+      # 3. Encouraging antenna perk (alert and friendly): out, then back to rest.
+      #    (Not the antenna_perk block: that one moves to the resting angles,
+      #    so after a calm idle it would not visibly move at all.)
+      - antennas: { right: -25, left: 25 }
+        duration: 0.4
+        easing: cartoon
+      - antennas: { right: -10, left: 10 }
+        duration: 0.5
+        easing: minjerk
       # 4. Smoothly settle back into the calm neutral rest pose
       - use: return_to_neutral
