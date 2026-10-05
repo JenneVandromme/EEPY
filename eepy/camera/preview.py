@@ -14,8 +14,9 @@ With the ROBOT camera it shows the robot's picture as it is.
 
 FACE FEATURES (eepy/perception, needs MediaPipe -- .venv-vision): the face's
 landmarks, eye and mouth openness, head angles, and a flash when a blink, yawn
-or nod is detected. L toggles the landmarks; --no-face turns it all off. What
-the values mean: eepy/perception/README.md.
+or nod is detected. L toggles the landmarks; --no-face turns it all off. With
+the optional action units installed: a bar per AU (A toggles), with the device,
+rate and time per result. What the values mean: eepy/perception/README.md.
 
 Press Q or Esc (or close the window) to stop. Nothing is recorded or saved.
 Run it in .venv-vision.
@@ -89,17 +90,27 @@ def _draw(cv2: Any, frame: Any, fps: float, camera: Any) -> Any:
     return image
 
 
-def _face_pipeline(camera: Any) -> Any:
-    """(FacePipeline, FaceOverlay), or (None, None) where MediaPipe is missing."""
+def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True) -> Any:
+    """(FacePipeline, FaceOverlay), or (None, None) where MediaPipe is missing.
+    Action units are added when installed (and the profile allows)."""
     try:
         import mediapipe  # noqa: F401
     except ImportError:
         print("  (Face features need MediaPipe -- run this in .venv-vision. Showing the camera only.)")
         return None, None
-    from eepy.perception import FacePipeline, load_config
+    from eepy.perception import FacePipeline, default_extractors, load_config
     from eepy.perception.overlay import FaceOverlay
 
-    return FacePipeline(camera, load_config()), FaceOverlay()
+    config = load_config()
+    extractors = default_extractors(config)
+    au = None
+    if aus:
+        from eepy.perception.aus import ActionUnitExtractor
+        from eepy.perception.aus import load_config as load_au_config
+
+        au = ActionUnitExtractor(load_au_config(profile=profile), config)
+        extractors.append(au)
+    return FacePipeline(camera, config, extractors=extractors), FaceOverlay(aus=au)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -109,6 +120,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="which camera (default: camera.source in config/eepy.yaml)")
     parser.add_argument("--index", type=int, help="laptop camera number (see python -m eepy.camera.list)")
     parser.add_argument("--no-face", action="store_true", help="camera only, no face features")
+    parser.add_argument("--no-aus", action="store_true", help="face features without action units")
+    parser.add_argument("--profile", help="machine profile for action units (default: EEPY_PROFILE, else laptop)")
     parser.add_argument("--seconds", type=float, default=0,
                         help="stop by itself after this many seconds (default: run until Q)")
     args = parser.parse_args(argv)
@@ -136,7 +149,12 @@ def main(argv: Optional[List[str]] = None) -> int:
               "      pip uninstall -y opencv-python-headless && pip install opencv-python", file=sys.stderr)
         return 2
 
-    pipeline, overlay = (None, None) if args.no_face else _face_pipeline(camera)
+    try:
+        pipeline, overlay = (None, None) if args.no_face else \
+            _face_pipeline(camera, args.profile, aus=not args.no_aus)
+    except CameraConfigError as exc:      # e.g. an unknown --profile
+        print(f"\n  {exc}", file=sys.stderr)
+        return 2
     print(f"\n  Opening the {camera.describe()}... Press Q or Esc in the window to stop.")
     (pipeline or camera).start()
     started = time.monotonic()

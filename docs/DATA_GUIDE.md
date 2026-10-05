@@ -12,6 +12,7 @@ data/sessions/
     events.jsonl                everything that happened, one line per event
     features.csv                face features, ~15 rows a second (python -m eepy.perception)
     features.json               which columns features.csv has
+    aus.csv / aus.json          action units, one row per result (only with the optional extra)
     events.vision.jsonl         from the vision process: blinks, yawns, nods, face lost/back,
                                 per-second summaries (PERCLOS ...), camera status
     snapshot/                   the exact behaviour and config files used
@@ -72,6 +73,10 @@ robot's words, not the participant's.
 nod counts over the last 10 s and 60 s. Every column and field is explained in plain
 words in [eepy/perception/README.md](../eepy/perception/README.md). Where
 `blink_confidence` is `low`, the camera was too slow to count blinks reliably.
+
+**Action units** (optional): `s.aus` has one row per result, timed to the frame it came
+from; `au_window` events hold their 10 s / 60 s averages and the cross-checks with the eye
+and yawn features. See [eepy/perception/aus/README.md](../eepy/perception/aus/README.md).
 
 `events.vision.jsonl` also holds the camera's health: `camera_stats` every 10 s (frames per
 second, `latency_ms`, `dropped` frames), plus `camera_error` / `camera_reconnected`

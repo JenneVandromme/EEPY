@@ -11,6 +11,8 @@ dist/
 .venv/
 .venv-vision/
 .venv-robot/
+# Backups of old environments (e.g. .venv-vision-py39-backup)
+/.venv-*/
 
 # Local environment configuration (copy .env.example to .env to configure)
 .env

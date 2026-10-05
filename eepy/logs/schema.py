@@ -121,6 +121,13 @@ EVENT_TYPES: Dict[str, EventType] = {
                              "About once a second: PERCLOS, blink rate, yawns, nods, "
                              "looking away ... over the last 10 s and 60 s (suffix _10s, "
                              "_60s). See eepy/perception/README.md."),
+    "au_status": EventType("face", ("status",),
+                           "Action units (Py-Feat, optional) changed state: starting, loading, "
+                           "running, paused (too slow) or off -- with the device, profile and why."),
+    "au_window": EventType("face", (),
+                           "About once a second: per action unit its mean and share of time "
+                           "active over 10 s / 60 s, the achieved rate, and cross-checks with "
+                           "the eye and yawn features."),
 
     # --- reserved for later tasks: defined now so the format is settled ---------------
     "hmm_belief": EventType("model", ("probs", "most_likely"),

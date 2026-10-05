@@ -118,6 +118,9 @@ python -m eepy.perception.selftest --camera robot
 ✅ As in step 3. If blinks are missed, look at the frame rate it reports: below
 about 15, blinks are too short to catch (see *How fast must the camera be?*).
 
+**6. Action units** (only with the optional extra): follow the tutorial in
+[aus/README.md](aus/README.md#tutorial-test-the-action-units-about-10-minutes).
+
 ## What the values mean
 
 ### Per frame (about 15 times a second, in `features.csv`)
@@ -169,6 +172,15 @@ Logged as a `face_window` event. Each name ends in `_10s` or `_60s`.
 All shares are measured in **time**, not in frames, so a dip in frame rate
 doesn't skew them.
 
+## Action units (optional)
+
+With the optional Py-Feat extra, the face features also include **action
+units**: brows lowered (frown), eyelids tightened, eyes closed, jaw dropped, and
+more, as probabilities from 0 to 1. They run alongside without slowing
+anything down, on a GPU when there is one. Everything about them (what each one
+means, installing per OS including CUDA, picking your machine's profile,
+`bench_aus`) is in **[aus/README.md](aus/README.md)**.
+
 ## How fast must the camera be?
 
 - **Blinks need about 15 frames per second.** A blink lasts 100–300 ms, which
@@ -210,6 +222,10 @@ camera) asks you to:
 3. yawn once;
 4. let your head drop and lift it back up;
 5. turn your head to **your left**.
+
+With the optional action units installed, five more steps follow: frown,
+squint, raise your eyebrows, close your eyes for 3 seconds, and open your mouth
+wide (see [aus/README.md](aus/README.md)). `--no-aus` skips them.
 
 Each step ends as soon as it has seen what it needs; **SPACE** skips a step.
 At the end it prints PASS or CHECK per step, the processing time per frame,
@@ -261,6 +277,17 @@ pipeline.stop()
   `update(obs, baseline) -> Output(values, events)`, and pass it in
   `FacePipeline(camera, extractors=default_extractors() + [MyExtractor()])`.
   Any new event types go in `eepy/logs/schema.py`.
+- **Optional plug-in hooks**, all no-ops by default:
+  - `notice(t, values, events)` sees each frame's finished values from **all**
+    extractors. The AU extractor uses it to cross-check with the eye features.
+  - `summary(now)` adds `(event type, fields)` records whenever a window is due
+    (`au_window`).
+  - `drain()` hands over status records from the plug-in's own thread
+    (`au_status`).
+  - `close()` releases threads and models when the pipeline stops.
+  - **A slow plug-in must not work inside `update()`**: copy the
+    `ActionUnitExtractor` pattern (a one-place slot plus a worker thread), so
+    MediaPipe keeps its full rate.
 - **Calibration (A12):** give the pipeline a `baseline=` object with
   `current() -> Baseline` (normal EAR, MAR, head position). It's asked every
   frame, so a calibration that finishes mid-session takes effect immediately.
@@ -279,6 +306,8 @@ pipeline.stop()
 | `config.py` | the `perception:` settings |
 | `model.py` | downloads and checks the model file |
 | `overlay.py`, `selftest.py`, `__main__.py` | preview drawing, the self-test, the vision process |
+| `aus/` | the optional action units (Py-Feat): see [aus/README.md](aus/README.md) |
+| `bench_aus.py` | `python -m eepy.perception.bench_aus`: timings and a profile suggestion for this machine |
 
 Tests: `tests/test_perception.py` uses synthetic signals, so it needs no camera
 and no MediaPipe. It covers blinks, PERCLOS, yawning versus talking, nods, face

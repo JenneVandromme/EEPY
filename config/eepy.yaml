@@ -133,3 +133,31 @@ perception:
   face:
     lost_seconds: 1.0     # no face this long: "face lost" (left the desk, turned away)
     back_seconds: 0.5     # face seen this long again: "face back"
+
+# Facial Action Units (AUs) with Py-Feat -- OPTIONAL: needs
+#     pip install -r requirements-aus.txt     (in .venv-vision)
+# Without it everything else runs; AUs are simply off. What each AU means, how
+# to install per OS and how to pick a profile: eepy/perception/aus/README.md. Which PROFILE applies: --profile,
+# else EEPY_PROFILE in your own .env (e.g. EEPY_PROFILE=demo-desktop), else laptop.
+aus:
+  # The AUs EEPY uses. Py-Feat offers AU01 02 04 05 06 07 09 10 11 12 14 15 17 20
+  # 23 24 25 26 28 43.
+  units: [AU01, AU02, AU04, AU05, AU07, AU25, AU26, AU43]
+  active_threshold: 0.5   # an AU counts as "on" from this probability
+  stale_seconds: 1.0      # a result older than this (vs. the newest frame) is stale: not used
+  min_rate: 2             # fewer results per second than this is too slow to be useful...
+  slow_grace_seconds: 10  # ...for this long: AUs pause (and say so)...
+  retry_seconds: 60       # ...and try again after this long
+  profiles:
+    laptop:               # teammates' laptops and development
+      enabled: auto       # auto: on if installed | true: expected (warns if missing) | false: off
+      device: auto        # auto (cuda > mps > cpu) | cuda | mps | cpu
+      max_rate: 10        # at most this many AU results per second
+      require_gpu: false
+      cpu_threads: auto   # auto, or a number: PyTorch threads when running on the CPU
+    demo-desktop:         # the lab / demo desktop with an NVIDIA GPU
+      enabled: true
+      device: auto
+      max_rate: 15        # the camera's rate
+      require_gpu: true   # no GPU found: a LOUD warning (AUs keep running, slower)
+      cpu_threads: auto

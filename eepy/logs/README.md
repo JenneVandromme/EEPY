@@ -61,7 +61,7 @@ All event types live in `schema.py`, in these groups plus reserved ones:
 | Speech | `speech_requested`, `speech_started`, `speech_finished`, `speech_interrupted`, `speech_failed` |
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
-| Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
+| Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries), `au_status`, `au_window` (optional action units) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
 | Camera | `camera_started`, `camera_error`, `camera_reconnected`, `camera_stats` — statistics only, never pixels; written by the vision process to `events.vision.jsonl` (see [eepy/camera/README.md](../camera/README.md)) |
 | **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |
 

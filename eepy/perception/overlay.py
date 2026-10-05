@@ -30,7 +30,9 @@ def _fmt(value: Optional[float], spec: str = ".2f") -> str:
 
 
 class FaceOverlay:
-    def __init__(self) -> None:
+    def __init__(self, aus: Any = None) -> None:
+        self.aus = aus                    # the ActionUnitExtractor, if there is one
+        self.show_aus = True
         self.show_landmarks = True
         self.flashes: List[Tuple[float, str, str]] = []    # (shown until, kind, label)
         self.window: Optional[dict] = None
@@ -38,6 +40,8 @@ class FaceOverlay:
     def key(self, key: int) -> None:
         if key in (ord("l"), ord("L")):
             self.show_landmarks = not self.show_landmarks
+        if key in (ord("a"), ord("A")):
+            self.show_aus = not self.show_aus
 
     def note(self, result: PerceptionResult) -> None:
         """Remember events and window figures (call for EVERY result, even ones not drawn)."""
@@ -96,8 +100,43 @@ class FaceOverlay:
             _text(cv2, image, line, 12, y, color)
             y += 24
 
+        if self.aus is not None and self.show_aus:
+            self._draw_aus(cv2, image, v, width, height)
+
         if self.flashes:
             _, kind, _ = self.flashes[-1]
             cv2.rectangle(image, (0, 0), (width - 1, height - 1), FLASH_COLOURS.get(kind, WHITE), 10)
             for i, (_, kind, label) in enumerate(reversed(self.flashes[-3:])):
                 _text(cv2, image, label, width // 2 - 110, 130 + 40 * i, FLASH_COLOURS.get(kind, WHITE), 1.1)
+
+    def _draw_aus(self, cv2: Any, image: Any, values: dict, width: int, height: int) -> None:
+        """Action units, bottom-right: one bar per AU (A toggles)."""
+        from .aus import AU_DESCRIPTIONS
+
+        aus = self.aus
+        units = list(aus.units)
+        x, bar_w = width - 390, 120
+        y = height - 14 - 22 * (len(units) + 1)
+        if aus.status != "running":
+            _text(cv2, image, f"AUs {aus.status}   (A: hide)", x, height - 14, YELLOW, 0.5)
+            if aus.reason:
+                _text(cv2, image, aus.reason[:52], x - 200, height - 38, GREY, 0.45)
+            return
+        stale = values.get("au_stale")
+        rate, infer = aus.achieved_rate(), aus.infer_ms()
+        device = getattr(aus.detector, "device", "?")
+        head = f"AUs {device}  {rate:.0f}/s  {_fmt(infer, '.0f')} ms" + ("  STALE" if stale else "")
+        _text(cv2, image, head + "   (A: hide)", x, y, YELLOW if stale else GREY, 0.5)
+        threshold = aus.au.active_threshold
+        for i, unit in enumerate(units):
+            value = values.get(f"au_{unit}")
+            yy = y + 22 * (i + 1)
+            cv2.rectangle(image, (x, yy - 12), (x + bar_w, yy + 2), (60, 60, 60), -1)
+            if value is not None:
+                fill = int(bar_w * max(0.0, min(1.0, value)))
+                colour = GREEN if value >= threshold else (150, 150, 150)
+                cv2.rectangle(image, (x, yy - 12), (x + fill, yy + 2), colour, -1)
+                cv2.line(image, (x + int(bar_w * threshold), yy - 14), (x + int(bar_w * threshold), yy + 4),
+                         WHITE, 1)
+            label = f"{unit} {AU_DESCRIPTIONS.get(unit, '')}"
+            _text(cv2, image, label, x + bar_w + 8, yy, WHITE if value is not None else GREY, 0.45)

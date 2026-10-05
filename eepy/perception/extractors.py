@@ -65,6 +65,22 @@ class Extractor:
     def reset(self) -> None:
         """Forget everything in progress (e.g. after the camera reconnected)."""
 
+    # Optional hooks; the defaults do nothing.
+    def notice(self, t: float, values: Dict[str, Optional[float]], events: List[FaceEvent]) -> None:
+        """Called after ALL extractors ran on a frame, with everything they found
+        (e.g. to compare one's own results with another's)."""
+
+    def summary(self, now: float) -> List[Tuple[str, Dict[str, Any]]]:
+        """Extra window records, about once a second: [(event type, fields)]."""
+        return []
+
+    def drain(self) -> List[Tuple[str, Dict[str, Any]]]:
+        """Status records produced since the last call (e.g. from a worker thread)."""
+        return []
+
+    def close(self) -> None:
+        """Release resources (threads, models) when the pipeline stops."""
+
     def _empty(self) -> Dict[str, Optional[float]]:
         return {c: None for c in self.columns}
 
