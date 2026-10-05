@@ -62,7 +62,9 @@ top-right corner is exactly what perception receives. In the vision
 environment the preview also shows the **face features** (eye and mouth
 openness, head angles, a flash on blinks, yawns and nods; **L** toggles the
 landmarks, `--no-face` turns them off): see
-[eepy/perception/README.md](../perception/README.md). Press **Q** or **Esc**
+[eepy/perception/README.md](../perception/README.md). It also shows a small
+**gaze map** with ON WORK / AWAY (**G** toggles it): see
+[eepy/perception/gaze/README.md](../perception/gaze/README.md). Press **Q** or **Esc**
 (or close the window) to stop.
 
 To make the box follow the robot's head, start the Wizard panel in a second

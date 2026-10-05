@@ -16,7 +16,8 @@ from .pipeline import PerceptionResult
 GREEN, YELLOW, CYAN, WHITE, BLACK, GREY = (80, 220, 80), (0, 220, 255), (255, 220, 0), \
     (255, 255, 255), (0, 0, 0), (170, 170, 170)
 FLASH_SECONDS = 0.9
-FLASH_COLOURS = {"blink": CYAN, "yawn": YELLOW, "nod": (255, 120, 255)}
+FLASH_COLOURS = {"blink": CYAN, "yawn": YELLOW, "nod": (255, 120, 255),
+                 "looked_away": (60, 60, 255), "back_on_work": GREEN}
 
 
 def _text(cv2: Any, image: Any, line: str, x: int, y: int, color: Tuple[int, int, int] = WHITE,
@@ -30,9 +31,11 @@ def _fmt(value: Optional[float], spec: str = ".2f") -> str:
 
 
 class FaceOverlay:
-    def __init__(self, aus: Any = None) -> None:
+    def __init__(self, aus: Any = None, gaze: Any = None) -> None:
         self.aus = aus                    # the ActionUnitExtractor, if there is one
+        self.gaze = gaze                  # the GazeExtractor, if there is one
         self.show_aus = True
+        self.show_gaze = True
         self.show_landmarks = True
         self.flashes: List[Tuple[float, str, str]] = []    # (shown until, kind, label)
         self.window: Optional[dict] = None
@@ -42,6 +45,8 @@ class FaceOverlay:
             self.show_landmarks = not self.show_landmarks
         if key in (ord("a"), ord("A")):
             self.show_aus = not self.show_aus
+        if key in (ord("g"), ord("G")):
+            self.show_gaze = not self.show_gaze
 
     def note(self, result: PerceptionResult) -> None:
         """Remember events and window figures (call for EVERY result, even ones not drawn)."""
@@ -53,6 +58,10 @@ class FaceOverlay:
                 label = f"YAWN {event.fields['duration_s']:.1f} s"
             elif event.type == "nod":
                 label = f"NOD {event.fields['depth_deg']:.0f} deg"
+            elif event.type == "looked_away":
+                label = f"LOOKED AWAY ({event.fields['zone'].replace('_', ' ')})"
+            elif event.type == "back_on_work":
+                label = f"BACK ON WORK after {event.fields['away_seconds']:.1f} s"
             else:
                 label = event.type.replace("_", " ").upper()
             self.flashes.append((now + FLASH_SECONDS, event.type, label))
@@ -100,6 +109,9 @@ class FaceOverlay:
             _text(cv2, image, line, 12, y, color)
             y += 24
 
+        if self.gaze is not None and self.show_gaze:
+            self._draw_gaze(cv2, image, v, width, height)
+
         if self.aus is not None and self.show_aus:
             self._draw_aus(cv2, image, v, width, height)
 
@@ -140,3 +152,40 @@ class FaceOverlay:
                          WHITE, 1)
             label = f"{unit} {AU_DESCRIPTIONS.get(unit, '')}"
             _text(cv2, image, label, x + bar_w + 8, yy, WHITE if value is not None else GREY, 0.45)
+
+    # The gaze map: angle space from the PERSON's point of view (their left on the
+    # left, down is down) -- so looking at the screen's top-left corner puts the dot
+    # top-left. Blue box: screen zone; green: notes; the dot: gaze now.
+    MAP_YAW, MAP_PITCH = (-50.0, 50.0), (-40.0, 60.0)
+
+    def _draw_gaze(self, cv2: Any, image: Any, values: dict, width: int, height: int) -> None:
+        gaze = self.gaze
+        x0, y0, w, h = 12, 120, 210, 170
+        cv2.rectangle(image, (x0, y0), (x0 + w, y0 + h), (25, 25, 25), -1)
+
+        def to_px(yaw: float, pitch: float) -> tuple:
+            fx = (-yaw - self.MAP_YAW[0]) / (self.MAP_YAW[1] - self.MAP_YAW[0])   # yaw + = their left
+            fy = (pitch - self.MAP_PITCH[0]) / (self.MAP_PITCH[1] - self.MAP_PITCH[0])
+            return int(x0 + max(0, min(1, fx)) * w), int(y0 + max(0, min(1, fy)) * h)
+
+        mode = values.get("gaze_mode")
+        zones = gaze.zones.head if mode == 0 else gaze.zones.gaze
+        for rect, colour, name in ((zones.screen, (255, 140, 40), "screen"), (zones.notes, GREEN, "notes")):
+            if rect is None:
+                continue
+            a, b = to_px(rect.yaw_min, rect.pitch_min), to_px(rect.yaw_max, rect.pitch_max)
+            cv2.rectangle(image, a, b, colour, 2)
+            cv2.putText(image, name, (a[0] + 3, a[1] + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.4, colour, 1)
+        yaw, pitch = values.get("gaze_yaw"), values.get("gaze_pitch")
+        if yaw is not None and pitch is not None:
+            cv2.circle(image, to_px(yaw, pitch), 6, WHITE, -1)
+            cv2.circle(image, to_px(yaw, pitch), 6, BLACK, 1)
+        zone = values.get("gaze_zone") or "no_face"
+        away_s = values.get("away_s") or 0.0
+        on = away_s == 0.0          # the CONFIRMED state (with hysteresis), not this frame's zone
+        label = "ON WORK" if on else ("AWAY" + (f" {away_s:.0f}s" if away_s >= 1 else ""))
+        _text(cv2, image, label, x0, y0 - 34, GREEN if on else (60, 60, 255), 0.9)
+        mode_text = {1: "iris+head", 0: "head only"}.get(mode, "-")
+        extra = "" if gaze.zones.calibrated else "  UNCALIBRATED"
+        _text(cv2, image, f"{zone.replace('_', ' ')}  {mode_text}  conf {_fmt(values.get('gaze_confidence'))}"
+              f"{extra}   (G)", x0, y0 - 10, YELLOW if extra else GREY, 0.45)

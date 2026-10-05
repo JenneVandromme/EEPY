@@ -287,6 +287,11 @@ python -m eepy.perception.selftest    # guided, ~1 minute: blink, yawn, nod, loo
 
 It prints PASS or CHECK per step and how long each frame takes to analyse.
 
+**Gaze on the work area:** calibrate each person's screen and notes once
+(about a minute), then the preview shows ON WORK / AWAY:
+`python -m eepy.perception.calibrate_gaze --user P03`. Details:
+[`eepy/perception/gaze/README.md`](eepy/perception/gaze/README.md).
+
 **Optional: action units** (frown, squint, eyes closed, jaw drop... with
 Py-Feat). An extra install of ~3 GB (Python 3.11+, a GPU recommended), never
 required:
@@ -413,6 +418,7 @@ EEPY/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
+├── data/calibration/      # per-person gaze calibrations (gitignored; angles only)
 ├── docs/
 │   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
 │   ├── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel

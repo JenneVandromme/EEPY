@@ -118,7 +118,10 @@ python -m eepy.perception.selftest --camera robot
 ✅ As in step 3. If blinks are missed, look at the frame rate it reports: below
 about 15, blinks are too short to catch (see *How fast must the camera be?*).
 
-**6. Action units** (only with the optional extra): follow the tutorial in
+**6. Gaze:** follow the tutorial in
+[gaze/README.md](gaze/README.md#tutorial-test-it-about-5-minutes) (calibrate first).
+
+**7. Action units** (only with the optional extra): follow the tutorial in
 [aus/README.md](aus/README.md#tutorial-test-the-action-units-about-10-minutes).
 
 ## What the values mean
@@ -171,6 +174,14 @@ Logged as a `face_window` event. Each name ends in `_10s` or `_60s`.
 
 All shares are measured in **time**, not in frames, so a dip in frame rate
 doesn't skew them.
+
+## Gaze: on work or away
+
+Whether the student is looking at their **work** (screen, notes) or **away**,
+including a phone in the lap. The work area is **personal**: calibrate it with
+`python -m eepy.perception.calibrate_gaze`. The preview shows a small gaze map
+with ON WORK / AWAY. With the panel running, the robot also looks at where the
+student really sits. Everything, in plain words: **[gaze/README.md](gaze/README.md)**.
 
 ## Action units (optional)
 
@@ -307,6 +318,8 @@ pipeline.stop()
 | `model.py` | downloads and checks the model file |
 | `overlay.py`, `selftest.py`, `__main__.py` | preview drawing, the self-test, the vision process |
 | `aus/` | the optional action units (Py-Feat): see [aus/README.md](aus/README.md) |
+| `gaze/` | gaze on the work area, its calibration, and "look at user": see [gaze/README.md](gaze/README.md) |
+| `calibrate_gaze.py` | `python -m eepy.perception.calibrate_gaze`: learn one person's work area |
 | `bench_aus.py` | `python -m eepy.perception.bench_aus`: timings and a profile suggestion for this machine |
 
 Tests: `tests/test_perception.py` uses synthetic signals, so it needs no camera

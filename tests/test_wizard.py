@@ -574,3 +574,34 @@ def test_a_busy_camera_port_is_a_warning_not_a_crash(files):
             assert "camera relay could not start" in wizard.last_error["message"]
         finally:
             wizard.shutdown()
+
+
+def test_look_at_user_follows_the_face_the_vision_process_reports(files):
+    """The whole path: vision process -> relay (USER) -> panel -> a behaviour that
+    uses "look_at: user" aims where the face really is."""
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = Wizard(DryRunBackend, backend_name="dry", behaviors_dir=files["behaviors"],
+                    sounds_dir=files["sounds"], config_path=files["config"],
+                    session_log=SessionLog(data_dir=files["data"], repo_root=REPO),
+                    camera_relay=(port, 15))
+    client = RelayClient(port)
+    try:
+        default = wizard.player.targets.get("user")
+        client.send_user({"yaw": 14.0, "pitch": -4.0})           # face up and to the robot's left
+        assert wizard.camera_status()["tracking_user"]
+        target = wizard.player.targets.get("user")
+        assert (target.yaw, target.pitch) == (14.0, -4.0) != (default.yaw, default.pitch)
+        wizard.play("approving_nod", 1.0)                        # starts with glance_at_user
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and abs(wizard.player.pose.yaw - 14.0) > 0.5:
+            time.sleep(0.02)
+        assert wizard.player.pose.yaw == pytest.approx(14.0, abs=0.5)
+    finally:
+        client.close()
+        wizard.shutdown()

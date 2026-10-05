@@ -74,6 +74,12 @@ nod counts over the last 10 s and 60 s. Every column and field is explained in p
 words in [eepy/perception/README.md](../eepy/perception/README.md). Where
 `blink_confidence` is `low`, the camera was too slow to count blinks reliably.
 
+**Gaze**: `features.csv` also has `gaze_zone` (screen / notes / down_other / away /
+no_face), `gaze_on_work`, `gaze_confidence`, `gaze_mode` and `away_s`; the events
+`looked_away` / `back_on_work` mark each look-away, and `gaze_window` summarises 10 s /
+60 s. Check `gaze_calibrated` (or the `gaze_status` event): uncalibrated sessions used a
+default work area. See [eepy/perception/gaze/README.md](../eepy/perception/gaze/README.md).
+
 **Action units** (optional): `s.aus` has one row per result, timed to the frame it came
 from; `au_window` events hold their 10 s / 60 s averages and the cross-checks with the eye
 and yawn features. See [eepy/perception/aus/README.md](../eepy/perception/aus/README.md).

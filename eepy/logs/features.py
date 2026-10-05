@@ -86,6 +86,22 @@ class _SessionFollower:
         return self._session
 
 
+def current_session(data_dir: Path = DATA_DIR) -> Optional[Dict[str, Any]]:
+    """The session the panel is running right now, with its participant code, or
+    None. For the vision process, e.g. to load that participant's calibration:
+    {"session": "2026-10-06_P03_wizard", "folder": ..., "participant": "P03", ...}"""
+    pointer = _SessionFollower(Path(data_dir)).current()
+    if pointer is None:
+        return None
+    info = dict(pointer)
+    try:
+        meta = json.loads((Path(pointer["folder"]) / "meta.json").read_text())
+        info["participant"] = meta.get("participant")
+    except (OSError, ValueError):
+        info["participant"] = None
+    return info
+
+
 class FeatureStream:
     """A CSV of numeric features at a high rate, for the running session.
 

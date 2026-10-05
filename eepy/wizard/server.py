@@ -168,6 +168,15 @@ class Wizard:
         # The camera relay: the robot's camera and head pose, for the vision
         # process, on 127.0.0.1 only (eepy/camera/relay.py). (port, fps); None
         # in tests. A busy port is a warning, not a reason to refuse to start.
+        # "look_at: user" follows the real student when the vision process reports
+        # the face (relay USER message); otherwise the default from _blocks.yaml.
+        # One provider for the panel's lifetime, handed to every player it creates.
+        from eepy.behaviors.pose import Pose
+        from eepy.behaviors.targets import StaticTargetProvider, TrackingTargetProvider
+
+        self.user_target = TrackingTargetProvider(
+            StaticTargetProvider(lambda: self.library),
+            pose=lambda: self.player.pose if self.player is not None else Pose())
         self.camera_relay = None
         if camera_relay is not None:
             self._start_camera_relay(*camera_relay)
@@ -223,7 +232,8 @@ class Wizard:
             speaker = self.speaker_factory() if self.speaker_factory else None
             player = BehaviorPlayer(backend, behaviors_dir=self.behaviors_dir,
                                     sounds_dir=self.sounds_dir, speaker=speaker,
-                                    speech_callback=self.speech_callback)
+                                    speech_callback=self.speech_callback,
+                                    targets=self.user_target)
             unsubscribe = player.events.subscribe(self._on_event)
             player.start()
         except Exception as exc:  # noqa: BLE001 -- shown to the operator
@@ -463,7 +473,8 @@ class Wizard:
             return mini.media.get_frame_jpeg() if mini is not None else None
 
         relay = CameraRelay(port, frame_fn=frame, pose_fn=pose, fps=fps,
-                            label=lambda: "real" if self._robot_camera_client() is not None else None)
+                            label=lambda: "real" if self._robot_camera_client() is not None else None,
+                            user_fn=self.user_target.observe)
         try:
             self.camera_relay = relay.start()
         except RelayPortBusy as exc:
@@ -486,7 +497,8 @@ class Wizard:
         status = relay.status()
         return {"port": status["port"], "robot_camera": bool(status["camera"]),
                 "fps": status["fps"], "viewers": status["clients"], "error": status["error"],
-                "source": "robot" if self.backend_name == "real" else "laptop"}
+                "source": "robot" if self.backend_name == "real" else "laptop",
+                "tracking_user": self.user_target.tracking}
 
     def shutdown(self) -> None:
         self._watching = False

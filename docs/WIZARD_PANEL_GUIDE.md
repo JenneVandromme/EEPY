@@ -28,7 +28,13 @@ python -m eepy.perception
 ```
 
 Every 5 s it prints a line ending in `recording into <session>` while a session
-runs. If it says `no face`, check the person sits inside the camera's view
+runs, including the gaze zone, or `(uncalibrated)` when this participant's work area
+has not been calibrated yet. **Calibrate each participant before their first
+session**, in the vision terminal, at the desk they will use (about a minute):
+
+```bash
+python -m eepy.perception.calibrate_gaze --user P03
+``` If it says `no face`, check the person sits inside the camera's view
 (`python -m eepy.camera.preview`).
 
 ## Run a session

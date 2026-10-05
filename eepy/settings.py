@@ -75,6 +75,7 @@ class Settings(_Strict):
     camera: Optional[dict] = None
     perception: Optional[dict] = None
     aus: Optional[dict] = None
+    gaze: Optional[dict] = None
 
     @field_validator("camera")
     @classmethod
@@ -98,6 +99,18 @@ class Settings(_Strict):
     def _valid_aus(cls, value: Optional[dict]) -> Optional[dict]:
         from eepy.camera.config import CameraConfigError
         from eepy.perception.aus.config import parse
+
+        try:
+            parse(value)
+        except CameraConfigError as exc:
+            raise ValueError(str(exc)) from None
+        return value
+
+    @field_validator("gaze")
+    @classmethod
+    def _valid_gaze(cls, value: Optional[dict]) -> Optional[dict]:
+        from eepy.camera.config import CameraConfigError
+        from eepy.perception.gaze.config import parse
 
         try:
             parse(value)
@@ -173,7 +186,7 @@ def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None) -> Settin
             if err["type"] == "extra_forbidden":
                 known = ["mode", "data_dir", "participant_pattern", "privacy", "logging",
                          "store_raw_speech", "flush_seconds", "speech", "engine", "voice",
-                         "fallback", "fallback_voice", "output", "pregenerate", "camera", "perception", "aus"]
+                         "fallback", "fallback_voice", "output", "pregenerate", "camera", "perception", "aus", "gaze"]
                 match = difflib.get_close_matches(str(err["loc"][-1]), known, n=1)
                 hint = f' Did you mean "{match[0]}"?' if match else ""
                 lines.append(f'eepy.yaml: "{err["loc"][-1]}" is not a setting I know.{hint}')

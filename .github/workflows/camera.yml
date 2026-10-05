@@ -15,6 +15,7 @@ on:
       - "tests/test_camera.py"
       - "tests/test_perception.py"
       - "tests/test_aus.py"
+      - "tests/test_gaze.py"
       - "config/eepy.yaml"
       - "requirements-vision.txt"
       - "requirements-aus.txt"
@@ -27,6 +28,7 @@ on:
       - "tests/test_camera.py"
       - "tests/test_perception.py"
       - "tests/test_aus.py"
+      - "tests/test_gaze.py"
       - "config/eepy.yaml"
       - "requirements-vision.txt"
       - "requirements-aus.txt"
@@ -69,7 +71,7 @@ jobs:
       # Without requirements-aus.txt: the designers' laptops. The AU tests here
       # prove that everything runs with action units switched off.
       - name: Camera and face-feature tests (action units NOT installed)
-        run: python -m pytest tests/test_camera.py tests/test_perception.py tests/test_aus.py -q
+        run: python -m pytest tests/test_camera.py tests/test_perception.py tests/test_aus.py tests/test_gaze.py -q
 
   # The optional action units, for real: Py-Feat and its model on the CPU (the
   # runners have no GPU, so CUDA and Apple's MPS are checked with bench_aus on

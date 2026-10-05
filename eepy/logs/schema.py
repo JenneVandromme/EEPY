@@ -124,6 +124,16 @@ EVENT_TYPES: Dict[str, EventType] = {
     "au_status": EventType("face", ("status",),
                            "Action units (Py-Feat, optional) changed state: starting, loading, "
                            "running, paused (too slow) or off -- with the device, profile and why."),
+    "looked_away": EventType("face", ("zone",),
+                             "The person stopped looking at their work (screen/notes) -- "
+                             "t is when it started; zone: away, down_other or no_face."),
+    "back_on_work": EventType("face", ("away_seconds",),
+                              "The person looks at their work again, after away_seconds."),
+    "gaze_window": EventType("face", (),
+                             "About once a second: looking-away ratio, away episodes and "
+                             "durations, zone shares, over 10 s / 60 s."),
+    "gaze_status": EventType("face", ("calibrated",),
+                             "Which gaze calibration is in use (user, camera setup), or none."),
     "au_window": EventType("face", (),
                            "About once a second: per action unit its mean and share of time "
                            "active over 10 s / 60 s, the achieved rate, and cross-checks with "
