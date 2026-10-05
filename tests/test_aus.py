@@ -206,19 +206,28 @@ def test_the_real_extra_is_detected_correctly():
 
 
 def test_the_face_loop_is_never_blocked_by_a_slow_model():
+    # Timing is measured, not assumed: CI machines (GitHub's macOS runners above
+    # all) sleep much longer than asked, so "45 frames = 3 s" does not hold there.
     detector = MockDetector(delay=0.3)
     au = make(detector)
     assert wait_until(lambda: au.status == "running")
     worst = 0.0
-    for index in range(1, 46):                         # 3 s of frames at 15 fps
+    started = time.monotonic()
+    frames = 45
+    for index in range(1, frames + 1):                 # ~15 fps
         start = time.perf_counter()
         au.update(face(index), BASE)
         worst = max(worst, time.perf_counter() - start)
         time.sleep(1 / 15)
+    elapsed = time.monotonic() - started
     au.close()
-    assert worst < 0.01                                # never waits for the 300 ms model
-    assert 5 <= len(detector.seen) <= 12               # ~3 s / 0.3 s: frames were SKIPPED...
-    assert detector.seen == sorted(detector.seen)      # ...always moving on to newer ones
+    assert worst < 0.02                                # never waits for the 300 ms model
+    # The model can finish at most one face per 0.3 s, so most faces were SKIPPED,
+    # never queued up...
+    assert len(detector.seen) <= elapsed / 0.3 + 2
+    assert len(detector.seen) < frames / 2
+    # ...always moving on to the newest face.
+    assert detector.seen == sorted(set(detector.seen))
     assert detector.closed
 
 
@@ -226,28 +235,36 @@ def test_results_are_not_more_frequent_than_max_rate():
     detector = MockDetector(delay=0.0)
     au = make(detector, max_rate=10.0)
     assert wait_until(lambda: au.status == "running")
-    end = time.monotonic() + 2.0
+    started = time.monotonic()
     index = 0
-    while time.monotonic() < end:
+    while time.monotonic() < started + 2.0:
         index += 1
         au.update(face(index, t=time.monotonic()), BASE)
-        time.sleep(0.005)                              # a 200-fps camera
+        time.sleep(0.005)                              # a fast camera (slower on CI: measured)
+    elapsed = time.monotonic() - started
     au.close()
-    assert 14 <= len(detector.seen) <= 22              # ~10/s over 2 s, not 200/s
+    offered = index / elapsed
+    assert len(detector.seen) <= 10 * elapsed + 2      # never above max_rate...
+    if offered > 15:                                   # ...and close to it when faces are plentiful
+        assert len(detector.seen) >= 0.6 * 10 * elapsed
 
 
-def test_a_fast_machine_reaches_a_high_rate():
+def test_a_fast_machine_keeps_up_with_every_face_offered():
+    # A fast model is limited only by how many faces arrive (and max_rate). How
+    # many arrive depends on the machine running the test, so it is measured.
     au = make(MockDetector(delay=0.001), max_rate=40.0)
     assert wait_until(lambda: au.status == "running")
-    end = time.monotonic() + 1.5
+    started = time.monotonic()
     index = 0
-    while time.monotonic() < end:
+    while time.monotonic() < started + 1.5:
         index += 1
         au.update(face(index, t=time.monotonic()), BASE)
         time.sleep(0.01)
+    offered = index / (time.monotonic() - started)
     rate = au.achieved_rate()
     au.close()
-    assert rate >= 25
+    assert rate >= 0.7 * min(offered, 40.0)
+    assert rate <= 40.0 * 1.15
 
 
 def test_too_slow_pauses_the_aus_and_then_retries():
