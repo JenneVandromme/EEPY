@@ -120,6 +120,7 @@
     <span class="pill" id="mode" title="the experimental condition">mode: <b>…</b></span>
     <span class="pill">playing: <b id="playing">—</b></span>
     <span class="pill">idle: <b id="idle">—</b></span>
+    <span class="pill" id="camera" hidden><span class="dot"></span><span>camera</span></span>
     <span class="spacer"></span>
     <button class="small" id="reload" tabindex="-1">Reload files</button>
     <button class="small" id="reconnect" tabindex="-1">Reconnect robot</button>
@@ -307,8 +308,37 @@ function renderStatus(s) {
     $("error-time").textContent = s.last_error.wall.slice(11, 19);
   } else e.hidden = true;
 
+  renderCamera(s.camera);
   renderSession(s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
+}
+
+// The camera pill: what the vision process gets from this panel (eepy/camera/relay.py).
+function renderCamera(c) {
+  const pill = $("camera");
+  pill.hidden = !c;
+  if (!c) return;
+  const watching = c.viewers > 0 ? `${c.viewers} vision program${c.viewers > 1 ? "s" : ""} connected`
+                                 : "no vision program connected yet";
+  let text, cls = "", dot = "dot", tip;
+  if (c.source === "robot") {
+    if (c.robot_camera && c.fps > 0) { text = `camera: robot · ${c.fps} fps`; dot += " ok"; }
+    else if (c.robot_camera) { text = c.viewers ? "camera: robot · waiting for pictures" : "camera: robot · ready"; }
+    else { text = "camera: robot · not connected"; cls = " amber"; }
+    if (c.error) { text = "camera: robot · problem"; cls = " amber"; }
+    tip = `The robot's camera, served to the vision process on this computer only (port ${c.port}). ${watching}.`
+        + (c.error ? `\nLast problem: ${c.error}` : "")
+        + "\nSee it:  python -m eepy.camera.preview   (in .venv-vision)";
+  } else {
+    text = "camera: laptop"; if (c.viewers) dot += " ok";
+    tip = `With the ${state.status.backend} backend the LAPTOP camera stands in for the robot's; the blue box `
+        + `in the preview follows the robot's head (sent on port ${c.port}). ${watching}.`
+        + "\nSee it:  python -m eepy.camera.preview   (in .venv-vision)";
+  }
+  pill.className = "pill" + cls;
+  pill.title = tip;
+  pill.querySelector(".dot").className = dot;
+  pill.querySelector("span:last-child").textContent = text;
 }
 
 function renderSession(se) {

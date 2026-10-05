@@ -41,6 +41,7 @@ from.
 | `server.py` | `Wizard` (owns the player, session and state — no web code) and the web routes. |
 | `config.py` | Reads and checks `config/wizard_panel.yaml`; builds the buttons from it. |
 | `static/index.html` | The whole page: one file, plain HTML, CSS and JavaScript. |
+| `eepy/camera/relay.py` | Started by `Wizard`: hands the robot's camera and head pose to the vision process, on 127.0.0.1 only (port `camera.relay_port`, 8766). Shown as the **camera** pill in the header. See [eepy/camera/README.md](../camera/README.md). |
 | `config/wizard_panel.yaml` | Keys, markers, default intensity, idle — editable by designers. |
 
 ## The main decisions, and why

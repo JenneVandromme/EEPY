@@ -256,6 +256,28 @@ another browser tab) may already be using the camera — close it and try
 again. If you have more than one camera, try `python vision/test_camera.py
 --camera 1`.
 
+### See what EEPY's camera sees
+
+```bash
+source .venv-vision/bin/activate      # Windows: .venv-vision\Scripts\Activate.ps1
+python -m eepy.camera.list            # which cameras are there?
+python -m eepy.camera.preview         # live view: Q or Esc to stop
+```
+
+With the simulator or the dry run, your **laptop camera** stands in for the
+robot's. The **blue box** shows what the robot sees: only that part goes to
+perception, so sit well inside it. With the Wizard panel running, the box
+follows the robot's head. With `--backend real`, the preview shows the
+**robot's own camera** instead. Nothing is recorded.
+
+On macOS, the first run needs camera permission for your terminal or editor:
+System Settings → Privacy & Security → Camera, switch it on, then **quit and
+reopen** that app. Everything else (wrong camera, "in use", robot camera,
+settings) is in [`eepy/camera/README.md`](eepy/camera/README.md).
+
+**Testing the camera properly?** Follow the step-by-step tutorial for macOS,
+Windows and Linux: [eepy/camera/README.md → Tutorial: test everything](eepy/camera/README.md#tutorial-test-everything-about-15-minutes).
+
 ### Test the robot connection
 
 This needs **two terminals at once**: one running the robot's "daemon"
@@ -364,8 +386,9 @@ EEPY/
 ├── eepy/wizard/           # the Wizard-of-Oz control panel — how it works: eepy/wizard/README.md
 ├── eepy/logs/             # recording and loading session data — how it works: eepy/logs/README.md
 ├── eepy/speech/           # the robot's voice (text-to-speech) — how it works: eepy/speech/README.md
+├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
 ├── config/
-│   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy
+│   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── docs/
@@ -380,7 +403,8 @@ EEPY/
 ```
 
 As real detection and movement logic gets built, it goes in `vision/` and
-`robot/` respectively. Any script in `robot/` that sends a movement to the
+`robot/` respectively. Perception gets its frames from `eepy.camera` (`open_camera()`),
+not by opening a camera itself — see [eepy/camera/README.md](eepy/camera/README.md). Any script in `robot/` that sends a movement to the
 robot should pass it through `robot/safety_limits.py`'s `enforce()` first —
 it's what keeps a bug in our code from trying to twist a joint past what the
 hardware can actually do.
@@ -401,6 +425,7 @@ head can physically reach a pose and how fast it moves. Details in
 | edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
 | find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
+| check the camera, or work on perception | [eepy/camera/README.md](eepy/camera/README.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |

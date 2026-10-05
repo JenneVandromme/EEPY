@@ -90,6 +90,7 @@ The markers are the ground truth the HMM learns from, so:
 | The robot's voice sounds different from usual | The chosen voice is not downloaded on this computer, so it fell back to the computer's own voice. See the README, Step 3. |
 | Page is completely white | You reached a different program. Use the exact address the panel printed (`127.0.0.1`, not `localhost`). |
 | "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
+| Amber **camera** pill, or "camera relay could not start" | The vision process gets no robot camera or head position from the panel. Hover over the pill for the reason; usually a second panel is running. Driving the robot is unaffected. |
 | Laptop cannot open the address | Same Wi-Fi as the desktop? On the desktop, allow "Python" when macOS asks about incoming connections. |
 
 **To stop the panel:** press **Ctrl+C** in its terminal. It ends any running

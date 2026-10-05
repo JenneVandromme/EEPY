@@ -56,3 +56,42 @@ speech:
   # Generate every fixed line in lines.yaml ahead of time, so it starts
   # instantly. Lines are regenerated automatically when lines.yaml changes.
   pregenerate: true
+
+# The camera that feeds perception. Try your setup with:
+#     python -m eepy.camera.preview
+# Frames are never saved, logged or sent anywhere: only statistics are logged.
+camera:
+  # auto    the robot's camera with --backend real, else this laptop's camera
+  # robot   always the robot's camera (needs the panel, or eepy.camera.relay)
+  # laptop  always this laptop's camera
+  # fake    moving test pattern, no camera needed
+  source: auto
+  # Frames per second handed to perception, from EITHER camera. The robot's
+  # camera manages about 15, so the laptop camera is held to the same rate:
+  # what perception sees in the simulator then matches the real robot.
+  fps: 15
+  # How often frame-rate, latency and dropped-frame statistics are logged.
+  stats_seconds: 10
+  # The robot's camera reaches perception over this port, on this computer
+  # only (127.0.0.1). Change it only if another program already uses it.
+  relay_port: 8766
+  # Seconds between attempts when a camera disappears.
+  reconnect_seconds: 2
+
+  laptop:
+    # Which camera: auto = the first one that works, or a number (0, 1, ...).
+    # See them all with:  python -m eepy.camera.list
+    index: auto
+    resolution: [1280, 720]
+    # How wide this webcam sees, in degrees. 78 is typical for a laptop.
+    fov_deg: 78
+
+  # What the robot sees. With the laptop camera, this sets the BLUE BOX: only
+  # what is inside it goes to perception, as if the robot's camera had taken it.
+  robot:
+    # The robot's stream, ~720p. Also sets the blue box's shape (16:9).
+    resolution: [1280, 720]
+    # How wide the robot sees, in degrees: sets the blue box's width
+    # (box width = laptop width x 50 / 78). 50 is the value the BURTRAM project
+    # uses; the lens's own calibration says ~87, wider than most laptop cameras.
+    fov_deg: 50

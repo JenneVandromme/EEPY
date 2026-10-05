@@ -53,6 +53,18 @@ class Speech(_Strict):
     pregenerate: bool = True
 
 
+def _check_camera(value: object) -> object:
+    """The camera section is checked by eepy/camera/config.py, which the
+    vision process (no pydantic) uses too -- one set of rules, two readers."""
+    from eepy.camera.config import CameraConfigError, parse
+
+    try:
+        parse(value)  # type: ignore[arg-type]
+    except CameraConfigError as exc:
+        raise ValueError(str(exc)) from None
+    return value
+
+
 class Settings(_Strict):
     mode: str = "wizard"
     data_dir: str = "data/sessions"
@@ -60,6 +72,19 @@ class Settings(_Strict):
     privacy: Privacy = Field(default_factory=Privacy)
     logging: Logging = Field(default_factory=Logging)
     speech: Speech = Field(default_factory=Speech)
+    camera: Optional[dict] = None
+
+    @field_validator("camera")
+    @classmethod
+    def _valid_camera(cls, value: Optional[dict]) -> Optional[dict]:
+        return _check_camera(value)  # type: ignore[return-value]
+
+    @property
+    def camera_config(self):
+        """The camera settings, as eepy.camera.config.CameraConfig."""
+        from eepy.camera.config import parse
+
+        return parse(self.camera)
 
     @field_validator("mode")
     @classmethod
@@ -115,7 +140,7 @@ def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None) -> Settin
             if err["type"] == "extra_forbidden":
                 known = ["mode", "data_dir", "participant_pattern", "privacy", "logging",
                          "store_raw_speech", "flush_seconds", "speech", "engine", "voice",
-                         "fallback", "fallback_voice", "output", "pregenerate"]
+                         "fallback", "fallback_voice", "output", "pregenerate", "camera"]
                 match = difflib.get_close_matches(str(err["loc"][-1]), known, n=1)
                 hint = f' Did you mean "{match[0]}"?' if match else ""
                 lines.append(f'eepy.yaml: "{err["loc"][-1]}" is not a setting I know.{hint}')

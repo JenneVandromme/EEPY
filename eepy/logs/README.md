@@ -52,7 +52,7 @@ The "stdlib" column is a hard rule, not an accident — see roadblock 1.
 
 ## The event schema
 
-All event types live in `schema.py`, in four groups plus reserved ones:
+All event types live in `schema.py`, in these groups plus reserved ones:
 
 | Group | Types |
 |---|---|
@@ -61,6 +61,7 @@ All event types live in `schema.py`, in four groups plus reserved ones:
 | Speech | `speech_requested`, `speech_started`, `speech_finished`, `speech_interrupted`, `speech_failed` |
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
+| Camera | `camera_started`, `camera_error`, `camera_reconnected`, `camera_stats` — statistics only, never pixels; written by the vision process to `events.vision.jsonl` (see [eepy/camera/README.md](../camera/README.md)) |
 | **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |
 
 Every line in `events.jsonl` carries `v` (schema version), `seq` (1, 2, 3 …),

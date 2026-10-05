@@ -12,7 +12,7 @@ data/sessions/
     events.jsonl                everything that happened, one line per event
     features.csv                what the camera measured, ~15 rows a second (once perception runs)
     features.json               which columns features.csv has
-    events.vision.jsonl         events from the vision process (once perception runs)
+    events.vision.jsonl         events from the vision process: camera status and statistics
     snapshot/                   the exact behaviour and config files used
 ```
 
@@ -64,6 +64,11 @@ words, which engine spoke them, and `latency_ms`; `speech_interrupted` and
 `speech_failed` say when words were cut off or never came out. These are the
 robot's words, not the participant's.
 
+`events.vision.jsonl` holds the camera's health: `camera_stats` every 10 s (frames per
+second, `latency_ms`, `dropped` frames), plus `camera_error` / `camera_reconnected`
+when the camera dropped out. Check these before trusting a stretch of features:
+a gap in the camera is a gap in what perception could see.
+
 `source` says who caused something: `wizard` (the operator), `auto` (the
 autonomous system, once it exists), `idle`, `system`, or `perception`.
 
@@ -75,7 +80,7 @@ autonomous system, once it exists), `idle`, `system`, or `perception`.
 - **Nothing in `data/` ever goes into git.** It is ignored on purpose. Share
   sessions through the team's agreed storage, not GitHub.
 - **No images, audio or video are ever logged** — only what was detected in
-  them. The logger refuses raw image or audio data outright.
+  them, and camera statistics. The logger refuses raw image or audio data outright.
 - **Nothing is recorded outside a session.** The camera's features are thrown
   away unless a session is running.
 - **Notes are part of the data.** Write what you observed, not opinions about
