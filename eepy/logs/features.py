@@ -148,6 +148,11 @@ class FeatureStream:
             self._rows += 1
             return True
 
+    @property
+    def session(self) -> Optional[str]:
+        """The session rows are going into right now, or None (rows are dropped)."""
+        return self._session
+
     def close(self) -> None:
         with self._lock:
             self._stop()

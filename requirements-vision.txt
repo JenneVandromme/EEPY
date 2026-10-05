@@ -4,6 +4,10 @@
 # together, not installed separately.
 numpy<2
 opencv-python
+# 0.10.14 on purpose: the newest MediaPipe with wheels for Python 3.9-3.12 on
+# Intel AND Apple-Silicon Macs, Windows and Linux. 0.10.30+ drops Intel Macs
+# and removes the old mp.solutions API. EEPY uses only the newer Tasks API
+# (eepy/perception/), so upgrading later is a one-line change here.
 mediapipe==0.10.14
 scipy
 # Reads the camera: section of config/eepy.yaml (eepy/camera/config.py).

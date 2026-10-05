@@ -58,7 +58,11 @@ python -m eepy.camera.preview
 ```
 
 Sit so that your face is **well inside the blue box**. The small picture in the
-top-right corner is exactly what perception receives. Press **Q** or **Esc**
+top-right corner is exactly what perception receives. In the vision
+environment the preview also shows the **face features** (eye and mouth
+openness, head angles, a flash on blinks, yawns and nods; **L** toggles the
+landmarks, `--no-face` turns them off): see
+[eepy/perception/README.md](../perception/README.md). Press **Q** or **Esc**
 (or close the window) to stop.
 
 To make the box follow the robot's head, start the Wizard panel in a second

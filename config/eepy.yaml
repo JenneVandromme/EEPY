@@ -95,3 +95,41 @@ camera:
     # (box width = laptop width x 50 / 78). 50 is the value the BURTRAM project
     # uses; the lens's own calibration says ~87, wider than most laptop cameras.
     fov_deg: 50
+
+# Face features from the camera (eepy/perception/). What each value means:
+# eepy/perception/README.md. Try changes with:  python -m eepy.camera.preview
+# Thresholds marked "baseline" are relative to the person's normal face; until
+# per-person calibration exists (A12), the defaults below stand in for it.
+perception:
+  # Window lengths for the per-second summaries (PERCLOS, blink rate, ...).
+  window_seconds_short: 10
+  window_seconds_long: 60
+  # Below this many frames per second, blinks are too short to catch reliably:
+  # blink figures are then marked low-confidence.
+  min_blink_fps: 15
+  # Head turned further than this from straight ahead counts as looking away.
+  look_away_deg: 30
+
+  eyes:
+    ear_open: 0.28        # baseline: eye openness (EAR) of an open eye
+    ear_floor: 0.05       # eye openness of a fully closed eye
+    perclos_closure: 0.8  # "closed" for PERCLOS: 80 % shut (the standard P80)
+  blink:
+    close: 0.5            # eye 50 % shut: a blink starts
+    open: 0.35            # back under 35 % shut: it ends
+    min_ms: 50            # shorter is noise
+    long_ms: 500          # longer counts as a LONG blink (drowsiness)
+  yawn:
+    jaw_open: 0.5         # how far the jaw must drop (0-1)
+    mar: 0.45             # mouth opening (MAR) above the closed-mouth baseline
+    min_seconds: 1.5      # held at least this long: talking does not count
+    gap_seconds: 0.3      # brief dips shorter than this do not break a yawn
+  nod:
+    drop_deg: 12          # head drops at least this far (chin down)...
+    drop_seconds: 1.5     # ...within this time...
+    recover_fraction: 0.6 # ...and comes back at least 60 % of the way...
+    recover_seconds: 3.0  # ...within this time: "nodding off"
+    median_seconds: 5     # the head's usual position = median over this long
+  face:
+    lost_seconds: 1.0     # no face this long: "face lost" (left the desk, turned away)
+    back_seconds: 0.5     # face seen this long again: "face back"

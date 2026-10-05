@@ -18,6 +18,19 @@ laptops can have it open at once — they all show the same thing.
 Check the top bar: a **green dot** means the robot is connected. Red means it
 is not — see "If something goes wrong".
 
+**Record the face features too** (blinks, yawns, PERCLOS, …). In a second
+terminal, start the vision process; it records into whatever session the
+panel runs:
+
+```bash
+source .venv-vision/bin/activate          # Windows: .venv-vision\Scripts\Activate.ps1
+python -m eepy.perception
+```
+
+Every 5 s it prints a line ending in `recording into <session>` while a session
+runs. If it says `no face`, check the person sits inside the camera's view
+(`python -m eepy.camera.preview`).
+
 ## Run a session
 
 1. Type the **participant code** (e.g. `P03` — always the code, never a name;

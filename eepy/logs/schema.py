@@ -109,6 +109,19 @@ EVENT_TYPES: Dict[str, EventType] = {
                               "stay real-time, and latency_ms (capture to use) once "
                               "something consumes the frames."),
 
+    # --- the face (eepy/perception/): detected over time, from landmarks ---------------
+    "blink": EventType("face", ("duration_ms",),
+                       "A blink began; `long` when it lasted longer than blink.long_ms."),
+    "yawn": EventType("face", ("duration_s",), "A yawn began: the mouth held wide open."),
+    "nod": EventType("face", ("depth_deg",),
+                     "The head dropped (chin down) and came back up: nodding off."),
+    "face_lost": EventType("face", (), "No face for a while: left the desk or turned away."),
+    "face_back": EventType("face", ("away_seconds",), "The face is seen again."),
+    "face_window": EventType("face", (),
+                             "About once a second: PERCLOS, blink rate, yawns, nods, "
+                             "looking away ... over the last 10 s and 60 s (suffix _10s, "
+                             "_60s). See eepy/perception/README.md."),
+
     # --- reserved for later tasks: defined now so the format is settled ---------------
     "hmm_belief": EventType("model", ("probs", "most_likely"),
                             "The HMM's belief over hidden states, e.g. "

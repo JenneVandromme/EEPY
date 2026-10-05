@@ -12,6 +12,11 @@ robot's head. A small copy of the robot's view sits in the corner.
 
 With the ROBOT camera it shows the robot's picture as it is.
 
+FACE FEATURES (eepy/perception, needs MediaPipe -- .venv-vision): the face's
+landmarks, eye and mouth openness, head angles, and a flash when a blink, yawn
+or nod is detected. L toggles the landmarks; --no-face turns it all off. What
+the values mean: eepy/perception/README.md.
+
 Press Q or Esc (or close the window) to stop. Nothing is recorded or saved.
 Run it in .venv-vision.
 """
@@ -84,12 +89,26 @@ def _draw(cv2: Any, frame: Any, fps: float, camera: Any) -> Any:
     return image
 
 
+def _face_pipeline(camera: Any) -> Any:
+    """(FacePipeline, FaceOverlay), or (None, None) where MediaPipe is missing."""
+    try:
+        import mediapipe  # noqa: F401
+    except ImportError:
+        print("  (Face features need MediaPipe -- run this in .venv-vision. Showing the camera only.)")
+        return None, None
+    from eepy.perception import FacePipeline, load_config
+    from eepy.perception.overlay import FaceOverlay
+
+    return FacePipeline(camera, load_config()), FaceOverlay()
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m eepy.camera.preview",
                                      description="Show what EEPY's camera sees. Nothing is recorded.")
     parser.add_argument("--camera", choices=("auto", "robot", "laptop", "fake"),
                         help="which camera (default: camera.source in config/eepy.yaml)")
     parser.add_argument("--index", type=int, help="laptop camera number (see python -m eepy.camera.list)")
+    parser.add_argument("--no-face", action="store_true", help="camera only, no face features")
     parser.add_argument("--seconds", type=float, default=0,
                         help="stop by itself after this many seconds (default: run until Q)")
     args = parser.parse_args(argv)
@@ -117,19 +136,33 @@ def main(argv: Optional[List[str]] = None) -> int:
               "      pip uninstall -y opencv-python-headless && pip install opencv-python", file=sys.stderr)
         return 2
 
+    pipeline, overlay = (None, None) if args.no_face else _face_pipeline(camera)
     print(f"\n  Opening the {camera.describe()}... Press Q or Esc in the window to stop.")
-    camera.start()
+    (pipeline or camera).start()
     started = time.monotonic()
-    frame, fps, last_shown, sized = None, 0.0, None, False
+    frame, result, fps, last_shown, sized = None, None, 0.0, None, False
     try:
         while True:
-            newest = camera.wait_for_frame(newer_than=frame, timeout=0.1)
+            if pipeline is not None and pipeline.error:
+                print(f"\n  Face features are off: {pipeline.error}", file=sys.stderr)
+                pipeline, overlay = None, None
+            if pipeline is not None:
+                newest_result = pipeline.wait_for_result(newer_than=result, timeout=0.1)
+                newest = newest_result.observation.frame if newest_result is not None else None
+                if newest_result is not None:
+                    result = newest_result
+                    overlay.note(result)
+            else:
+                newest = camera.wait_for_frame(newer_than=frame, timeout=0.1)
             if newest is not None:
                 now = time.monotonic()
                 if last_shown is not None:
                     fps = 0.85 * fps + 0.15 / max(now - last_shown, 1e-3) if fps else 1 / max(now - last_shown, 1e-3)
                 frame, last_shown = newest, now
                 image = _draw(cv2, frame, fps, camera)
+                if overlay is not None and result is not None:
+                    offset = (frame.box.x, frame.box.y) if frame.full is not None and frame.box else (0, 0)
+                    overlay.draw(cv2, image, result, offset)
                 if not sized:
                     cv2.resizeWindow(WINDOW, min(image.shape[1], 1280), min(image.shape[0], 800))
                     sized = True
@@ -139,6 +172,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), ord("Q"), 27):
                 break
+            if overlay is not None:
+                overlay.key(key)
             if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
                 break   # the window was closed
             if args.seconds and time.monotonic() - started > args.seconds:
@@ -146,6 +181,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if pipeline is not None:
+            pipeline.stop()
         camera.stop()
         cv2.destroyAllWindows()
         cv2.waitKey(1)
