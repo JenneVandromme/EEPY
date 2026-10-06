@@ -74,6 +74,13 @@ nod counts over the last 10 s and 60 s. Every column and field is explained in p
 words in [eepy/perception/README.md](../eepy/perception/README.md). Where
 `blink_confidence` is `low`, the camera was too slow to count blinks reliably.
 
+**Calibration**: `meta.json` has a `calibration` summary (new / reused / skipped /
+failed), and `events.vision.jsonl` the full `calibration` event (baseline values, quality
+checks). `features.csv` has `calibrated` (1/0) and the normalised columns `ear_rel`,
+`mar_rel`, `head_*_rel`, `face_size_rel`; `face_window` has `blink_rate_rel` and
+`blink_mean_ms_rel`. **Use the normalised ones to compare people**, and check
+`calibrated`. See [eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md).
+
 **Gaze**: `features.csv` also has `gaze_zone` (screen / notes / down_other / away /
 no_face), `gaze_on_work`, `gaze_confidence`, `gaze_mode` and `away_s`; the events
 `looked_away` / `back_on_work` mark each look-away, and `gaze_window` summarises 10 s /

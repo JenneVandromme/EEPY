@@ -16,6 +16,8 @@ Per window (suffix _10s / _60s in the event log):
     face_absent_ratio  share of the time with no face
     fps                frames per second actually processed
     blink_confidence   "ok", or "low" below ~min_blink_fps (blink figures unreliable)
+    blink_rate_rel     blink rate / the person's usual rate (A12 baseline; else None)
+    blink_mean_ms_rel  mean blink duration / their usual duration
     coverage_s         seconds of data actually in the window (less at start-up)
 """
 
@@ -61,6 +63,7 @@ class WindowAggregator:
             closed=present and closure is not None and closure >= self.config.get("eyes", "perclos_closure"),
             away=present and yaw is not None and abs(yaw - baseline.yaw0) > self.config.get("", "look_away_deg"),
             pitch=pitch if present else None)
+        self._baseline = baseline
         if self._samples:
             last = self._samples[-1]
             last.weight = max(0.0, min(t - last.t, MAX_WEIGHT))
@@ -122,4 +125,19 @@ class WindowAggregator:
             # 10 % slack: a camera set to 15 fps measures 14.8-15.1.
             "blink_confidence": "ok" if fps >= 0.9 * self.config.get("", "min_blink_fps") else "low",
             "coverage_s": round(total, 1),
+            **self._relative(blinks, present_time, enough_face),
         }
+
+    def _relative(self, blinks: List[FaceEvent], present_time: float, enough_face: bool) -> Dict[str, Any]:
+        """Blink rate and duration relative to the person's own (A12): 1.5 = 50 % more
+        than usual. None without a calibrated baseline."""
+        base: Optional[Baseline] = getattr(self, "_baseline", None)
+        out: Dict[str, Any] = {"blink_rate_rel": None, "blink_mean_ms_rel": None}
+        if base is None or not base.calibrated:
+            return out
+        if base.blink_rate and enough_face:
+            out["blink_rate_rel"] = round((len(blinks) / (present_time / 60)) / base.blink_rate, 3)
+        if base.blink_ms and blinks:
+            mean = sum(e.fields["duration_ms"] for e in blinks) / len(blinks)
+            out["blink_mean_ms_rel"] = round(mean / base.blink_ms, 3)
+        return out

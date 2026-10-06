@@ -26,7 +26,13 @@ In the **vision** terminal (`source .venv-vision/bin/activate`, Windows:
 python -m eepy.perception.calibrate_gaze --user P03
 ```
 
-1. **Sit exactly as you'll work**, with your notes where they'll lie.
+This is the gaze part of the full two-minute calibration
+(`python -m eepy.perception.calibrate`, or the Wizard panel's **Calibration** card,
+see [../calibration/README.md](../calibration/README.md)). That's what you
+normally use; this command runs only the gaze part.
+
+1. **Sit exactly as you'll work**, with your notes where they'll lie. A short face
+   check comes first (in view, close enough, enough light).
 2. The screen turns black and shows a **dot**. Look at it until it turns
    **green**. It goes to the centre, then the four corners.
 3. Then **look at your notes**, first the middle, then the far edge. You can't

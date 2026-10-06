@@ -38,6 +38,8 @@
   .pill.rec { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.amber { background: var(--warn); color: #fff; font-weight: 600; }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
+  .calbar { display: inline-block; width: 160px; height: 10px; border: 1px solid var(--muted); border-radius: 5px; overflow: hidden; }
+  .calbar > span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
   @keyframes blink { 50% { opacity: .25; } }
   .muted { color: var(--muted); }
   .spacer { flex: 1; }
@@ -126,6 +128,7 @@
     <button class="small" id="reconnect" tabindex="-1">Reconnect robot</button>
   </div>
   <div class="row session" id="session-row"></div>
+  <div class="row calib" id="calib-row" hidden></div>
   <div id="error" class="error" hidden>
     <b>Last problem</b> <span class="muted" id="error-time"></span>
     <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
@@ -310,6 +313,7 @@ function renderStatus(s) {
 
   renderCamera(s.camera);
   renderSession(s.session);
+  renderCalibration(s.calibration, s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
 }
 
@@ -339,6 +343,51 @@ function renderCamera(c) {
   pill.title = tip;
   pill.querySelector(".dot").className = dot;
   pill.querySelector("span:last-child").textContent = text;
+}
+
+// The calibration step of a session (A12): it runs in the vision process
+// (python -m eepy.perception), which has the camera; this card starts it and shows
+// its progress. See eepy/perception/calibration/README.md.
+function renderCalibration(c, se) {
+  const row = $("calib-row");
+  row.hidden = !(se && se.active && c && c.state !== "none");
+  if (row.hidden) { row.dataset.state = ""; return; }
+  const waiting = !c.vision_connected;
+  const key = [c.state, waiting, !!c.reuse].join("|");
+  if (row.dataset.state !== key) {
+    row.dataset.state = key;
+    const reuse = c.reuse ? `<button class="small" id="cal-reuse" tabindex="-1"
+        title="taken ${escapeHtml(c.reuse.taken_at)}">Reuse (${Math.round(c.reuse.age_days)} d old${c.reuse.late_evening ? ", late evening!" : ""})</button>` : "";
+    const busy = ["requested", "running"].includes(c.state);
+    row.innerHTML = `<span class="pill" id="cal-pill"><span class="dot"></span><span id="cal-text"></span></span>
+      <span class="calbar" ${busy ? "" : "hidden"}><span id="cal-fill"></span></span>
+      <span class="muted" id="cal-msg"></span><span class="spacer"></span>
+      ${busy ? `<button class="small" id="cal-stop" tabindex="-1">Stop</button>`
+             : `<button class="small" id="cal-go" tabindex="-1">${c.state === "pending" || c.state === "skipped" ? "Calibrate" : "Calibrate again"}</button>
+                ${c.state === "pending" ? reuse : ""}
+                ${c.state === "pending" ? `<button class="small" id="cal-skip" tabindex="-1">Skip</button>` : ""}`}`;
+    const send = (action, extra) => post("/api/calibration", Object.assign({ action }, extra || {}));
+    if ($("cal-go")) $("cal-go").onclick = () => send("calibrate");
+    if ($("cal-reuse")) $("cal-reuse").onclick = () => send("reuse");
+    if ($("cal-stop")) $("cal-stop").onclick = () => send("stop");
+    if ($("cal-skip")) $("cal-skip").onclick = () => {
+      const reason = prompt("Skip the calibration? Why (logged with the session)?", "");
+      if (reason !== null) send("skip", { reason });
+    };
+  }
+  const labels = { pending: "calibration: not done yet", requested: "calibration: starting...",
+                   running: `calibration ${c.step || ""}: ${c.stage || ""}`, done: "calibrated",
+                   reused: "calibration reused", skipped: "calibration skipped",
+                   failed: "calibration FAILED", stopped: "calibration stopped" };
+  let text = labels[c.state] || `calibration: ${c.state}`;
+  if (waiting && ["pending", "requested", "running"].includes(c.state))
+    text += " — waiting for the vision process (python -m eepy.perception)";
+  $("cal-text").textContent = text;
+  const good = ["done", "reused"].includes(c.state), bad = ["failed", "skipped", "stopped"].includes(c.state);
+  $("cal-pill").className = "pill" + (bad || (waiting && c.state !== "done") ? " amber" : "");
+  $("cal-pill").querySelector(".dot").className = "dot" + (good ? " ok" : "");
+  const fill = $("cal-fill"); if (fill) fill.style.width = `${Math.round((c.progress || 0) * 100)}%`;
+  $("cal-msg").textContent = c.message || c.instruction || (c.reason ? `(${c.reason})` : "");
 }
 
 function renderSession(se) {

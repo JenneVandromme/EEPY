@@ -50,6 +50,7 @@ class Tally:
     au_active_s: Dict[str, float] = field(default_factory=dict)     # AU -> seconds "on"
     eyes_shut_au43: List[bool] = field(default_factory=list)        # AU43 on, while eyes shut (A9)
     gaze: List[Any] = field(default_factory=list)                   # (t, zone, away_s)
+    closure: List[float] = field(default_factory=list)              # eye_closure (calibrated)
     t0: Optional[float] = None                                      # when the step became active
     last_t: Optional[float] = None
 
@@ -97,6 +98,61 @@ def _steps(look_away_deg: float) -> List[Step]:
                            + (f" (but {min(t.yaw):+.0f} the other way: is the sign wrong?)"
                               if t.yaw and min(t.yaw) < -look_away_deg else ""))),
     ]
+
+
+class ShadowDetectors:
+    """A9's detectors once more, on the SAME frames but with the DEFAULT baseline,
+    so the report can show what calibration changed (A12): "blinks 5 (default 3)".
+    A pipeline plug-in that adds no values; it only remembers its events."""
+
+    name = "shadow"
+    columns: tuple = ()
+
+    def __init__(self, config: Any) -> None:
+        from .baseline import BaselineProvider
+        from .extractors import EyeExtractor, HeadExtractor, MouthExtractor, PresenceExtractor
+
+        self.baseline = BaselineProvider(config).current()
+        self.inner = [PresenceExtractor(config), EyeExtractor(config), MouthExtractor(config),
+                      HeadExtractor(config)]
+        self.events: List[Any] = []            # (t, type)
+        self.closure: List[Any] = []           # (t, eye_closure)
+
+    def update(self, obs: Any, baseline: Any) -> Any:
+        from .extractors import Output
+
+        for extractor in self.inner:
+            out = extractor.update(obs, self.baseline)
+            self.events += [(e.t, e.type) for e in out.events]
+            if out.values.get("eye_closure") is not None:
+                self.closure.append((obs.t, out.values["eye_closure"]))
+        return Output({})
+
+    def count(self, kind: str, start: float, end: float) -> int:
+        return sum(1 for t, k in self.events if k == kind and start <= t <= end)
+
+    def median_closure(self, start: float, end: float) -> Optional[float]:
+        xs = [c for t, c in self.closure if start <= t <= end]
+        return statistics.median(xs) if xs else None
+
+    # The rest of the Extractor interface: nothing to add.
+    def notice(self, *args: Any) -> None:
+        pass
+
+    def summary(self, now: float) -> list:
+        return []
+
+    def drain(self) -> list:
+        return []
+
+    def derive(self, values: Any, baseline: Any) -> dict:
+        return {}
+
+    def close(self) -> None:
+        pass
+
+    def reset(self) -> None:
+        pass
 
 
 def _gaze_steps(calibrated: bool) -> List[Step]:
@@ -219,6 +275,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         gaze = GazeExtractor(load_gaze_config(), config, user=resolve_user(args.user))
         extractors.append(gaze)
+        shadow = ShadowDetectors(config)
+        extractors.append(shadow)
         if not args.no_aus:
             from .aus import ActionUnitExtractor
             from .aus import load_config as load_au_config
@@ -230,8 +288,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"\n  {exc}", file=sys.stderr)
         return 2
 
-    pipeline = FacePipeline(camera, config, extractors=extractors).start()
-    overlay = FaceOverlay(aus=au, gaze=gaze)
+    from .baseline import StoredBaselineProvider
+
+    baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
+    pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline).start()
+    overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline)
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     steps = _steps(config.get("", "look_away_deg"))
     # Calibration is loaded on the first frame; the file tells us up front.
@@ -312,6 +373,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         cv2.destroyAllWindows()
         cv2.waitKey(1)
     _report(steps, tallies, stats, config, au_info)
+    _compare(steps, tallies, shadow, baseline.current())
     return 0
 
 
@@ -326,6 +388,8 @@ def _count(tally: Tally, result: Any, au: Any) -> None:
                              ("head_pitch", tally.pitch)):
             if values.get(name) is not None:
                 bucket.append(values[name])
+    if values.get("eye_closure") is not None:
+        tally.closure.append(values["eye_closure"])
     if values.get("gaze_zone") is not None:
         tally.gaze.append((result.t, values["gaze_zone"], values.get("away_s") or 0.0))
         if tally.t0 is None:
@@ -418,6 +482,30 @@ def _report(steps: List[Step], tallies: List[Tally], stats: Dict[str, Any], conf
             print("  -> Your eyes differ from the default: per-person calibration (A12) will handle this.")
     if len(tallies) > 1 and tallies[1].blink_ms:
         print(f"  Blink durations: {', '.join(f'{ms:.0f}' for ms in tallies[1].blink_ms)} ms")
+    print()
+
+
+
+def _compare(steps: List[Step], tallies: List[Tally], shadow: ShadowDetectors, baseline: Any) -> None:
+    """Calibrated vs default detections on the same frames (A12)."""
+    if not baseline.calibrated:
+        print("  (No calibration for this person and camera: everything above used the defaults.\n"
+              "   Calibrate with  python -m eepy.perception.calibrate  to compare.)\n")
+        return
+    print(f"  Calibrated ({baseline.label}, {baseline.taken_at}) vs. default baseline, same frames:")
+    for step, tally in zip(steps, tallies):
+        if not tally.gaze or tally.t0 is None:
+            continue
+        start, end = tally.t0, tally.gaze[-1][0]
+        kind = {"Blink": "blink", "Yawn": "yawn", "Nod off": "nod"}.get(step.title)
+        if kind:
+            print(f"    {step.title:14} {kind}s: calibrated {tally.count(kind)}, default {shadow.count(kind, start, end)}")
+        if step.title == "Look normally":
+            default = shadow.median_closure(start, end)
+            mine = statistics.median([e for e in tally.closure]) if tally.closure else None
+            if default is not None and mine is not None:
+                print(f"    {step.title:14} eyes 'closed' at rest: calibrated {mine:.0%}, default {default:.0%}"
+                      "  (should be ~0 %)")
     print()
 
 

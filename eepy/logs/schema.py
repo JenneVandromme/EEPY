@@ -134,6 +134,9 @@ EVENT_TYPES: Dict[str, EventType] = {
                              "durations, zone shares, over 10 s / 60 s."),
     "gaze_status": EventType("face", ("calibrated",),
                              "Which gaze calibration is in use (user, camera setup), or none."),
+    "calibration": EventType("face", ("result",),
+                             "Per-user calibration (A12): result new / reused / skipped / failed, "
+                             "with the baseline values, quality checks and gaze zones."),
     "au_window": EventType("face", (),
                            "About once a second: per action unit its mean and share of time "
                            "active over 10 s / 60 s, the achieved rate, and cross-checks with "

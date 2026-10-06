@@ -95,3 +95,94 @@ lines:
       direct:
         - "Good going."
         - "{evidence} -- nice work."
+
+  # --- calibration (A12) ------------------------------------------------------
+  # Spoken during the calibration at the start of a session (the face check,
+  # the gaze dots, one minute of normal work). PLACEHOLDER TEXT: rewrite freely.
+  # Lines whose ID starts with "calibration_" are said by the calibration
+  # itself, so the Wizard panel shows no buttons for them. Hedged and direct are
+  # the same here: the calibration is not a nudge.
+
+  calibration_intro:
+    description: Start of the calibration -- what is about to happen.
+    variants:
+      hedged: ["Let's get to know your face for a moment. It takes about two minutes."]
+      direct: ["Let's get to know your face for a moment. It takes about two minutes."]
+
+  calibration_face_check:
+    description: The face check -- sit so the camera sees you well.
+    variants:
+      hedged: ["First, sit the way you normally work, facing the screen."]
+      direct: ["First, sit the way you normally work, facing the screen."]
+
+  calibration_face_not_found:
+    description: The face check cannot find a face.
+    variants:
+      hedged: ["I can't see your face yet. Could you sit in front of the camera?"]
+      direct: ["I can't see your face yet. Could you sit in front of the camera?"]
+
+  calibration_face_outside_box:
+    description: Part of the face is outside the view (laptop camera - the blue rectangle).
+    variants:
+      hedged: ["Could you move a little, so your whole face is in view?"]
+      direct: ["Could you move a little, so your whole face is in view?"]
+
+  calibration_too_dark:
+    description: The face is too dark for the camera.
+    variants:
+      hedged: ["It's a bit dark. Could you turn on a light?"]
+      direct: ["It's a bit dark. Could you turn on a light?"]
+
+  calibration_too_bright:
+    description: The face is washed out by strong light.
+    variants:
+      hedged: ["There's a lot of light on your face. Could you move out of it a bit?"]
+      direct: ["There's a lot of light on your face. Could you move out of it a bit?"]
+
+  calibration_too_far:
+    description: The person sits too far from the camera.
+    variants:
+      hedged: ["Could you come a little closer?"]
+      direct: ["Could you come a little closer?"]
+
+  calibration_look_dot:
+    description: Gaze calibration -- look at the dots on the screen.
+    variants:
+      hedged: ["Now look at each dot on the screen until it turns green."]
+      direct: ["Now look at each dot on the screen until it turns green."]
+
+  calibration_look_notes:
+    description: Gaze calibration -- look at the notes on the desk.
+    variants:
+      hedged: ["Now look at your notes, until you hear a beep."]
+      direct: ["Now look at your notes, until you hear a beep."]
+
+  calibration_look_away:
+    description: Gaze calibration -- look away to the side.
+    variants:
+      hedged: ["And now look away to the side, until the beep."]
+      direct: ["And now look away to the side, until the beep."]
+
+  calibration_baseline_start:
+    description: The baseline -- about a minute of normal work.
+    variants:
+      hedged: ["Great. Now just work as usual for about a minute."]
+      direct: ["Great. Now just work as usual for about a minute."]
+
+  calibration_baseline_extend:
+    description: The baseline needs a little longer (face out of view, looked away a lot...).
+    variants:
+      hedged: ["Just a little longer, please keep working as usual."]
+      direct: ["Just a little longer, please keep working as usual."]
+
+  calibration_done:
+    description: The calibration succeeded.
+    variants:
+      hedged: ["All set. Thank you!"]
+      direct: ["All set. Thank you!"]
+
+  calibration_failed:
+    description: The calibration did not succeed (the panel/terminal says why).
+    variants:
+      hedged: ["Hmm, that didn't quite work. Let's try that again in a moment."]
+      direct: ["Hmm, that didn't quite work. Let's try that again in a moment."]

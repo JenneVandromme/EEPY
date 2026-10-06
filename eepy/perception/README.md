@@ -118,10 +118,14 @@ python -m eepy.perception.selftest --camera robot
 ✅ As in step 3. If blinks are missed, look at the frame rate it reports: below
 about 15, blinks are too short to catch (see *How fast must the camera be?*).
 
-**6. Gaze:** follow the tutorial in
+**6. Calibration:** `python -m eepy.perception.calibrate` (A), about 2 minutes. Then
+run the self-test again: it ends with **calibrated vs. default** detections. See
+[calibration/README.md](calibration/README.md).
+
+**7. Gaze:** follow the tutorial in
 [gaze/README.md](gaze/README.md#tutorial-test-it-about-5-minutes) (calibrate first).
 
-**7. Action units** (only with the optional extra): follow the tutorial in
+**8. Action units** (only with the optional extra): follow the tutorial in
 [aus/README.md](aus/README.md#tutorial-test-the-action-units-about-10-minutes).
 
 ## What the values mean
@@ -174,6 +178,15 @@ Logged as a `face_window` event. Each name ends in `_10s` or `_60s`.
 
 All shares are measured in **time**, not in frames, so a dip in frame rate
 doesn't skew them.
+
+## Calibration: each person's own normal
+
+At the start of a session EEPY spends about two minutes getting to know the
+participant: a face check, the gaze zones, and one minute of normal work. After
+that every threshold is relative to **their own** face, and normalised values
+(`ear_rel`, `head_pitch_rel`, ...) appear next to the raw ones. Start it from the
+Wizard panel's **Calibration** card, or with `python -m eepy.perception.calibrate`.
+What to do and what the messages mean: **[calibration/README.md](calibration/README.md)**.
 
 ## Gaze: on work or away
 
@@ -319,7 +332,9 @@ pipeline.stop()
 | `overlay.py`, `selftest.py`, `__main__.py` | preview drawing, the self-test, the vision process |
 | `aus/` | the optional action units (Py-Feat): see [aus/README.md](aus/README.md) |
 | `gaze/` | gaze on the work area, its calibration, and "look at user": see [gaze/README.md](gaze/README.md) |
-| `calibrate_gaze.py` | `python -m eepy.perception.calibrate_gaze`: learn one person's work area |
+| `calibrate_gaze.py` | `python -m eepy.perception.calibrate_gaze`: learn one person's work area (= `calibrate --only gaze`) |
+| `calibration/`, `calibrate.py` | per-person calibration (face check, gaze, baseline) and its command: see [calibration/README.md](calibration/README.md) |
+| `normalized.py` | the normalised `*_rel` features (relative to the person's baseline) |
 | `bench_aus.py` | `python -m eepy.perception.bench_aus`: timings and a profile suggestion for this machine |
 
 Tests: `tests/test_perception.py` uses synthetic signals, so it needs no camera

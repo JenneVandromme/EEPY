@@ -29,12 +29,13 @@ python -m eepy.perception
 
 Every 5 s it prints a line ending in `recording into <session>` while a session
 runs, including the gaze zone, or `(uncalibrated)` when this participant's work area
-has not been calibrated yet. **Calibrate each participant before their first
-session**, in the vision terminal, at the desk they will use (about a minute):
-
-```bash
-python -m eepy.perception.calibrate_gaze --user P03
-``` If it says `no face`, check the person sits inside the camera's view
+has not been calibrated yet. **Calibrate each participant** right after
+**Start session**: a **Calibration** card appears. Press **Calibrate** (about two
+minutes, the participant follows the instructions), **Reuse** (offered when they were
+calibrated in the last 14 days with this camera), or **Skip** (asks a reason, which is
+logged). The card shows the progress and the result. The vision process must be running
+(it has the camera; the calibration window opens on its computer). What the messages
+mean: [eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md). If it says `no face`, check the person sits inside the camera's view
 (`python -m eepy.camera.preview`).
 
 ## Run a session
@@ -109,6 +110,8 @@ The markers are the ground truth the HMM learns from, so:
 | The robot's voice sounds different from usual | The chosen voice is not downloaded on this computer, so it fell back to the computer's own voice. See the README, Step 3. |
 | Page is completely white | You reached a different program. Use the exact address the panel printed (`127.0.0.1`, not `localhost`). |
 | "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
+| Calibration card says *waiting for the vision process* | Start `python -m eepy.perception` in the vision terminal. |
+| *calibration FAILED* | The card says why (light, seating, camera too slow...). Fix it and press **Calibrate again**, or **Skip**. |
 | Amber **camera** pill, or "camera relay could not start" | The vision process gets no robot camera or head position from the panel. Hover over the pill for the reason; usually a second panel is running. Driving the robot is unaffected. |
 | Laptop cannot open the address | Same Wi-Fi as the desktop? On the desktop, allow "Python" when macOS asks about incoming connections. |
 

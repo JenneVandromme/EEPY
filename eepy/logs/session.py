@@ -251,6 +251,17 @@ class SessionLog:
             self.started_mono = None
         return record
 
+    def set_meta(self, key: str, value: Any) -> None:
+        """Add (or replace) one field of the running session's meta.json, e.g. the
+        calibration summary. Numbers and text only -- it goes through clean()."""
+        with self._lock:
+            if not self.active:
+                raise SessionError("No session is running.")
+            if key in ("schema_version", "session", "participant", "mode", "started", "ended"):
+                raise SessionError(f'"{key}" is set by the session itself.')
+            self._meta[key] = clean(value, f"meta.{key}")
+            write_json_atomic(self.folder / "meta.json", self._meta)
+
     # ------------------------------------------------------------------ helpers
 
     def _new_folder(self, participant: str, mode: str) -> Path:

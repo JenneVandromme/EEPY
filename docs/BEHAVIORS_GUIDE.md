@@ -409,6 +409,16 @@ You can use two placeholders, filled in when the robot speaks:
 
 Anything else is rejected, so a typo like `{minute}` gets caught.
 
+**Calibration lines.** The lines whose ID starts with `calibration_` (at the end of
+`lines.yaml`) are what EEPY says during the two-minute calibration at the start of
+a session: `calibration_intro`, `calibration_face_check`, `calibration_look_dot`,
+`calibration_look_notes`, `calibration_look_away`, `calibration_baseline_start`,
+`calibration_done`, and a few for problems (`calibration_too_dark`,
+`calibration_too_far`, ...). Their text is a **placeholder: rewrite it freely**. Keep
+the IDs. They get no button on the Wizard panel, because the calibration says them
+by itself. What each one is for:
+[eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md).
+
 ---
 
 ## Checking your work

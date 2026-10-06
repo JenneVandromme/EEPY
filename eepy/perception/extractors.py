@@ -78,6 +78,11 @@ class Extractor:
         """Status records produced since the last call (e.g. from a worker thread)."""
         return []
 
+    def derive(self, values: Dict[str, Optional[float]], baseline: Baseline) -> Dict[str, Any]:
+        """Extra per-frame values computed from ALL extractors' values of this frame
+        (e.g. normalised features); merged in before the windows see them."""
+        return {}
+
     def close(self) -> None:
         """Release resources (threads, models) when the pipeline stops."""
 
@@ -368,8 +373,13 @@ class HeadExtractor(Extractor):
 
 
 def default_extractors(config: Optional[PerceptionConfig] = None) -> List[Extractor]:
+    """A9's extractors plus the normalised features (A12). Plug-ins added after
+    these (AUs, gaze) still have their values normalised: derive() runs after
+    every extractor's update()."""
+    from .normalized import NormalizedExtractor
+
     return [PresenceExtractor(config), EyeExtractor(config), MouthExtractor(config),
-            HeadExtractor(config)]
+            HeadExtractor(config), NormalizedExtractor(config)]
 
 
 def all_columns(extractors: Sequence[Extractor]) -> List[str]:

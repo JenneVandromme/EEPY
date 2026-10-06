@@ -118,7 +118,11 @@ def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True,
 
     gaze = GazeExtractor(load_gaze_config(), config, user=resolve_user(user))
     extractors.append(gaze)
-    return FacePipeline(camera, config, extractors=extractors), FaceOverlay(aus=au, gaze=gaze)
+    from eepy.perception.baseline import StoredBaselineProvider
+
+    baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
+    return (FacePipeline(camera, config, extractors=extractors, baseline=baseline),
+            FaceOverlay(aus=au, gaze=gaze, baseline=baseline))
 
 
 def main(argv: Optional[List[str]] = None) -> int:

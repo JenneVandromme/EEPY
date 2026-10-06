@@ -103,6 +103,7 @@ class Wizard:
         speech_callback: Callable[[str, str], None] | None = None,
         speaker_factory: Callable[[], Any] | None = None,
         camera_relay: tuple[int, float] | None = None,
+        calibration_store: Any = None,
     ) -> None:
         self.backend_factory = backend_factory
         self.backend_name = backend_name
@@ -177,6 +178,13 @@ class Wizard:
         self.user_target = TrackingTargetProvider(
             StaticTargetProvider(lambda: self.library),
             pose=lambda: self.player.pose if self.player is not None else Pose())
+        # The calibration step of a session (A12). It runs IN the vision process (that
+        # program has the camera); the panel queues commands for it, speaks its lines
+        # and shows its progress. See eepy/perception/calibration/remote.py.
+        self.calibration: dict = {"state": "none"}
+        self.calibration_store = calibration_store          # None: data/calibration/
+        self._calibration_commands: deque = deque()
+        self._vision_seen = -1e9
         self.camera_relay = None
         if camera_relay is not None:
             self._start_camera_relay(*camera_relay)
@@ -401,6 +409,7 @@ class Wizard:
         self._push(record)
         if not self.mode_implemented:
             self._note("mode_not_implemented", "system", mode=self.mode)
+        self._offer_calibration(participant)
         self.panel_version += 1
         return record
 
@@ -410,6 +419,8 @@ class Wizard:
         except SessionError as exc:
             raise WizardError(str(exc)) from None
         self._push(record)
+        self.calibration = {"state": "none"}
+        self._calibration_commands.clear()
         self.panel_version += 1
         return record
 
@@ -474,12 +485,94 @@ class Wizard:
 
         relay = CameraRelay(port, frame_fn=frame, pose_fn=pose, fps=fps,
                             label=lambda: "real" if self._robot_camera_client() is not None else None,
-                            user_fn=self.user_target.observe)
+                            user_fn=self.user_target.observe, say_fn=self._calibration_say,
+                            command_fn=self._next_calibration_command,
+                            calib_fn=self._calibration_report)
         try:
             self.camera_relay = relay.start()
         except RelayPortBusy as exc:
             self._error(f"The camera relay could not start, so the vision process gets no robot "
                         f"camera or head position from this panel.\n{exc}")
+
+    # --------------------------------------------------------------- calibration
+
+    def _calibration_setup(self) -> str:
+        return "robot" if self.backend_name == "real" else "laptop"
+
+    def _offer_calibration(self, participant: str) -> None:
+        """After Start session: is there a recent calibration to reuse?"""
+        try:
+            from eepy.perception.calibration import recent
+            from eepy.perception.gaze.calibration import CalibrationStore
+
+            store = self.calibration_store or CalibrationStore()
+            found = recent(store, participant, self._calibration_setup())
+        except Exception:  # noqa: BLE001 -- an unreadable file must not block a session
+            log.exception("Could not look for an earlier calibration")
+            found = None
+        self.calibration = {"state": "pending", "user": participant, "reuse": found}
+
+    def calibration_command(self, action: str, reason: str | None = None,
+                            parts: list | None = None, via: str = "click") -> dict:
+        """The operator pressed Calibrate / Reuse / Skip / Stop."""
+        if not self.sessions.active:
+            raise WizardError("Start a session first: the calibration belongs to a participant.")
+        if action not in ("calibrate", "reuse", "skip", "stop"):
+            raise WizardError(f'"{action}" is not a calibration action.')
+        user = self.calibration.get("user") or self.sessions.participant
+        self._note("wizard_command", "wizard", action=f"calibration_{action}", via=via)
+        if action == "skip":
+            # Handled here: it needs no camera, and must be logged even without a vision process.
+            reason = (reason or "").strip() or "skipped by the operator"
+            self.calibration = {"state": "skipped", "user": user, "reason": reason}
+            self.sessions.event("calibration", "wizard", result="skipped", user=user,
+                                setup=self._calibration_setup(), reason=reason[:300])
+            self.sessions.set_meta("calibration", {"result": "skipped", "reason": reason[:300]})
+            return self.calibration
+        if action == "reuse" and not self.calibration.get("reuse"):
+            raise WizardError("There is no recent calibration to reuse for this participant.")
+        command = {"command": action, "user": user}
+        if parts:
+            command["parts"] = list(parts)
+        self._calibration_commands.append(command)
+        if action != "stop":
+            self.calibration = dict(self.calibration, state="requested", message="")
+        return self.calibration
+
+    def _next_calibration_command(self) -> dict | None:
+        """The vision process asks (twice a second): anything for me?"""
+        self._vision_seen = time.monotonic()
+        return self._calibration_commands.popleft() if self._calibration_commands else None
+
+    def _calibration_say(self, line_id: str) -> bool:
+        """The vision process asks to speak a calibration line (robot voice)."""
+        player = self.player
+        if player is None or player.error is not None:
+            return False
+        try:
+            player.say(line_id, tone="hedged", source="system")
+            return True
+        except PlayerError as exc:
+            log.warning("Could not speak %s: %s", line_id, exc)
+            return False
+
+    def _calibration_report(self, progress: dict) -> None:
+        """Progress or the result from the vision process."""
+        state = progress.get("state")
+        self.calibration = dict(self.calibration, **progress)
+        if state in ("done", "failed", "reused", "stopped") and self.sessions.active:
+            summary = {k: progress.get(k) for k in ("taken_at", "late_evening", "message", "age_days")
+                       if progress.get(k) not in (None, "")}
+            summary["result"] = {"done": "new"}.get(state, state)
+            if progress.get("values"):
+                summary["values"] = progress["values"]
+            try:
+                self.sessions.set_meta("calibration", summary)
+            except SessionError:
+                pass
+
+    def calibration_status(self) -> dict:
+        return dict(self.calibration, vision_connected=time.monotonic() - self._vision_seen < 3.0)
 
     def _robot_camera_client(self) -> Any:
         """The SDK client, when connected to the REAL robot -- the only backend
@@ -532,6 +625,7 @@ class Wizard:
             "session": self.sessions.status(),
             "panel_version": self.panel_version,
             "camera": self.camera_status(),
+            "calibration": self.calibration_status(),
         }
 
     def log_since(self, seq: int) -> tuple[int, list[dict]]:
@@ -604,6 +698,13 @@ class EndIn(BaseModel):
     notes: str | None = None
 
 
+class CalibrationIn(BaseModel):
+    action: str                      # calibrate, reuse, skip, stop
+    reason: str | None = None
+    parts: list[str] | None = None
+    via: str = "click"
+
+
 def _ok(**extra: Any) -> dict:
     return {"ok": True, **extra}
 
@@ -661,6 +762,10 @@ def create_app(wizard: Wizard) -> FastAPI:
     @app.post("/api/session/start")
     def session_start(body: ParticipantIn):
         return _ok(session=wizard.start_session(body.participant, body.notes)["session"])
+
+    @app.post("/api/calibration")
+    def calibration(body: CalibrationIn):
+        return _ok(calibration=wizard.calibration_command(body.action, body.reason, body.parts, body.via))
 
     @app.post("/api/session/end")
     def session_end(body: EndIn | None = None):

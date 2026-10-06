@@ -25,7 +25,7 @@ from eepy.logs import SessionLog  # noqa: E402
 from eepy.logs.check import check_session  # noqa: E402
 from eepy.logs.clock import monotonic  # noqa: E402
 from eepy.wizard.config import ConfigError, load_config  # noqa: E402
-from eepy.wizard.server import Wizard, create_app  # noqa: E402
+from eepy.wizard.server import Wizard, WizardError, create_app  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not reach.available(), reason="the player needs the IK solver")
 
@@ -604,4 +604,101 @@ def test_look_at_user_follows_the_face_the_vision_process_reports(files):
         assert wizard.player.pose.yaw == pytest.approx(14.0, abs=0.5)
     finally:
         client.close()
+        wizard.shutdown()
+
+
+# --- the calibration step (A12) --------------------------------------------------------------------
+
+
+def _calibration_wizard(files, tmp_path, port=None):
+    from eepy.perception.gaze.calibration import CalibrationStore
+
+    return Wizard(DryRunBackend, backend_name="dry", behaviors_dir=files["behaviors"],
+                  sounds_dir=files["sounds"], config_path=files["config"],
+                  session_log=SessionLog(data_dir=files["data"], repo_root=REPO),
+                  speech_callback=lambda line, text: None,
+                  camera_relay=(port, 15) if port else None,
+                  calibration_store=CalibrationStore(tmp_path / "calibration"))
+
+
+def _meta(wizard):
+    return json.loads((wizard.sessions.folder / "meta.json").read_text())
+
+
+def test_skipping_the_calibration_is_logged(files, tmp_path):
+    wizard = _calibration_wizard(files, tmp_path)
+    try:
+        wizard.start_session("P05")
+        assert wizard.calibration_status()["state"] == "pending"
+        assert wizard.calibration_status()["reuse"] is None
+        wizard.calibration_command("skip", reason="participant in a hurry")
+        assert wizard.calibration_status()["state"] == "skipped"
+        assert _meta(wizard)["calibration"] == {"result": "skipped", "reason": "participant in a hurry"}
+        folder = wizard.sessions.folder
+        wizard.end_session()
+        events = [json.loads(l) for l in (folder / "events.jsonl").read_text().splitlines()]
+        assert any(e["type"] == "calibration" and e["result"] == "skipped" for e in events)
+    finally:
+        wizard.shutdown()
+
+
+def test_calibrate_goes_to_the_vision_process_and_the_result_into_meta(files, tmp_path):
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = _calibration_wizard(files, tmp_path, port)
+    vision = RelayClient(port)                            # stands in for python -m eepy.perception
+    try:
+        with pytest.raises(WizardError, match="Start a session"):
+            wizard.calibration_command("calibrate")
+        wizard.start_session("P05")
+        assert vision.poll() is None
+        assert wizard.calibration_status()["vision_connected"]
+        wizard.calibration_command("calibrate")
+        assert vision.poll() == {"command": "calibrate", "user": "P05"}
+        assert vision.say("calibration_intro")             # spoken by the panel's player
+        vision.report({"state": "running", "stage": "gaze", "progress": 0.4})
+        assert wizard.calibration_status()["stage"] == "gaze"
+        vision.report({"state": "done", "taken_at": "2026-10-06 10:00", "late_evening": False,
+                       "values": {"ear_open": 0.31}})
+        assert wizard.calibration_status()["state"] == "done"
+        meta = _meta(wizard)["calibration"]
+        assert meta["result"] == "new" and meta["values"] == {"ear_open": 0.31}
+        with pytest.raises(WizardError, match="no recent calibration"):
+            wizard.calibration_command("reuse")
+    finally:
+        vision.close()
+        wizard.shutdown()
+
+
+def test_a_recent_calibration_is_offered_for_reuse(files, tmp_path):
+    import time as _time
+
+    from eepy.perception.calibration import save
+    from eepy.perception.gaze.calibration import CalibrationStore
+
+    store = CalibrationStore(tmp_path / "calibration")
+    save(store, "P05", "laptop", {"gaze": {"zones": {}}, "baseline": {
+        "values": {}, "taken_at": _time.strftime("%Y-%m-%d %H:%M"), "late_evening": False}})
+    wizard = _calibration_wizard(files, tmp_path)
+    try:
+        wizard.start_session("P05")
+        assert wizard.calibration_status()["reuse"]["age_days"] == 0
+        wizard.calibration_command("reuse")
+        assert wizard.calibration_status()["state"] == "requested"
+    finally:
+        wizard.shutdown()
+
+
+def test_calibration_lines_get_no_panel_buttons(files, tmp_path):
+    wizard = _calibration_wizard(files, tmp_path)
+    try:
+        assert "calibration_intro" in wizard.library.lines
+        buttons = [b.id for _, _, bs in wizard.panel.groups for b in bs]
+        assert not any(b.startswith("l:calibration_") for b in buttons)
+    finally:
         wizard.shutdown()

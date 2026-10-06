@@ -31,7 +31,8 @@ def _fmt(value: Optional[float], spec: str = ".2f") -> str:
 
 
 class FaceOverlay:
-    def __init__(self, aus: Any = None, gaze: Any = None) -> None:
+    def __init__(self, aus: Any = None, gaze: Any = None, baseline: Any = None) -> None:
+        self.baseline = baseline          # the BaselineProvider (A12), to show what is in use
         self.aus = aus                    # the ActionUnitExtractor, if there is one
         self.gaze = gaze                  # the GazeExtractor, if there is one
         self.show_aus = True
@@ -84,16 +85,21 @@ class FaceOverlay:
                 cv2.line(image, tuple(int(c) for c in points[a]), tuple(int(c) for c in points[b]), YELLOW, 1)
 
         lines = [("face features   (L: landmarks on/off)", GREY)]
+        lines += self._calibration_lines()
         if not obs.present:
             lines.append(("no face", YELLOW))
         else:
+            # Raw values, with the normalised ones (relative to THIS person, A12) after them.
             lines += [
-                (f"eyes  EAR L {_fmt(v.get('ear_left'))}  R {_fmt(v.get('ear_right'))}   "
-                 f"closed {_fmt(v.get('eye_closure'), '.0%')}   blink model L {_fmt(v.get('blink_left'))} "
-                 f"R {_fmt(v.get('blink_right'))}", WHITE),
-                (f"mouth MAR {_fmt(v.get('mar'))}   jaw open {_fmt(v.get('jaw_open'))}", WHITE),
-                (f"head  yaw {_fmt(v.get('head_yaw'), '+.0f')}  pitch {_fmt(v.get('head_pitch'), '+.0f')}"
-                 f"  roll {_fmt(v.get('head_roll'), '+.0f')}  deg     face size {_fmt(v.get('face_size'), '.0%')}",
+                (f"eyes  EAR L {_fmt(v.get('ear_left'))}  R {_fmt(v.get('ear_right'))}"
+                 f"  ({_fmt(v.get('ear_rel'), '.2f')}x usual)   closed {_fmt(v.get('eye_closure'), '.0%')}"
+                 f"   blink model L {_fmt(v.get('blink_left'))} R {_fmt(v.get('blink_right'))}", WHITE),
+                (f"mouth MAR {_fmt(v.get('mar'))} ({_fmt(v.get('mar_rel'), '+.2f')} vs rest)"
+                 f"   jaw open {_fmt(v.get('jaw_open'))}", WHITE),
+                (f"head  yaw {_fmt(v.get('head_yaw'), '+.0f')} ({_fmt(v.get('head_yaw_rel'), '+.0f')})"
+                 f"  pitch {_fmt(v.get('head_pitch'), '+.0f')} ({_fmt(v.get('head_pitch_rel'), '+.0f')})"
+                 f"  roll {_fmt(v.get('head_roll'), '+.0f')} ({_fmt(v.get('head_roll_rel'), '+.0f')}) deg"
+                 f"   face size {_fmt(v.get('face_size'), '.0%')} ({_fmt(v.get('face_size_rel'), '.2f')}x)",
                  WHITE),
             ]
         lines.append((f"processing {_fmt(v.get('process_ms'), '.1f')} ms per frame", GREY))
@@ -189,3 +195,15 @@ class FaceOverlay:
         extra = "" if gaze.zones.calibrated else "  UNCALIBRATED"
         _text(cv2, image, f"{zone.replace('_', ' ')}  {mode_text}  conf {_fmt(values.get('gaze_confidence'))}"
               f"{extra}   (G)", x0, y0 - 10, YELLOW if extra else GREY, 0.45)
+
+    def _calibration_lines(self) -> list:
+        """Whose baseline is in use (A12), and its key values -- or that there is none."""
+        if self.baseline is None:
+            return []
+        b = self.baseline.current()
+        if not b.calibrated:
+            return [("UNCALIBRATED -- default baseline (python -m eepy.perception.calibrate)", YELLOW)]
+        late = "  (taken late evening)" if b.late_evening else ""
+        return [(f"CALIBRATED {b.label} {b.taken_at}{late}", GREEN),
+                (f"baseline: eyes open {_fmt(b.ear_open)} closed {_fmt(b.ear_floor)}   blinks "
+                 f"{_fmt(b.blink_rate, '.0f')}/min   head {b.yaw0:+.0f}/{b.pitch0:+.0f} deg", GREY)]

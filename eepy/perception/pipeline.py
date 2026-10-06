@@ -230,6 +230,8 @@ class FacePipeline:
             out = extractor.update(observation, baseline)
             values.update(out.values)
             events += out.events
+        for extractor in self.extractors:
+            values.update(extractor.derive(values, baseline))
         values["process_ms"] = round(observation.process_ms + (time.perf_counter() - started) * 1000, 2)
         window = self.windows.add(observation.t, values, events, baseline)
         # Optional plug-in hooks (see Extractor): notice() sees every frame's

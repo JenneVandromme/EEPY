@@ -234,7 +234,9 @@ def build_panel(library: Library, config: PanelConfig) -> Panel:
     # Lines with a configured key first, in the config's order (so the keys
     # read 6 7 8 9 0 - across the row), then any new ones alphabetically.
     configured = [l for l in keys.lines if l in library.lines]
-    for line_id in configured + sorted(set(library.lines) - set(configured)):
+    # Lines the calibration speaks by itself get no button (lines.yaml says so).
+    spoken_by_system = {l for l in library.lines if l.startswith("calibration_")}
+    for line_id in configured + sorted(set(library.lines) - set(configured) - spoken_by_system):
         key, auto = pick(keys.lines.get(line_id), f'line "{line_id}"')
         lines.append(Button(f"l:{line_id}", "line", line_id.replace("_", " "), "",
                             key, line_id, auto))

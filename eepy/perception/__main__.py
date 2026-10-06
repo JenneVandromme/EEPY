@@ -24,7 +24,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--profile", help="machine profile for action units: laptop, demo-desktop, "
                                           "... (default: EEPY_PROFILE in .env, else laptop)")
     parser.add_argument("--no-aus", action="store_true", help="no action units, even if installed")
-    parser.add_argument("--user", help="whose gaze calibration (default: each session's participant)")
+    parser.add_argument("--user", help="whose calibration (default: each session's participant)")
     parser.add_argument("--setup", help="camera-setup label of the gaze calibration (e.g. lab)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
@@ -42,7 +42,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         config = load()
         au_config = load_au_config(profile=args.profile)
         events = ProcessEventLog("vision")
-        camera = open_camera(args.camera, events=events,
+        # keep_full: the calibration's face check shows the blue box in the whole picture.
+        camera = open_camera(args.camera, events=events, keep_full=True,
                              **({"index": args.index} if args.index is not None else {}))
     except (CameraError, CameraConfigError) as exc:   # also a wrong --profile
         print(f"\n  {exc}", file=sys.stderr)
@@ -60,8 +61,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     gaze = GazeExtractor(load_gaze_config(), config, user=resolve_user(args.user), setup=args.setup)
     extractors.append(gaze)
     features = FeatureStream(all_columns(extractors) + ["process_ms"], rate_hz=camera.config.fps)
+    # Each participant's own baseline (A12), following the session like the gaze zones.
+    from .baseline import StoredBaselineProvider
+    from .gaze import CalibrationStore
+
+    store = CalibrationStore()
+    baseline = StoredBaselineProvider(config, store=store, user=gaze.user, source=camera.name,
+                                      setup=args.setup)
     pipeline = FacePipeline(camera, config, extractors=extractors, features=features,
-                            events=events)
+                            events=events, baseline=baseline)
     # Real "look at user": where the face is goes to the panel (if one runs).
     from .gaze.look_at import UserTargetPublisher
 
@@ -70,16 +78,28 @@ def main(argv: Optional[List[str]] = None) -> int:
                                     camera.config.robot.fov_deg, gaze_config.get("user_report_rate"))
     pipeline.subscribe(publisher)
     pipeline.start()
+    # The Wizard panel's "Calibrate" step runs here (this process has the camera).
+    from .calibration.remote import CommandHandler
+
+    commands = CommandHandler(pipeline, camera, store, gaze, baseline, events, setup_label=args.setup)
     print(f"\n  Face perception running on the {camera.describe()} (profile {au_config.profile.name}). "
           "It records\n  only while the Wizard panel runs a session. Ctrl+C to stop.\n")
+    next_status = time.monotonic() + 5
     try:
         while True:
-            time.sleep(5)
+            time.sleep(0.5)
             if pipeline.error:
                 print(f"\n  {pipeline.error}", file=sys.stderr)
                 return 1
+            done = commands.tick()                 # the panel asked to calibrate / reuse / skip?
+            if done:
+                print(f"  Calibration: {done}")
+            if time.monotonic() < next_status:
+                continue
+            next_status = time.monotonic() + 5
             if not args.user:          # follow the session: each participant's own calibration
                 gaze.user = resolve_user(None)
+                baseline.use(gaze.user, camera.name)
             stats, latest = pipeline.stats(), pipeline.get_latest()
             face = "face" if latest and latest.observation.present else "no face"
             recording = f"recording into {features.session}" if features.session else "not recording (no session)"
@@ -87,7 +107,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             au_text = "AUs off" if aus is None or aus.status == "off" else \
                 f"AUs {aus.status} {aus.achieved_rate():.0f}/s"
             zone = (latest.values.get("gaze_zone") if latest else None) or "-"
-            calib = "" if gaze.zones.calibrated else " (uncalibrated)"
+            calib = "" if gaze.zones.calibrated and baseline.current().calibrated else " (uncalibrated)"
             print(f"  {stats['fps'] or 0:4.1f} fps   {stats['process_ms'] or 0:5.1f} ms/frame   "
                   f"{face:8}  gaze {zone}{calib:15} {au_text:18} {camera.status}   {recording}")
     except KeyboardInterrupt:
