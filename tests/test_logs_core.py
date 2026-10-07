@@ -8,6 +8,7 @@ as 3.12, so a 3.10+ feature sneaking into eepy/logs fails the build.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -438,3 +439,27 @@ def test_the_vision_virtualenv_reads_the_same_clock():
     other = _clock_in(str(python))
     after = monotonic()
     assert before <= other <= after, f"{before} <= {other} <= {after}"
+
+
+# --- "is that program still running?" (the CURRENT pointer's pid) --------------------------
+
+
+def test_pid_alive_for_this_and_a_finished_process():
+    from eepy.logs.session import pid_alive
+
+    assert pid_alive(os.getpid())
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert not pid_alive(child.pid)
+    assert not pid_alive(None) and not pid_alive("x") and not pid_alive(-1)
+
+
+def test_pid_alive_never_uses_os_kill_on_windows(monkeypatch):
+    """On Windows os.kill(pid, 0) SENDS CTRL+C (signal 0 is CTRL_C_EVENT): it
+    interrupted CI's Windows run. pid_alive must ask Windows instead."""
+    from eepy.logs import session
+
+    monkeypatch.setattr(session.os, "name", "nt")
+    monkeypatch.setattr(session.os, "kill", lambda *a: pytest.fail("os.kill called on Windows"))
+    monkeypatch.setattr(session, "_pid_alive_windows", lambda pid: pid == 1234)
+    assert session.pid_alive(1234) and not session.pid_alive(99)

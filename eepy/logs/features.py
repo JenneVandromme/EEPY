@@ -41,7 +41,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Union
 from .clock import NAME as CLOCK_NAME
 from .clock import monotonic
 from .schema import SCHEMA_VERSION, SchemaError, check_event
-from .session import CURRENT_FILE, DATA_DIR
+from .session import CURRENT_FILE, DATA_DIR, pid_alive
 from .writer import Clock, LineWriter, clean, write_json_atomic
 
 POLL_SECONDS = 0.5   # how often to look at CURRENT for a new or ended session
@@ -55,13 +55,7 @@ def _alive(pid: Any) -> bool:
     session for as long as it ran -- hours, possibly, into the wrong
     participant's folder. With it, recording stops within half a second.
     """
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except PermissionError:
-        return True            # it exists, it just belongs to someone else
-    except (OSError, TypeError, ValueError):
-        return False
+    return pid_alive(pid)       # (never os.kill(pid, 0): on Windows that sends Ctrl+C)
 
 
 class _SessionFollower:

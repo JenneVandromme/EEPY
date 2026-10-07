@@ -53,6 +53,54 @@ class SessionError(Exception):
     """A session request that cannot be honoured. The message is for humans."""
 
 
+def pid_alive(pid: Any) -> bool:
+    """Is the process with this id still running?
+
+    NOT os.kill(pid, 0) on Windows: there, signal 0 is CTRL_C_EVENT, so that
+    "check" sends Ctrl+C to the process's console group -- found when it
+    interrupted CI's Windows test run (and it would interrupt the panel or the
+    vision process on a Windows lab machine). Windows asks the OS instead.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        return _pid_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True            # it exists, it just belongs to someone else
+    except OSError:
+        return False
+
+
+def _pid_alive_windows(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    handle = kernel32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ctypes.get_last_error() == 5                # access denied: it exists
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == 259                           # STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

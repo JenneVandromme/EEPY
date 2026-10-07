@@ -375,6 +375,22 @@ def scenario(t: float) -> Dict[str, Any]:
     return {"face": face, "gaze": gaze}
 
 
+def test_checking_whether_the_panel_runs_is_safe_on_this_os():
+    """Runs on the Windows CI machines (this file is in the camera workflow): the
+    session follower asks every 0.5 s whether the panel still runs. With
+    os.kill(pid, 0) that sent Ctrl+C on Windows and stopped the test run."""
+    import os
+    import subprocess
+    import sys
+
+    from eepy.logs.session import pid_alive
+
+    assert pid_alive(os.getpid())
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert not pid_alive(child.pid)
+
+
 def test_replay_gives_the_same_states_as_live(tmp_path):
     from eepy.logs.features import ProcessEventLog
     from eepy.logs.session import SessionLog

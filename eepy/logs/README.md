@@ -153,6 +153,9 @@ participant's folder. *Fix:* `CURRENT` records the panel's process ID; the
 vision side stops recording within half a second of that process disappearing.
 The next panel to start clears the stale pointer and reports the crashed
 session.
+Whether that process still runs is asked with `pid_alive()` (`session.py`),
+never with `os.kill(pid, 0)`: on Windows, signal 0 is Ctrl+C, so that "check"
+would interrupt the panel or the vision process.
 
 **5. File order is not time order.**
 The player's events reach the log through another thread a few milliseconds
