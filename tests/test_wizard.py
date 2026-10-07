@@ -675,6 +675,31 @@ def test_calibrate_goes_to_the_vision_process_and_the_result_into_meta(files, tm
         wizard.shutdown()
 
 
+def test_the_user_state_from_the_vision_process_shows_in_the_status(files, tmp_path):
+    """A13: the vision process sends its state estimate (relay STATE); the status
+    bar shows it, and says when the vision process went quiet."""
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = _calibration_wizard(files, tmp_path, port)
+    vision = RelayClient(port)
+    try:
+        assert wizard.status()["user_state"] is None          # nothing heard yet: no pill
+        vision.send_state({"state": "drowsy", "reason": "eyes closed 15% of the last minute",
+                           "pending": None, "calibrated": True, "estimator": "rules"})
+        shown = wizard.status()["user_state"]
+        assert shown["state"] == "drowsy" and shown["fresh"] is True
+        wizard._user_state_seen -= 10                          # 10 s without word
+        assert wizard.status()["user_state"]["fresh"] is False
+    finally:
+        vision.close()
+        wizard.shutdown()
+
+
 def test_a_recent_calibration_is_offered_for_reuse(files, tmp_path):
     import time as _time
 

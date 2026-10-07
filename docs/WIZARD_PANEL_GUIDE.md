@@ -56,6 +56,19 @@ by hand, and the session is recorded under that mode.
 Markers pressed with **no session running are not saved** — the panel warns
 you in orange. Start the session first.
 
+The **state** pill in the top bar shows what EEPY estimates from the camera:
+- **focused** (green);
+- **distracted** or **drowsy** (amber);
+- **very drowsy** (red);
+- **absent** or **unknown** (grey).
+
+The main reason is next to it, e.g. *"eyes closed 14% of the last minute"*.
+**"focused → drowsy?"** means a change is waiting to be sure. **· uncalibrated**
+means the participant wasn't calibrated, so it is less reliable. In the
+`wizard` mode it is only information: **your markers are what count**. They are
+also what the states are checked against afterwards. What each state means:
+[eepy/state/README.md](../eepy/state/README.md).
+
 ## The keys
 
 The key for every button is printed on it. With the default settings:
@@ -112,6 +125,8 @@ The markers are the ground truth the HMM learns from, so:
 | "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
 | Calibration card says *waiting for the vision process* | Start `python -m eepy.perception` in the vision terminal. |
 | *calibration FAILED* | The card says why (light, seating, camera too slow...). Fix it and press **Calibrate again**, or **Skip**. |
+| No **state** pill, or *"no word from the vision program"* | Start `python -m eepy.perception` in the vision terminal (or it stopped: look at its terminal). |
+| The state looks wrong | Keep annotating what you see. Note it (**note**), and the thresholds can be tuned afterwards on this session ([eepy/state/README.md](../eepy/state/README.md)). |
 | Amber **camera** pill, or "camera relay could not start" | The vision process gets no robot camera or head position from the panel. Hover over the pill for the reason; usually a second panel is running. Driving the robot is unaffected. |
 | Laptop cannot open the address | Same Wi-Fi as the desktop? On the desktop, allow "Python" when macOS asks about incoming connections. |
 

@@ -121,8 +121,20 @@ def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True,
     from eepy.perception.baseline import StoredBaselineProvider
 
     baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
-    return (FacePipeline(camera, config, extractors=extractors, baseline=baseline),
-            FaceOverlay(aus=au, gaze=gaze, baseline=baseline))
+    pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline)
+    # The user's state (A13), live, with its reason. Shown only: nothing is recorded.
+    from eepy.state.config import RulesConfigError
+    from eepy.state.estimate import make_estimator
+    from eepy.state.runner import StateFromPipeline, StateTracker
+
+    try:
+        estimator = make_estimator("rules")
+        tracker = StateTracker(estimator, gap_seconds=estimator.config.gap_seconds)
+        pipeline.subscribe(StateFromPipeline(tracker, config.windows))
+    except RulesConfigError as exc:
+        print(f"  (No user state: {exc})")
+        tracker = None
+    return pipeline, FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=tracker)
 
 
 def main(argv: Optional[List[str]] = None) -> int:

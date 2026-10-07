@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -26,11 +26,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--no-aus", action="store_true", help="no action units, even if installed")
     parser.add_argument("--user", help="whose calibration (default: each session's participant)")
     parser.add_argument("--setup", help="camera-setup label of the gaze calibration (e.g. lab)")
+    parser.add_argument("--estimator", default="rules",
+                        help="user-state estimator (A13: rules; the HMM comes in A16)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
 
     from eepy.camera import CameraConfigError, CameraError, open_camera
     from eepy.logs.features import FeatureStream, ProcessEventLog
+
+    from eepy.state.config import RulesConfigError
 
     from .aus import ActionUnitExtractor
     from .aus import load_config as load_au_config
@@ -45,7 +49,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         # keep_full: the calibration's face check shows the blue box in the whole picture.
         camera = open_camera(args.camera, events=events, keep_full=True,
                              **({"index": args.index} if args.index is not None else {}))
-    except (CameraError, CameraConfigError) as exc:   # also a wrong --profile
+        tracker = _state_tracker(args.estimator, config.windows)   # checks state_rules.yaml first
+    except (CameraError, CameraConfigError, RulesConfigError, ValueError) as exc:   # also a wrong --profile
         print(f"\n  {exc}", file=sys.stderr)
         return 2
     extractors = default_extractors(config)
@@ -77,6 +82,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     publisher = UserTargetPublisher(camera.config.relay_port, gaze_config.get("robot_lens_fov_deg"),
                                     camera.config.robot.fov_deg, gaze_config.get("user_report_rate"))
     pipeline.subscribe(publisher)
+    # The user's state (A13): from each window summary, logged and sent to the panel.
+    from eepy.logs.clock import monotonic
+    from eepy.state.runner import StateFromPipeline, StatePublisher, StateRecorder
+
+    state_stream = StateRecorder.make_stream()
+    state_publisher = StatePublisher(camera.config.relay_port)
+    tracker.listeners += [StateRecorder(events, state_stream), state_publisher]
+    pipeline.subscribe(StateFromPipeline(tracker, config.windows, session=lambda: features.session))
     pipeline.start()
     # The Wizard panel's "Calibrate" step runs here (this process has the camera).
     from .calibration.remote import CommandHandler
@@ -91,6 +104,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             if pipeline.error:
                 print(f"\n  {pipeline.error}", file=sys.stderr)
                 return 1
+            tracker.idle(monotonic())              # no pictures for a while: unknown
             done = commands.tick()                 # the panel asked to calibrate / reuse / skip?
             if done:
                 print(f"  Calibration: {done}")
@@ -108,17 +122,31 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"AUs {aus.status} {aus.achieved_rate():.0f}/s"
             zone = (latest.values.get("gaze_zone") if latest else None) or "-"
             calib = "" if gaze.zones.calibrated and baseline.current().calibrated else " (uncalibrated)"
+            state = tracker.latest.state if tracker.latest else "-"
             print(f"  {stats['fps'] or 0:4.1f} fps   {stats['process_ms'] or 0:5.1f} ms/frame   "
-                  f"{face:8}  gaze {zone}{calib:15} {au_text:18} {camera.status}   {recording}")
+                  f"{face:8}  gaze {zone}{calib:15} {au_text:18} state {state:12} {camera.status}   "
+                  f"{recording}")
     except KeyboardInterrupt:
         pass
     finally:
         pipeline.stop()
         publisher.close()
+        state_publisher.close()
+        state_stream.close()
         features.close()
         if au_features is not None:
             au_features.close()
     return 0
+
+
+def _state_tracker(name: str, windows: Any) -> Any:
+    """The user-state estimator (A13), with its gap setting from state_rules.yaml."""
+    from eepy.state.estimate import make_estimator
+    from eepy.state.runner import StateTracker
+
+    estimator = make_estimator(name)
+    gap = getattr(getattr(estimator, "config", None), "gap_seconds", 3.0)
+    return StateTracker(estimator, gap_seconds=gap)
 
 
 if __name__ == "__main__":

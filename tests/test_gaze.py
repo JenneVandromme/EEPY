@@ -437,3 +437,12 @@ def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def test_the_state_estimator_knows_the_same_zones():
+    """eepy/state lists the zones itself (the panel's environment has no vision
+    packages); this keeps the two lists equal."""
+    from eepy.perception.gaze import ZONES
+    from eepy.state.features import ZONES as STATE_ZONES
+
+    assert tuple(STATE_ZONES) == tuple(ZONES)

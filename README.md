@@ -309,6 +309,22 @@ plain words, is in [`eepy/perception/README.md`](eepy/perception/README.md).
 **Testing the face features properly?** Follow the step-by-step tutorial for
 macOS, Windows and Linux: [eepy/perception/README.md → Tutorial: test the face features](eepy/perception/README.md#tutorial-test-the-face-features-about-10-minutes).
 
+### Test the user state (focused, distracted, drowsy…)
+
+From the face features, EEPY decides once a second whether the participant is
+**focused, distracted, drowsy, very drowsy, absent** or **unknown**, with the
+reason. The Wizard panel's status bar and the preview show it. The rules and
+their numbers are in `config/state_rules.yaml`.
+
+```bash
+source .venv-vision/bin/activate      # Windows: .venv-vision\Scripts\Activate.ps1
+python -m eepy.perception.selftest --states --no-aus   # guided, ~3 minutes: work, phone, sleepy, leave
+python -m eepy.state.replay latest                     # the states of a recorded session, no camera
+```
+
+Every state and rule in plain words, how to change a threshold, and the replay:
+[`eepy/state/README.md`](eepy/state/README.md).
+
 ### Test the robot connection
 
 This needs **two terminals at once**: one running the robot's "daemon"
@@ -419,8 +435,10 @@ EEPY/
 ├── eepy/speech/           # the robot's voice (text-to-speech) — how it works: eepy/speech/README.md
 ├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
 ├── eepy/perception/       # face features: blinks, yawns, nods, PERCLOS — what they mean: eepy/perception/README.md
+├── eepy/state/            # the user's state (focused, drowsy, …) from those features — eepy/state/README.md
 ├── config/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
+│   ├── state_rules.yaml   # the threshold rules: features -> focused / distracted / drowsy / ... (eepy/state/README.md)
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── data/calibration/      # per-person calibrations: gaze zones + baseline (gitignored; numbers only)
@@ -461,6 +479,7 @@ head can physically reach a pose and how fast it moves. Details in
 | find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
 | check the camera | [eepy/camera/README.md](eepy/camera/README.md) |
 | understand the face values (blinks, PERCLOS, …), or work on perception | [eepy/perception/README.md](eepy/perception/README.md) |
+| understand the user states and their reasons, or change a threshold | [eepy/state/README.md](eepy/state/README.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |

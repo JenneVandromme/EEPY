@@ -1,0 +1,189 @@
+# The threshold rules (A13): which state the participant is in, from the camera's
+# features. EEPY's first "brain", and the baseline the HMM must beat (A18).
+#
+# Plain-language guide, with every feature you can use and how to tune:
+#     eepy/state/README.md
+#
+# HOW IT WORKS, IN SHORT
+#   About once a second every rule below is checked against the newest features.
+#   - A rule FIRES when its `when` is true (and all of its `needs` are true).
+#   - drowsy works with POINTS: each drowsy sign adds its points, and at
+#     `points_needed` (1.0) the person counts as drowsy. One strong sign is enough,
+#     two weak ones together are too.
+#   - If several states fire, the first one in `priority` wins.
+#   - Nothing fires: focused.
+#   - The state only CHANGES after the new one has lasted its `dwell` time, so a
+#     single glance or blink does not make it flicker.
+#
+# A rule:
+#   id:     a short name (shown in the logs and the replay)
+#   state:  very_drowsy, drowsy, absent or distracted
+#   when:   <feature> <compare> <number>   compare: >=  >  <=  <  ==  !=
+#   needs:  conditions that must hold for the rule to count at all (else it is
+#           SKIPPED, not false -- e.g. blinks need a camera fast enough to see them)
+#   uncalibrated: the condition to use instead when the person is not calibrated
+#           (the `when` feature then has no value)
+#   points: drowsy rules only
+#   says:   the reason shown in the panel. {value} is the measured value, {threshold}
+#           the limit; {value:.0%} shows 0.25 as 25%, {value:.0f} as a whole number.
+#           says_uncalibrated: the same, for the uncalibrated condition.
+#
+# Changing a number here and restarting the vision program is all it takes. A
+# mistake (a misspelt feature, a missing `says`) stops it with a message saying
+# what and where. Try changes on recorded sessions first:
+#     python -m eepy.state.replay <session>
+
+# Who wins when several states fire. Drowsiness first: a drowsy head drops and the
+# gaze goes down, which LOOKS like looking away, but the right response is about
+# sleep. Absent above distracted: with no face, "distracted at the desk" does not
+# apply. (Drowsiness rules need the face visible -- see their `needs` -- so an empty
+# desk is absent, not drowsy.)
+priority: [very_drowsy, drowsy, absent, distracted, focused]
+
+# drowsy is reached by points: the drowsy rules' points added up.
+points_needed:
+  drowsy: 1.0
+
+# Seconds a new state must last before it is shown (enter), and seconds without
+# any sign of the current state before it may change to a milder one (leave).
+# Fast up, slow down: one alert-looking moment does not undo drowsiness.
+dwell:
+  enter:
+    focused: 5          # a few seconds of working before calling it focused again
+    distracted: 5       # on top of the 5 s look away the rules already need
+    drowsy: 10          # drowsiness builds slowly; 10 s avoids reacting to one yawn
+    very_drowsy: 3      # urgent: show it quickly
+    absent: 5
+    unknown: 2
+  leave:
+    drowsy: 20          # 20 s without drowsy signs before it may go back down
+    very_drowsy: 20
+
+# No camera pictures for this long: unknown (a frozen state is worse than none).
+gap_seconds: 3
+
+# Not enough reliable data: unknown, whatever else fires.
+unknown:
+  - id: starting_up
+    when: coverage_s_10s < 5
+    says: "only {value:.0f} s of camera data so far"
+  - id: camera_too_slow
+    when: fps_10s < 5
+    says: "camera too slow ({value:.0f} pictures/s)"
+
+rules:
+  # --- very drowsy --------------------------------------------------------------
+  - id: perclos_very_high
+    state: very_drowsy
+    when: perclos_60s >= 0.25
+    needs: [face_present_ratio_10s >= 0.5, coverage_s_60s >= 30]   # a share of a few seconds is noise
+    # Above ~25 % PERCLOS the drowsiness literature (Wierwille; Dinges) sees severe
+    # drowsiness and microsleep risk.
+    says: "eyes closed {value:.0%} of the last minute"
+
+  - id: microsleep
+    state: very_drowsy
+    when: blink_max_ms_60s >= 1500
+    needs: [face_present_ratio_10s >= 0.5]
+    # A closure of 1.5 s or more is a microsleep, not a blink.
+    says: "eyes closed for {value:.0f} ms at once (microsleep)"
+
+  - id: eyes_closed_now
+    state: very_drowsy
+    when: eyes_closed_now_s >= 1.5
+    needs: [face_present_ratio_10s >= 0.5]
+    # The same, while it is happening (a blink event only exists once the eyes reopen).
+    says: "eyes closed for {value:.1f} s right now"
+
+  - id: repeated_nodding
+    state: very_drowsy
+    when: nods_60s >= 2
+    needs: [face_present_ratio_10s >= 0.5]
+    # Repeatedly nodding off is the classic "fighting sleep" pattern.
+    says: "nodded off {value:.0f} times in the last minute"
+
+  - id: many_drowsy_signs
+    state: very_drowsy
+    when: drowsy_points >= 2.0
+    # Twice the drowsy points: many signs at once.
+    says: "many signs of sleepiness at once"
+
+  # --- drowsy (points) -----------------------------------------------------------
+  - id: perclos_high
+    state: drowsy
+    points: 1.0
+    when: perclos_60s >= 0.12
+    needs: [face_present_ratio_10s >= 0.5, coverage_s_60s >= 30]   # a share of a few seconds is noise
+    # 12-15 % PERCLOS is the usual onset of drowsiness; alone it is enough.
+    says: "eyes closed {value:.0%} of the last minute"
+
+  - id: slow_blinks
+    state: drowsy
+    points: 0.6
+    when: blink_mean_ms_rel_60s >= 1.5
+    uncalibrated: blink_mean_ms_60s >= 300
+    needs: [face_present_ratio_10s >= 0.5, blink_confidence_60s == ok]
+    # Blinks get longer with fatigue: 1.5x the person's usual; without a calibration
+    # 300 ms (typical alert blinks are 100-250 ms).
+    says: "blinks {value:.1f}x as long as usual"
+    says_uncalibrated: "slow blinks ({value:.0f} ms on average)"
+
+  - id: long_blinks
+    state: drowsy
+    points: 0.6
+    when: long_blinks_60s >= 3
+    needs: [face_present_ratio_10s >= 0.5, blink_confidence_60s == ok]
+    # Several blinks over 0.5 s in a minute: eyes "resting" rather than blinking.
+    says: "{value:.0f} long blinks in the last minute"
+
+  - id: yawning
+    state: drowsy
+    points: 0.5
+    when: yawns_60s >= 1
+    needs: [face_present_ratio_10s >= 0.5]
+    # Weak alone (people yawn when bored too); adds up with the other signs.
+    says: "yawned in the last minute"
+
+  - id: nodding
+    state: drowsy
+    points: 0.7
+    when: nods_60s >= 1
+    needs: [face_present_ratio_10s >= 0.5]
+    # One nod: a strong sign, but a single one can be looking down quickly.
+    says: "nodded off once in the last minute"
+
+  - id: au_eyes_closing
+    state: drowsy
+    points: 0.5
+    when: AU43_active_60s >= 0.10
+    needs: [face_present_ratio_10s >= 0.5, au_status == running]
+    # Action units (optional): AU43 "eyes closed" active 10 % of the minute.
+    says: "eyes-closed action unit active {value:.0%} of the minute"
+
+  # --- absent ------------------------------------------------------------------
+  - id: no_face
+    state: absent
+    when: face_absent_ratio_10s >= 0.8
+    # 8 of the last 10 s without a face: left the desk or turned fully away.
+    says: "no face for {value:.0%} of the last 10 s"
+
+  # --- distracted ----------------------------------------------------------------
+  - id: looking_away_now
+    state: distracted
+    when: away_current_s >= 5
+    # A glance is not distraction; 5 s of looking away is.
+    says: "looking away for {value:.0f} s"
+
+  - id: often_away
+    state: distracted
+    when: gaze_off_ratio_60s >= 0.35
+    needs: [face_present_ratio_60s >= 0.3]
+    # Repeatedly looking away, even in short bursts: over a third of the minute.
+    says: "looked away {value:.0%} of the last minute"
+
+  - id: looking_down_at_lap
+    state: distracted
+    when: down_other_ratio_10s >= 0.5
+    needs: [face_present_ratio_10s >= 0.5]
+    # Looking down, but not at the notes: the phone-in-the-lap pattern.
+    says: "looking down (not at the notes) {value:.0%} of the last 10 s"

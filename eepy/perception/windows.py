@@ -9,6 +9,7 @@ Per window (suffix _10s / _60s in the event log):
     perclos            share of face-present time with the eyes >= 80 % shut (P80)
     blink_rate         blinks per minute of face-present time
     blink_mean_ms      mean blink duration
+    blink_max_ms       the longest eye closure (a microsleep is > 1500 ms)
     long_blinks        blinks longer than blink.long_ms
     yawns, nods        counts
     look_away_ratio    share of face-present time with the head turned > look_away_deg
@@ -19,6 +20,11 @@ Per window (suffix _10s / _60s in the event log):
     blink_rate_rel     blink rate / the person's usual rate (A12 baseline; else None)
     blink_mean_ms_rel  mean blink duration / their usual duration
     coverage_s         seconds of data actually in the window (less at start-up)
+
+Once per summary (no suffix):
+    eyes_closed_now_s    how long the eyes have been closed right now (0 when open);
+                         a blink event only exists once the eyes reopen
+    baseline_calibrated  true when the values are relative to this person (A12)
 """
 
 from __future__ import annotations
@@ -89,7 +95,19 @@ class WindowAggregator:
             suffix = f"_{int(seconds)}s"
             for key, value in self._window(now, seconds).items():
                 out[key + suffix] = value
+        out["eyes_closed_now_s"] = self._closed_now(now)
+        base: Optional[Baseline] = getattr(self, "_baseline", None)
+        out["baseline_calibrated"] = bool(base is not None and base.calibrated)
         return out
+
+    def _closed_now(self, now: float) -> float:
+        """Seconds the eyes have been closed (P80) without a break, up to `now`."""
+        start = None
+        for sample in reversed(self._samples):
+            if not sample.closed:
+                break
+            start = sample.t
+        return round(now - start, 2) if start is not None else 0.0
 
     def _window(self, now: float, seconds: float) -> Dict[str, Any]:
         start = now - seconds
@@ -114,6 +132,7 @@ class WindowAggregator:
             "perclos": share([s for s in present if s.closed], present_time),
             "blink_rate": round(len(blinks) / (present_time / 60), 1) if enough_face else None,
             "blink_mean_ms": round(sum(e.fields["duration_ms"] for e in blinks) / len(blinks), 1) if blinks else None,
+            "blink_max_ms": round(max(e.fields["duration_ms"] for e in blinks), 1) if blinks else None,
             "long_blinks": sum(1 for e in blinks if e.fields.get("long")),
             "yawns": sum(1 for e in events if e.type == "yawn"),
             "nods": sum(1 for e in events if e.type == "nod"),

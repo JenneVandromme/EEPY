@@ -243,6 +243,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--no-aus", action="store_true", help="skip the action-unit steps")
     parser.add_argument("--user", help="whose gaze calibration (default: 'default')")
     parser.add_argument("--fast", action="store_true", help="2-second steps (checks that it runs)")
+    parser.add_argument("--states", action="store_true",
+                        help="instead: the user-state scenario (A13, ~3 minutes): work, phone, "
+                             "act sleepy, leave")
     args = parser.parse_args(argv)
 
     import logging
@@ -291,7 +294,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     from .baseline import StoredBaselineProvider
 
     baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
-    pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline).start()
+    pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline)
+    if args.states:
+        return _state_scenario(cv2, pipeline, camera, config, au, gaze, baseline, args.fast)
+    pipeline.start()
     overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline)
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     steps = _steps(config.get("", "look_away_deg"))
@@ -374,6 +380,70 @@ def main(argv: Optional[List[str]] = None) -> int:
         cv2.waitKey(1)
     _report(steps, tallies, stats, config, au_info)
     _compare(steps, tallies, shadow, baseline.current())
+    return 0
+
+
+def _state_scenario(cv2: Any, pipeline: Any, camera: Any, config: Any, au: Any, gaze: Any,
+                    baseline: Any, fast: bool) -> int:
+    """A13: the scripted scenario -- work, phone, back, act sleepy, leave -- with the
+    rules running live. Reports the state in each part and how long switches took."""
+    from eepy.logs.clock import monotonic
+    from eepy.state.estimate import make_estimator
+    from eepy.state.runner import StateFromPipeline, StateTracker
+    from eepy.state.scenario import SCENARIO, judge, report
+
+    from .overlay import FaceOverlay
+
+    estimator = make_estimator("rules")
+    estimates: List[Any] = []
+    tracker = StateTracker(estimator, gap_seconds=estimator.config.gap_seconds, listeners=[estimates.append])
+    pipeline.subscribe(StateFromPipeline(tracker, config.windows))
+    pipeline.start()
+    overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=tracker)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    print(f"\n  User-state scenario on the {camera.describe()} (about 3 minutes). "
+          "Follow the instructions in the window.")
+    result = None
+    timed: List[Any] = []
+    started = monotonic()
+    try:
+        for n, phase in enumerate(SCENARIO, start=1):
+            step = Step(phase.title, phase.instruction, phase.seconds, "/".join(phase.expected),
+                        lambda t: False, lambda t: "")
+            title = f"{n}/{len(SCENARIO)}  {phase.title}"
+            start = monotonic()
+            end = start + (4.0 if fast else phase.seconds)
+            print("\a", end="", flush=True)                  # a beep: also for whoever left the view
+            while True:
+                now = monotonic()
+                if now >= end:
+                    break
+                if pipeline.error:
+                    print(f"\n  {pipeline.error}", file=sys.stderr)
+                    return 1
+                tracker.idle(now)
+                newest = pipeline.wait_for_result(newer_than=result, timeout=0.1)
+                if newest is not None:
+                    result = newest
+                    overlay.note(result)
+                cv2.imshow(WINDOW, _screen(cv2, result, overlay, step, title, True, end - now, camera))
+                key = cv2.waitKey(1) & 0xFF
+                overlay.key(key)
+                if key in (ord("q"), ord("Q"), 27) or cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
+                    timed.append((phase, start, now))
+                    raise KeyboardInterrupt
+                if key == ord(" "):
+                    break
+            timed.append((phase, start, monotonic()))
+    except KeyboardInterrupt:
+        print("  (stopped early)")
+    finally:
+        pipeline.stop()
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+    for line in report(judge(timed, estimates), estimates, started):
+        print(line)
+    print()
     return 0
 
 

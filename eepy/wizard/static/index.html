@@ -37,6 +37,7 @@
   .pill.bad { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.rec { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.amber { background: var(--warn); color: #fff; font-weight: 600; }
+  .ustate-why { font-size: 12px; max-width: 34em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
   .calbar { display: inline-block; width: 160px; height: 10px; border: 1px solid var(--muted); border-radius: 5px; overflow: hidden; }
   .calbar > span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
@@ -123,6 +124,8 @@
     <span class="pill">playing: <b id="playing">—</b></span>
     <span class="pill">idle: <b id="idle">—</b></span>
     <span class="pill" id="camera" hidden><span class="dot"></span><span>camera</span></span>
+    <span class="pill" id="ustate" hidden><span class="dot"></span><span>state: <b></b></span></span>
+    <span class="muted ustate-why" id="ustate-why"></span>
     <span class="spacer"></span>
     <button class="small" id="reload" tabindex="-1">Reload files</button>
     <button class="small" id="reconnect" tabindex="-1">Reconnect robot</button>
@@ -312,9 +315,34 @@ function renderStatus(s) {
   } else e.hidden = true;
 
   renderCamera(s.camera);
+  renderUserState(s.user_state);
   renderSession(s.session);
   renderCalibration(s.calibration, s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
+}
+
+// The participant's state (A13), estimated by the vision process from the camera:
+// focused, distracted, drowsy, very drowsy, absent, unknown -- with the main reason.
+// What each means: eepy/state/README.md.
+const STATE_LOOK = { focused: ["", "dot ok"], distracted: [" amber", "dot"], drowsy: [" amber", "dot"],
+                     very_drowsy: [" bad", "dot"], absent: ["", "dot"], unknown: ["", "dot"] };
+function renderUserState(u) {
+  const pill = $("ustate"), why = $("ustate-why");
+  pill.hidden = !u; why.textContent = "";
+  if (!u) return;
+  const name = u.fresh ? u.state : "unknown";
+  const [cls, dot] = STATE_LOOK[name] || ["", "dot"];
+  pill.className = "pill" + cls;
+  pill.querySelector(".dot").className = dot;
+  let text = name.replace("_", " ");
+  if (u.fresh && u.pending) text += ` → ${u.pending.replace("_", " ")}?`;
+  if (u.fresh && !u.calibrated) text += " · uncalibrated";
+  pill.querySelector("b").textContent = text;
+  why.textContent = u.fresh ? u.reason : "no word from the vision program for a few seconds";
+  pill.title = `Estimated from the camera by the ${u.estimator} (eepy/state/README.md).\n`
+             + (u.fresh ? `Why: ${u.reason}` : "The vision program (python -m eepy.perception) is not sending.")
+             + (u.pending ? `\nMay change to: ${u.pending.replace("_", " ")} (waiting to be sure)` : "")
+             + (u.calibrated ? "" : "\nNot calibrated: default values, less reliable.");
 }
 
 // The camera pill: what the vision process gets from this panel (eepy/camera/relay.py).

@@ -30,6 +30,7 @@ PROTOCOL (one request per line; the connection stays open):
     SAY "line_id"\\n -> {"ok": .., "spoken": ..}  (vision -> panel: speak a line, A12)
     POLL\\n   -> {"ok": true, "command": {...} | null}  (panel -> vision commands, A12)
     CALIB {...}\\n -> {"ok": true}   (vision -> panel: calibration progress, A12)
+    STATE {...}\\n -> {"ok": true}   (vision -> panel: the estimated user state, A13)
 
 Python 3.9, standard library only (the SDK is imported only by main()).
 """
@@ -81,7 +82,8 @@ class CameraRelay:
                  user_fn: Optional[Callable[[Optional[Dict[str, float]]], None]] = None,
                  say_fn: Optional[Callable[[str], bool]] = None,
                  command_fn: Optional[Callable[[], Optional[Dict[str, Any]]]] = None,
-                 calib_fn: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
+                 calib_fn: Optional[Callable[[Dict[str, Any]], None]] = None,
+                 state_fn: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
         self.port = port
         self.frame_fn = frame_fn
         self.pose_fn = pose_fn
@@ -89,6 +91,7 @@ class CameraRelay:
         # The calibration (A12): the vision process asks the panel to SPEAK a line,
         # POLLs it for commands ("calibrate", "reuse"...) and reports progress (CALIB).
         self.say_fn, self.command_fn, self.calib_fn = say_fn, command_fn, calib_fn
+        self.state_fn = state_fn    # the user state (A13), for the panel's status bar
         self.fps = fps
         self._label = label if frame_fn is not None else None
         self._grabs: Deque[float] = deque(maxlen=64)
@@ -222,6 +225,8 @@ class CameraRelay:
             return {"ok": True, "command": command_value}, b""
         if command == b"CALIB":
             return self._call(self.calib_fn, argument, lambda fn, value: fn(dict(value)) or {})
+        if command == b"STATE":
+            return self._call(self.state_fn, argument, lambda fn, value: fn(dict(value)) or {})
         if command == b"FRAME":
             with self._lock:
                 jpeg, t, index = self._jpeg, self._t, self._index
@@ -332,6 +337,10 @@ class RelayClient:
     def report(self, progress: Dict[str, Any]) -> None:
         """Calibration progress / result, for the panel's status indicator."""
         self.request("CALIB " + json.dumps(progress))
+
+    def send_state(self, state: Dict[str, Any]) -> None:
+        """The estimated user state (A13), for the panel's status bar."""
+        self.request("STATE " + json.dumps(state))
 
     def close(self) -> None:
         for thing in (self._file, self._sock):

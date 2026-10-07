@@ -128,6 +128,19 @@ run the self-test again: it ends with **calibrated vs. default** detections. See
 **8. Action units** (only with the optional extra): follow the tutorial in
 [aus/README.md](aus/README.md#tutorial-test-the-action-units-about-10-minutes).
 
+**9. User state** (about 3 minutes, after calibrating):
+
+```bash
+# A
+python -m eepy.perception.selftest --states --no-aus
+```
+
+✅ PASS for each part: focused, distracted (phone), focused, drowsy (act
+sleepy), absent (leave). With the panel running (B) during step 4, the panel's
+status bar shows the same states, and `python -m eepy.state.replay latest`
+shows them again afterwards from the recorded session. See
+[../state/README.md](../state/README.md).
+
 ## What the values mean
 
 ### Per frame (about 15 times a second, in `features.csv`)
@@ -167,6 +180,7 @@ Logged as a `face_window` event. Each name ends in `_10s` or `_60s`.
 | `perclos` | **Share of the time the eyes were (nearly) shut.** The standard drowsiness measure. "Shut" means at least 80 % closed (the usual *P80* definition: `eye_closure` ≥ 0.8). Above about 0.15 is a warning sign |
 | `blink_rate` | Blinks per minute. Normally 10–20; it rises with fatigue |
 | `blink_mean_ms` | Average blink length. Blinks get **longer** when tired (normally 100–300 ms) |
+| `blink_max_ms` | The longest eye closure. Over 1500 ms is a **microsleep** |
 | `long_blinks` | Number of blinks over 500 ms |
 | `yawns`, `nods` | How many |
 | `look_away_ratio` | Share of the time the head was turned more than 30° away |
@@ -176,8 +190,15 @@ Logged as a `face_window` event. Each name ends in `_10s` or `_60s`.
 | `blink_confidence` | `ok`, or `low` when there are too few frames per second to catch blinks reliably (see below) |
 | `coverage_s` | How many seconds of data the window really holds (less right after starting) |
 
+Plus, once per summary (no `_10s`/`_60s`): `eyes_closed_now_s`, how long the eyes
+have been closed right now (a blink is only counted once the eyes reopen), and
+`baseline_calibrated`, true when the values are relative to this person.
+
 All shares are measured in **time**, not in frames, so a dip in frame rate
 doesn't skew them.
+
+**From these summaries EEPY decides the participant's state** (focused,
+distracted, drowsy, very drowsy, absent): see [../state/README.md](../state/README.md).
 
 ## Calibration: each person's own normal
 
@@ -256,6 +277,11 @@ At the end it prints PASS or CHECK per step, the processing time per frame,
 and your own normal eye and mouth openness. Use it as the acceptance test on
 each laptop and on the robot.
 
+`python -m eepy.perception.selftest --states` runs a different, longer test
+(about 3 minutes): work, a phone, act sleepy, leave. It checks the **user
+states** the rules show, and how long each switch takes. See
+[../state/README.md](../state/README.md#self-test-the-states-with-a-real-person-about-3-minutes).
+
 ## Recording during a session
 
 Start the face features next to the Wizard panel, in the vision environment:
@@ -267,7 +293,11 @@ python -m eepy.perception
 It records into the session the panel is running: per-frame values go to
 `features.csv`, events and summaries to `events.vision.jsonl`. Outside a
 session it runs but records nothing. Every 5 s it prints the frame rate,
-processing time, and whether it's recording.
+processing time, the user state, and whether it's recording.
+
+It also decides the participant's **state** once a second, from the rules in
+`config/state_rules.yaml`. It records it (`state.csv`, `state_changed`) and
+sends it to the panel's status bar. See [../state/README.md](../state/README.md).
 
 ## For developers
 

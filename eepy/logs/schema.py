@@ -142,6 +142,12 @@ EVENT_TYPES: Dict[str, EventType] = {
                            "active over 10 s / 60 s, the achieved rate, and cross-checks with "
                            "the eye and yawn features."),
 
+    # --- the user's state (eepy/state/): rules now, the HMM later ------------------------
+    "state_changed": EventType("model", ("to", "estimator"),
+                               "The estimated user state changed (focused, distracted, drowsy, "
+                               "very_drowsy, absent, unknown): from, to, the reason, the rules "
+                               "that fired with their values. Every second's state is in state.csv."),
+
     # --- reserved for later tasks: defined now so the format is settled ---------------
     "hmm_belief": EventType("model", ("probs", "most_likely"),
                             "The HMM's belief over hidden states, e.g. "

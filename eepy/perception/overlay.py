@@ -13,6 +13,7 @@ from typing import Any, List, Optional, Tuple
 from . import landmarks as lm
 from .pipeline import PerceptionResult
 
+RED = (60, 60, 230)
 GREEN, YELLOW, CYAN, WHITE, BLACK, GREY = (80, 220, 80), (0, 220, 255), (255, 220, 0), \
     (255, 255, 255), (0, 0, 0), (170, 170, 170)
 FLASH_SECONDS = 0.9
@@ -31,8 +32,9 @@ def _fmt(value: Optional[float], spec: str = ".2f") -> str:
 
 
 class FaceOverlay:
-    def __init__(self, aus: Any = None, gaze: Any = None, baseline: Any = None) -> None:
+    def __init__(self, aus: Any = None, gaze: Any = None, baseline: Any = None, state: Any = None) -> None:
         self.baseline = baseline          # the BaselineProvider (A12), to show what is in use
+        self.state = state                # a StateTracker (A13): .latest is the newest estimate
         self.aus = aus                    # the ActionUnitExtractor, if there is one
         self.gaze = gaze                  # the GazeExtractor, if there is one
         self.show_aus = True
@@ -86,6 +88,7 @@ class FaceOverlay:
 
         lines = [("face features   (L: landmarks on/off)", GREY)]
         lines += self._calibration_lines()
+        lines += self._state_lines()
         if not obs.present:
             lines.append(("no face", YELLOW))
         else:
@@ -195,6 +198,20 @@ class FaceOverlay:
         extra = "" if gaze.zones.calibrated else "  UNCALIBRATED"
         _text(cv2, image, f"{zone.replace('_', ' ')}  {mode_text}  conf {_fmt(values.get('gaze_confidence'))}"
               f"{extra}   (G)", x0, y0 - 10, YELLOW if extra else GREY, 0.45)
+
+    def _state_lines(self) -> list:
+        """The user's state (A13) and why: what the Wizard panel shows too."""
+        latest = getattr(self.state, "latest", None)
+        if latest is None:
+            return []
+        colour = {"focused": GREEN, "distracted": YELLOW, "drowsy": YELLOW,
+                  "very_drowsy": RED, "absent": GREY, "unknown": GREY}.get(latest.state, WHITE)
+        pending = f"  (-> {latest.pending.replace('_', ' ')}?)" if latest.pending else ""
+        lines = [(f"STATE {latest.state.replace('_', ' ').upper()}{pending}   {latest.reason_text}", colour)]
+        points = latest.values.get("drowsy_points")
+        if points:
+            lines.append((f"drowsy points {points:.1f} (1.0 = drowsy, 2.0 = very drowsy)", GREY))
+        return lines
 
     def _calibration_lines(self) -> list:
         """Whose baseline is in use (A12), and its key values -- or that there is none."""

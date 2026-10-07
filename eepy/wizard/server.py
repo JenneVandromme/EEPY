@@ -185,6 +185,10 @@ class Wizard:
         self.calibration_store = calibration_store          # None: data/calibration/
         self._calibration_commands: deque = deque()
         self._vision_seen = -1e9
+        # The participant's state as the vision process estimates it (A13): shown in
+        # the status bar. A14's escalation will act on it here.
+        self.user_state: dict | None = None
+        self._user_state_seen = -1e9
         self.camera_relay = None
         if camera_relay is not None:
             self._start_camera_relay(*camera_relay)
@@ -487,7 +491,7 @@ class Wizard:
                             label=lambda: "real" if self._robot_camera_client() is not None else None,
                             user_fn=self.user_target.observe, say_fn=self._calibration_say,
                             command_fn=self._next_calibration_command,
-                            calib_fn=self._calibration_report)
+                            calib_fn=self._calibration_report, state_fn=self._state_report)
         try:
             self.camera_relay = relay.start()
         except RelayPortBusy as exc:
@@ -571,6 +575,17 @@ class Wizard:
             except SessionError:
                 pass
 
+    def _state_report(self, estimate: dict) -> None:
+        """The vision process's newest state estimate (about once a second)."""
+        self.user_state = estimate
+        self._user_state_seen = time.monotonic()
+
+    def state_status(self) -> dict | None:
+        """The state for the status bar; `fresh` False when the vision process went quiet."""
+        if self.user_state is None:
+            return None
+        return dict(self.user_state, fresh=time.monotonic() - self._user_state_seen < 3.0)
+
     def calibration_status(self) -> dict:
         return dict(self.calibration, vision_connected=time.monotonic() - self._vision_seen < 3.0)
 
@@ -626,6 +641,7 @@ class Wizard:
             "panel_version": self.panel_version,
             "camera": self.camera_status(),
             "calibration": self.calibration_status(),
+            "user_state": self.state_status(),
         }
 
     def log_since(self, seq: int) -> tuple[int, list[dict]]:

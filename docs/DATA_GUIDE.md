@@ -13,6 +13,7 @@ data/sessions/
     features.csv                face features, ~15 rows a second (python -m eepy.perception)
     features.json               which columns features.csv has
     aus.csv / aus.json          action units, one row per result (only with the optional extra)
+    state.csv / state.json      the participant's state, once a second (focused, drowsy, ...)
     events.vision.jsonl         from the vision process: blinks, yawns, nods, face lost/back,
                                 per-second summaries (PERCLOS ...), camera status
     snapshot/                   the exact behaviour and config files used
@@ -86,6 +87,14 @@ no_face), `gaze_on_work`, `gaze_confidence`, `gaze_mode` and `away_s`; the event
 `looked_away` / `back_on_work` mark each look-away, and `gaze_window` summarises 10 s /
 60 s. Check `gaze_calibrated` (or the `gaze_status` event): uncalibrated sessions used a
 default work area. See [eepy/perception/gaze/README.md](../eepy/perception/gaze/README.md).
+
+**User state**: `state.csv` has one row a second: `state` (focused / distracted / drowsy /
+very_drowsy / absent / unknown), `pending` (a state waiting out its dwell time), `calibrated`,
+the `rules` that fired, the `reason` as shown in the panel, and `p_<state>` scores (one-hot for
+the rules; probabilities once the HMM exists). `events.vision.jsonl` has a `state_changed`
+event at every change: `from`, `to`, the reason, the evidence (feature, value, threshold) and
+what was skipped. Re-run the states with other thresholds, and compare them with the operator's
+markers: `python -m eepy.state.replay <session>`. See [eepy/state/README.md](../eepy/state/README.md).
 
 **Action units** (optional): `s.aus` has one row per result, timed to the frame it came
 from; `au_window` events hold their 10 s / 60 s averages and the cross-checks with the eye
