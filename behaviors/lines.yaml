@@ -26,6 +26,10 @@
 #  Only those two are allowed; the validator rejects anything else, so a typo
 #  like {minute} is caught before it ever reaches the robot.
 #
+#  Never write a double dash (--) inside the words: the speech engine reads
+#  it out as "dash dash". Use a comma or "..." for a pause instead. The
+#  validator rejects it.
+#
 #  After editing run:  python -m eepy.behaviors.validate
 # ===========================================================================
 lines:
@@ -94,4 +98,29 @@ lines:
         - "That's it."
       direct:
         - "Good going."
-        - "{evidence} -- nice work."
+        - "{evidence}, nice work."
+
+  probe_focus:
+    description: >
+      Self-report probe -- asks the user to rate their focus on a 1-5 scale
+      (1 = not focused at all, 5 = fully focused).
+    variants:
+      hedged:
+        - "Quick check, if you don't mind... how focused do you feel, from 1 for not at all, to 5 for fully focused?"
+        - "Just curious: on a scale of 1 to 5, how's your focus right now?"
+      direct:
+        - "Focus, 1 to 5?"
+        - "Rate your focus from 1 to 5."
+
+  probe_kss:
+    description: >
+      Self-report probe -- Karolinska Sleepiness Scale, 1-9
+      (1 = extremely alert, 5 = neither alert nor sleepy,
+      9 = very sleepy, fighting sleep).
+    variants:
+      hedged:
+        - "If you don't mind... how sleepy do you feel, from 1 for very alert to 9 for fighting sleep?"
+        - "Just checking in: on a scale of 1 to 9, how sleepy are you right now?"
+      direct:
+        - "Sleepiness, 1 to 9?"
+        - "From 1, very alert, to 9, fighting sleep... where are you?"
