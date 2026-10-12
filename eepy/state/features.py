@@ -33,6 +33,7 @@ ZONES = ("screen", "notes", "down_other", "away", "no_face")
 PER_WINDOW = {
     # face_window (eepy/perception/windows.py)
     "perclos": "share of the face-present time with the eyes >= 80 % shut (PERCLOS)",
+    "eyes_measured_s": "seconds the eyes were judged (looking roughly forward)",
     "blink_rate": "blinks per minute",
     "blink_mean_ms": "mean blink duration (ms)",
     "blink_max_ms": "longest eye closure (ms) -- a microsleep is > 1500",

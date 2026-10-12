@@ -114,6 +114,12 @@ perception:
     ear_open: 0.28        # baseline: eye openness (EAR) of an open eye
     ear_floor: 0.05       # eye openness of a fully closed eye
     perclos_closure: 0.8  # "closed" for PERCLOS: 80 % shut (the standard P80)
+    # Eyes are only JUDGED (closed / blinks / PERCLOS) while the person looks
+    # roughly forward. Looking down at notes or a keyboard, or to the side, makes
+    # open eyes look half closed to the camera. Relative to their normal head
+    # posture (A12 calibration; uncalibrated: straight at the camera).
+    judge_max_down_deg: 10   # head tilted further down than this: eyes not judged
+    judge_max_turn_deg: 15   # head turned further aside than this: eyes not judged
   blink:
     close: 0.5            # eye 50 % shut: a blink starts
     open: 0.35            # back under 35 % shut: it ends

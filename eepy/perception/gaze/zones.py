@@ -7,7 +7,11 @@
     away        everything else: to the side, up
     no_face     no face found
 
-`screen` and `notes` are ON WORK; the rest is off work.
+`screen`, `notes` and `down_other` are ON WORK; `away` and `no_face` are off work.
+(Base version: looking down -- notes, keyboard, or a lap -- counts as work. Notes
+and lap could not be told apart reliably, and reading notes counted as
+distraction half the time. The zones are still logged; telling a phone apart is
+A29's job.)
 
 A calibration holds two zone sets: one learned from iris+head gaze, one from
 the head alone -- because when someone looks at a screen corner their EYES do
@@ -23,7 +27,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from .config import GazeConfig
 
-WORK = ("screen", "notes")
+WORK = ("screen", "notes", "down_other")
 ZONES = ("screen", "notes", "down_other", "away", "no_face")
 
 

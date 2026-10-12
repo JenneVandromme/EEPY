@@ -19,7 +19,10 @@ computer's voice) and shows it on the screen:
 | **3. One minute of normal work** | 60 s (up to 90) | **Just work as usual.** The screen goes back to normal; a small window in the corner shows the progress | their normal eye openness, blinks, resting mouth, head posture, distance (and resting facial action units, if installed) |
 
 Blinks, yawns and short looks away during the minute **don't spoil it**: they
-are left out automatically. Typing and glancing at the keyboard or the notes
+are left out automatically. The normal eye openness and head posture come from
+the moments the participant looks at the **screen**: looking down at notes
+lowers the eyelids and the head, which would otherwise be learned as "normal".
+So the minute should include some reading on the screen. Typing and glancing at the keyboard or the notes
 **is** normal work, so that's fine too. Only looking away to the side, or leaving
 the camera's view, counts as not working. Keep the laptop still: if the camera
 stops sending pictures, the minute is extended.

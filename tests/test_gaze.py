@@ -246,12 +246,14 @@ def test_minimum_durations_are_configurable(tmp_path):
     assert [e.type for e in events].count("looked_away") >= 2      # now the quick glance counts
 
 
-def test_no_face_and_the_lap_are_off_work(tmp_path):
+def test_no_face_is_off_work_but_looking_down_is_work(tmp_path):
+    """Base version: looking down (notes, keyboard, lap) counts as work -- reading notes
+    was mistaken for the lap half the time. The zone itself is still told apart."""
     values, events = run(make(tmp_path), 30, [(2, 0, 5, True), (2, 0, 0, False), (2, 0, 5, True),
                                               (2, 0, 60, True)])
     zones = [v["gaze_zone"] for v in values]
     assert "no_face" in zones and "down_other" in zones
-    assert [e.fields.get("zone") for e in events if e.type == "looked_away"] == ["no_face", "down_other"]
+    assert [e.fields.get("zone") for e in events if e.type == "looked_away"] == ["no_face"]
 
 
 def test_values_and_modes_per_frame(tmp_path):

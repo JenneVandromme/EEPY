@@ -325,6 +325,17 @@ python -m eepy.state.replay latest                     # the states of a recorde
 Every state and rule in plain words, how to change a threshold, and the replay:
 [`eepy/state/README.md`](eepy/state/README.md).
 
+### Simulate what the robot would do (no camera, no robot)
+
+```bash
+source .venv-robot/bin/activate       # Windows: .venv-robot\Scripts\Activate.ps1
+python -m eepy.interaction.simulate --list          # built-in scenarios
+python -m eepy.interaction.simulate phone_break     # or: "focused 5m, distracted 2m, focused 3m"
+```
+
+It prints every nudge, ladder level and outcome over time. The timings are in
+`config/escalation.yaml`; the guide is [`eepy/interaction/README.md`](eepy/interaction/README.md).
+
 ### Test the robot connection
 
 This needs **two terminals at once**: one running the robot's "daemon"
@@ -436,9 +447,11 @@ EEPY/
 ├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
 ├── eepy/perception/       # face features: blinks, yawns, nods, PERCLOS — what they mean: eepy/perception/README.md
 ├── eepy/state/            # the user's state (focused, drowsy, …) from those features — eepy/state/README.md
+├── eepy/interaction/      # the escalation: what the robot does about that state (rules mode) — eepy/interaction/README.md
 ├── config/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
 │   ├── state_rules.yaml   # the threshold rules: features -> focused / distracted / drowsy / ... (eepy/state/README.md)
+│   ├── escalation.yaml    # when the robot nudges: onset delays, reaction windows, cooldowns, guards (eepy/interaction/README.md)
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── data/calibration/      # per-person calibrations: gaze zones + baseline (gitignored; numbers only)
@@ -480,6 +493,7 @@ head can physically reach a pose and how fast it moves. Details in
 | check the camera | [eepy/camera/README.md](eepy/camera/README.md) |
 | understand the face values (blinks, PERCLOS, …), or work on perception | [eepy/perception/README.md](eepy/perception/README.md) |
 | understand the user states and their reasons, or change a threshold | [eepy/state/README.md](eepy/state/README.md) |
+| understand when the robot nudges on its own (rules mode), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
@@ -527,6 +541,10 @@ network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
 
 Every session is saved in `data/sessions/`, under the **mode** — the
 experimental condition — set in `config/eepy.yaml` (or `--mode wizard|rules|hmm|hmm_bandit`).
+In the **rules** mode the robot nudges on its own (the user state plus the
+escalation ladders); the panel's **Pause autonomy** hands control back to you.
+When it nudges and why, and how to try the timings without a camera:
+[eepy/interaction/README.md](eepy/interaction/README.md).
 To look at the data:
 
 ```bash

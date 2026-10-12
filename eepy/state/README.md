@@ -6,7 +6,9 @@ the preview shows it on the picture, and every second of it is recorded.
 
 This first version uses **threshold rules**: readable "if this, then that"
 rules in [`config/state_rules.yaml`](../../config/state_rules.yaml) (task A13).
-Later an HMM (A16) does the same job, learned from data. The rules are the
+In the **rules** mode the robot acts on it: when and how it nudges is in
+[../interaction/README.md](../interaction/README.md). Later an HMM (A16) does
+the same job, learned from data. The rules are the
 baseline it must beat, so they are built to be as good as simple rules can be,
 not a strawman. Both give their answer in the same form, so the rest of EEPY
 (the escalation in A14, the panel, the logs) works with either.
@@ -55,7 +57,7 @@ never drowsy on its own: people also yawn when bored.
 | `slow_blinks` | blinks **1.5×** as long as the person's usual (uncalibrated: on average **≥ 300 ms**) | 0.6 | Blinks get longer with fatigue; alert blinks are 100–250 ms. |
 | `long_blinks` | **≥ 3** blinks longer than half a second in a minute | 0.6 | Eyes "resting" rather than blinking. |
 | `yawning` | a yawn in the last minute | 0.5 | Weak alone; adds up with the others. |
-| `au_eyes_closing` | the "eyes closed" action unit (AU43) active **≥ 10 %** of the minute | 0.5 | Only when the optional [action units](../perception/aus/README.md) run. |
+| ~~`au_eyes_closing`~~ | *off for now:* the "eyes closed" action unit (AU43) also reads looking down as closing the eyes | — | Comes back once it only counts forward looks. |
 
 ### Absent
 
@@ -69,7 +71,7 @@ never drowsy on its own: people also yawn when bored.
 |---|---|---|
 | `looking_away_now` | looking away from the screen and notes for **≥ 5 s** right now | A glance isn't distraction; 5 s of looking away is. |
 | `often_away` | looking away **≥ 35 %** of the last minute (while at the desk) | Repeatedly looking away, even in short bursts. |
-| `looking_down_at_lap` | looking down, but not at the notes, **≥ 50 %** of the last 10 s | The phone-in-the-lap pattern. |
+| ~~`looking_down_at_lap`~~ | *off in the base version:* reading notes or typing looked the same | Looking **down counts as work** now. A phone in the lap is detected later (A29). |
 
 "Looking away" uses the gaze zones of [A11](../perception/gaze/README.md): the
 screen and the notes are **work**; the rest is away.
@@ -120,12 +122,16 @@ time, the panel shows it as **"focused → drowsy?"**.
 
 Some rules can't be trusted in some moments. They are then **skipped**: they
 count neither for nor against the state.
-- **Blink rules** (`slow_blinks`, `long_blinks`) need a camera fast enough to
-  see blinks (about 14 pictures a second; see the perception README).
-- **PERCLOS rules** need at least 30 s of data in the minute: a share of a few
-  seconds is noise.
+- **Every eye rule** (PERCLOS, blinks) needs at least **20 s of eyes seen while
+  looking forward** in the last minute (`eyes_measured_s_60s`). Eyes are only
+  judged while the head is near its normal "looking at the screen" posture:
+  looking down at notes or a keyboard, or aside, makes **open** eyes look half
+  closed to the camera. In a real session that made reading count as
+  microsleeps. Sleepiness is therefore only seen while the person looks at
+  the screen; nodding off is still caught by the nod rules.
+- **Blink rules** (`slow_blinks`, `long_blinks`) also need a camera fast enough
+  to see blinks (about 14 pictures a second; see the perception README).
 - **Drowsiness rules** need the face visible (see above).
-- **The action-unit rule** needs the action units running.
 
 The replay and the logs list what was skipped and why.
 
@@ -198,7 +204,8 @@ rules, so keep notes on what you changed and why.
 
 | Feature | Meaning |
 |---|---|
-| `perclos_10s`, `perclos_60s` | share of the time (face visible) with the eyes ≥ 80 % shut |
+| `perclos_10s`, `perclos_60s` | share of the time the eyes were judged (looking forward) with the eyes ≥ 80 % shut |
+| `eyes_measured_s_10s`, `eyes_measured_s_60s` | seconds the eyes were judged (looking roughly forward) |
 | `blink_rate_*`, `blink_mean_ms_*`, `blink_max_ms_*`, `long_blinks_*` | blinks per minute, mean and longest duration (ms), blinks > 500 ms |
 | `blink_rate_rel_*`, `blink_mean_ms_rel_*` | the same relative to the person's usual (calibrated only; 1.5 = 50 % more) |
 | `blink_confidence_*` | `ok`, or `low` when the camera is too slow for blinks |
@@ -280,7 +287,7 @@ It guides you through five parts, with a beep at the start of each:
 | Part | Time | Do | Expect |
 |---|---|---|---|
 | 1. Work normally | 40 s | read or type as usual | **focused** after ~10 s (data, then the dwell) |
-| 2. Phone | 20 s | look down at an imaginary phone in your lap | **distracted** after ~10 s |
+| 2. Phone | 20 s | look at an imaginary phone **beside you** (turn your head to the side); a phone in the lap counts as looking down = work in the base version | **distracted** after ~10 s |
 | 3. Back to work | 20 s | look at the screen | **focused** after ~5 s |
 | 4. Act sleepy | 45 s | close your eyes slowly for about a second, every few seconds; yawn once or twice | **drowsy** (or very drowsy) after ~20–30 s |
 | 5. Leave | 30 s | leave the camera's view; count to 30 and come back | **absent**, after ~20 s (leaving drowsy first) |

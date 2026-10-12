@@ -150,7 +150,8 @@ shows them again afterwards from the recorded session. See
 | `face_present` | Is there a face? 1 = yes, 0 = no | — |
 | `face_size` | How much of the picture's height the face fills. **Bigger = closer** to the camera | 0.3–0.5 at a desk |
 | `ear_left`, `ear_right`, `ear` | **Eye openness** ("Eye Aspect Ratio"): eyelid gap ÷ eye width, per eye and averaged | ~0.28 open, < 0.1 shut |
-| `eye_closure` | How shut the eyes are **for this person**: 0 = open as usual, 1 = fully shut | blink ≈ 1 |
+| `eye_closure` | How shut the eyes are **for this person**: 0 = open as usual, 1 = fully shut. **Empty while the eyes aren't judged** (next row) | blink ≈ 1 |
+| `eyes_judged` | 1 while the person looks roughly forward (head within 10° down and 15° aside of their normal posture), else 0. Looking down at notes or a keyboard, or aside, makes **open** eyes look half closed to the camera, so blinks, PERCLOS and "eyes closed" only count while judged. Limits: `eyes.judge_max_down_deg` / `judge_max_turn_deg` in `config/eepy.yaml` | 1 / 0 |
 | `blink_left`, `blink_right` | MediaPipe's own "eyes closed" score, from a separate model: a **cross-check** on `eye_closure` | 0 open … 1 shut |
 | `mar` | **Mouth openness** ("Mouth Aspect Ratio"): lip gap ÷ mouth width | ~0 closed, 0.1–0.4 talking, 0.6+ yawning |
 | `jaw_open` | MediaPipe's "jaw dropped" score | 0 … 1 |
@@ -177,7 +178,8 @@ Logged as a `face_window` event. Each name ends in `_10s` or `_60s`.
 
 | Value | In plain words |
 |---|---|
-| `perclos` | **Share of the time the eyes were (nearly) shut.** The standard drowsiness measure. "Shut" means at least 80 % closed (the usual *P80* definition: `eye_closure` ≥ 0.8). Above about 0.15 is a warning sign |
+| `perclos` | **Share of the time the eyes were (nearly) shut**, over the time they were judged (looking forward). The standard drowsiness measure. "Shut" means at least 80 % closed (the usual *P80* definition: `eye_closure` ≥ 0.8). Above about 0.15 is a warning sign |
+| `eyes_measured_s` | Seconds the eyes were judged (looking forward). Eye figures over only a few seconds are noise |
 | `blink_rate` | Blinks per minute. Normally 10–20; it rises with fatigue |
 | `blink_mean_ms` | Average blink length. Blinks get **longer** when tired (normally 100–300 ms) |
 | `blink_max_ms` | The longest eye closure. Over 1500 ms is a **microsleep** |
@@ -211,8 +213,8 @@ What to do and what the messages mean: **[calibration/README.md](calibration/REA
 
 ## Gaze: on work or away
 
-Whether the student is looking at their **work** (screen, notes) or **away**,
-including a phone in the lap. The work area is **personal**: calibrate it with
+Whether the student is looking at their **work** (screen, notes, keyboard:
+anything in front or below) or **away** (turned aside, or gone). The work area is **personal**: calibrate it with
 `python -m eepy.perception.calibrate_gaze`. The preview shows a small gaze map
 with ON WORK / AWAY. With the panel running, the robot also looks at where the
 student really sits. Everything, in plain words: **[gaze/README.md](gaze/README.md)**.

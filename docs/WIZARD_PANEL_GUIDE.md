@@ -53,6 +53,23 @@ says `wizard`. If it is **amber** ("not built, manual only"), the panel was
 started in a mode whose controller does not exist yet: everything still works
 by hand, and the session is recorded under that mode.
 
+**The rules mode** (`--mode rules`) makes the robot act **on its own**: it nudges
+when the camera says the participant is distracted or drowsy. The vision program
+must run next to the panel (`python -m eepy.perception`). An **autonomy** line
+under the session bar shows:
+- the robot's role, ladder and level;
+- what comes next and when.
+
+What you do in this mode:
+- **Pause autonomy** stops it at once, and you drive by hand; **Resume** starts
+  afresh. Use it for demos and whenever something looks wrong.
+- **The participant's answers:** press **user accepted** (`.`), **user snoozed**
+  (`/`) or **user dismissed** (`m`) after a break offer or "15 more minutes?".
+  They're recorded as markers and steer the robot.
+- **What you play yourself** stays marked as yours.
+
+When and why the robot nudges: [eepy/interaction/README.md](../eepy/interaction/README.md).
+
 Markers pressed with **no session running are not saved** — the panel warns
 you in orange. Start the session first.
 
@@ -125,6 +142,8 @@ The markers are the ground truth the HMM learns from, so:
 | "Cannot start: port 8080 is already in use" | Another program has that port. Stop it, or start the panel with `--port 8081` and open that address. |
 | Calibration card says *waiting for the vision process* | Start `python -m eepy.perception` in the vision terminal. |
 | *calibration FAILED* | The card says why (light, seating, camera too slow...). Fix it and press **Calibrate again**, or **Skip**. |
+| Rules mode: the robot never nudges | Is the vision program running (state pill)? Was the session started? Look at the autonomy line: it says what it's waiting for (settling in after the calibration, the minimum gap, paused...). |
+| Rules mode: the robot does something unwanted | **Pause autonomy** (or **Esc** for the current movement), then carry on by hand. Note what happened. |
 | No **state** pill, or *"no word from the vision program"* | Start `python -m eepy.perception` in the vision terminal (or it stopped: look at its terminal). |
 | The state looks wrong | Keep annotating what you see. Note it (**note**), and the thresholds can be tuned afterwards on this session ([eepy/state/README.md](../eepy/state/README.md)). |
 | Amber **camera** pill, or "camera relay could not start" | The vision process gets no robot camera or head position from the panel. Hover over the pill for the reason; usually a second panel is running. Driving the robot is unaffected. |

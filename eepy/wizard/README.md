@@ -91,6 +91,16 @@ autonomous behaviour can be told apart.
   `events.jsonl`, and a `snapshot/` of the YAML files in use.
 - **The mode** is the experimental condition, shown in the status bar and
   recorded in the folder name and `meta.json`.
+- **In the rules mode** the panel also runs the escalation (A14):
+  - `_start_autonomy()` builds an `EscalationEngine` that plays through the
+    panel's own player (`source=auto`), plus a tick thread;
+  - the vision process's `STATE` messages feed it;
+  - the session start and end, the calibration, the operator's plays (for the
+    minimum gap) and the reply markers (`user_accepted` / `user_snoozed` /
+    `user_dismissed`) inform it;
+  - `POST /api/autonomy` pauses it.
+
+  See [eepy/interaction/README.md](../interaction/README.md).
 - Commands are logged only once the player has **accepted** them, stamped with
   the moment of the press.
 - **Annotations are stamped when the desktop receives the key press** — a few

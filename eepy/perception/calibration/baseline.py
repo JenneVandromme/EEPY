@@ -29,6 +29,7 @@ LATE_FROM, LATE_UNTIL = 21, 6  # a baseline taken 21:00-06:00 may already be tir
 # What counts as "not working" during the baseline minute. NOT down_other: typing means
 # looking at the keyboard, which lies below the screen and outside the notes (found
 # live: with it, most of a normal working minute was thrown away).
+MIN_SCREEN_FRAMES = 75       # ~5 s at 15 fps of looking at the screen
 OFF_WORK = ("away", "no_face")
 
 
@@ -162,7 +163,6 @@ class BaselineCollector:
 
     def _checks(self) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         durations = self._durations()
-        elapsed = max(self.elapsed, 1e-6)
         yaws = [f.values["head_yaw"] for f in self.frames if f.present and f.values.get("head_yaw") is not None]
         yaw_mid = _median(yaws)
         present = sum(d for f, d in zip(self.frames, durations) if f.present)
@@ -239,15 +239,21 @@ class BaselineCollector:
         yaws = [f.values["head_yaw"] for f in self.frames if f.present and f.values.get("head_yaw") is not None]
         yaw_mid = _median(yaws)
         clean = [f for f in self.frames if not self._excluded(f, yaw_mid)]
+        # Eyes and head posture from the moments at the SCREEN when there are enough:
+        # reading notes or typing lowers the eyelids (open eyes would read as half
+        # closed) and the head (the "forward" reference would point at the notes).
+        screen = [f for f in clean if f.values.get("gaze_zone") == "screen"]
+        forward = screen if len(screen) >= MIN_SCREEN_FRAMES else clean
 
-        def col(name: str) -> List[float]:
-            return robust([float(f.values[name]) for f in clean if f.values.get(name) is not None])
+        def col(name: str, frames: Optional[List[Frame]] = None) -> List[float]:
+            return robust([float(f.values[name]) for f in (clean if frames is None else frames)
+                           if f.values.get(name) is not None])
 
         out: Dict[str, Any] = {}
-        ear = col("ear")
+        ear = col("ear", forward)
         out["ear_open"] = _round(_median(ear), 4)
-        out["ear_open_left"] = _round(_median(col("ear_left")), 4)
-        out["ear_open_right"] = _round(_median(col("ear_right")), 4)
+        out["ear_open_left"] = _round(_median(col("ear_left", forward)), 4)
+        out["ear_open_right"] = _round(_median(col("ear_right", forward)), 4)
         minima = []
         for a, b in self.blinks:
             dips = [f.values["ear"] for f in self.frames if a <= f.t <= b and f.values.get("ear") is not None]
@@ -259,7 +265,7 @@ class BaselineCollector:
             out["ear_floor"] = round(0.18 * out["ear_open"], 4)
         out["mar_closed"] = _round(_percentile(col("mar"), 0.25), 4)
         for axis in ("yaw", "pitch", "roll"):
-            out[f"{axis}0"] = _round(_median(col(f"head_{axis}")), 2)
+            out[f"{axis}0"] = _round(_median(col(f"head_{axis}", forward)), 2)
         out["face_size0"] = _round(_median(col("face_size")), 4)
         present_time = sum(d for f, d in zip(self.frames, self._durations()) if f.present)
         out["blink_rate"] = round(len(self.blinks) / (present_time / 60), 1) if present_time > 10 else None

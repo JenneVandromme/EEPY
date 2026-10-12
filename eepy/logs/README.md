@@ -62,6 +62,7 @@ All event types live in `schema.py`, in these groups plus reserved ones:
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
 | Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries), `au_status`, `au_window` (optional action units), `calibration` (A12, see [eepy/perception/calibration/README.md](../perception/calibration/README.md)), `looked_away`, `back_on_work`, `gaze_window`, `gaze_status` (gaze, see [eepy/perception/gaze/README.md](../perception/gaze/README.md)) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
+| Autonomy | `nudge_decision`, `nudge_outcome` (one per decision: success / no_reaction / dismissed / snoozed / interrupted_focus / censored), `role_changed`, `escalation` — the rules mode (A14); see [eepy/interaction/README.md](../interaction/README.md) |
 | Model | `state_changed` (the user's state: from, to, reason, evidence; every second's state is in `state.csv`) — written by the vision process; see [eepy/state/README.md](../state/README.md) |
 | Camera | `camera_started`, `camera_error`, `camera_reconnected`, `camera_stats` — statistics only, never pixels; written by the vision process to `events.vision.jsonl` (see [eepy/camera/README.md](../camera/README.md)) |
 | **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |
@@ -104,7 +105,8 @@ converting to Parquet later is one line in the loader.
 **The mode is fixed per session.** It is the experimental condition, so it is
 chosen at start-up (`config/eepy.yaml` or `--mode`) and recorded in the folder
 name and `meta.json`. A mode without a controller yet still records, keeps the
-panel fully usable by hand, and logs `mode_not_implemented`.
+panel fully usable by hand, and logs `mode_not_implemented`. `wizard` and `rules`
+(the state rules + the escalation, A13/A14) have one.
 
 ## Privacy, built in
 

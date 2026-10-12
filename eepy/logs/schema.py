@@ -31,9 +31,10 @@ SOURCES: FrozenSet[str] = frozenset({
     "perception",  # the vision process
 })
 
-# The experimental conditions. Only "wizard" has a controller so far.
+# The experimental conditions. "wizard": the operator only; "rules": the state rules
+# (A13) and the fixed escalation (A14) act on their own. The HMM modes come later.
 MODES: Tuple[str, ...] = ("wizard", "rules", "hmm", "hmm_bandit")
-IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard"})
+IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard", "rules"})   # rules: A13 + A14
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,24 @@ EVENT_TYPES: Dict[str, EventType] = {
                                "The estimated user state changed (focused, distracted, drowsy, "
                                "very_drowsy, absent, unknown): from, to, the reason, the rules "
                                "that fired with their values. Every second's state is in state.csv."),
+
+    # --- autonomy (eepy/interaction/, A14): what EEPY decided, and what came of it ---------
+    "nudge_decision": EventType("autonomy", ("decision_id", "policy", "ladder", "level"),
+                                "The robot decided to nudge: the ladder level and behaviour, tone, "
+                                "intensity, propensity (the policy's chance of choosing it), the "
+                                "reason, the reaction window, and the context it decided on."),
+    "nudge_outcome": EventType("autonomy", ("decision_id", "outcome"),
+                               "What came of one nudge_decision (by decision_id), exactly once: "
+                               "success, no_reaction, dismissed, snoozed, interrupted_focus or "
+                               "censored (no fair verdict), with seconds and the detail. The "
+                               "bandit's rewards (A22) are computed from these."),
+    "role_changed": EventType("autonomy", ("to",),
+                              "The robot's role: study_buddy, refocus, bedtime, paused, none."),
+    "escalation": EventType("autonomy", ("what",),
+                            "Everything else the escalation did: cooldown_started, episode_reset, "
+                            "approving_nod, break_started/ended, welcome_back, wind_down_started/"
+                            "snoozed/reminder/cancelled, goodnight, went_to_bed, reply, "
+                            "autonomy_paused/resumed."),
 
     # --- reserved for later tasks: defined now so the format is settled ---------------
     "hmm_belief": EventType("model", ("probs", "most_likely"),

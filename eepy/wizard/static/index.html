@@ -132,6 +132,7 @@
   </div>
   <div class="row session" id="session-row"></div>
   <div class="row calib" id="calib-row" hidden></div>
+  <div class="row calib" id="auto-row" hidden></div>
   <div id="error" class="error" hidden>
     <b>Last problem</b> <span class="muted" id="error-time"></span>
     <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
@@ -226,7 +227,8 @@ const actions = {
                      .then((r) => r && toast(`Saying: “${r.text}”`)),
   marker: (b, via) => post("/api/annotate", { marker: b.target, via }).then((r) => {
     if (!r) return;
-    r.saved ? toast(`Marked: ${b.label}`) : toast(`Marked “${b.label}” — but NO session is running, so it was not saved.`, "warn");
+    r.saved ? toast(`Marked: ${b.label}${r.autonomy ? ` — ${r.autonomy}` : ""}`)
+            : toast(`Marked “${b.label}” — but NO session is running, so it was not saved.`, "warn");
   }),
   idle: (via) => post("/api/idle", { on: !state.status.idle_on, via }),
   tone: () => setTone(tone === "hedged" ? "direct" : "hedged"),
@@ -318,6 +320,7 @@ function renderStatus(s) {
   renderUserState(s.user_state);
   renderSession(s.session);
   renderCalibration(s.calibration, s.session);
+  renderAutonomy(s.autonomy, s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
 }
 
@@ -416,6 +419,49 @@ function renderCalibration(c, se) {
   $("cal-pill").querySelector(".dot").className = "dot" + (good ? " ok" : "");
   const fill = $("cal-fill"); if (fill) fill.style.width = `${Math.round((c.progress || 0) * 100)}%`;
   $("cal-msg").textContent = c.message || c.instruction || (c.reason ? `(${c.reason})` : "");
+}
+
+// Autonomy (A14, the rules mode): what the robot does on its own, and what comes
+// next. "Pause autonomy" hands control back to the operator at any moment.
+// The participant's answers are the markers "user accepted / snoozed / dismissed".
+// eepy/interaction/README.md.
+function renderAutonomy(a, se) {
+  const row = $("auto-row");
+  row.hidden = !a;
+  if (!a) return;
+  if (!row.dataset.built) {
+    row.dataset.built = "1";
+    row.innerHTML = `<span class="pill" id="auto-pill"><span class="dot"></span><span id="auto-text"></span></span>
+      <span class="muted" id="auto-next"></span><span class="spacer"></span>
+      <button class="small" id="auto-pause" tabindex="-1"></button>`;
+    $("auto-pause").onclick = () => { $("auto-pause").blur();
+      const pause = !(state.status.autonomy && state.status.autonomy.paused);
+      post("/api/autonomy", { paused: pause }).then((r) => r && toast(pause
+        ? "Autonomy paused: only you control the robot now." : "Autonomy resumed: it starts afresh.")); };
+  }
+  const roles = { study_buddy: "study buddy", refocus: "refocus", bedtime: "bedtime",
+                  paused: "paused (absent)", none: "—" };
+  let text = `autonomy: ${roles[a.role] || a.role}`;
+  if (a.ladder && a.level != null) text += ` · ${a.ladder} level ${a.level}`;
+  if (a.flow === "break") text += " · BREAK";
+  if (a.flow === "wind_down") text += " · WIND-DOWN";
+  if (a.flow === "goodnight") text += " · GOODNIGHT";
+  if (a.paused) text = "autonomy PAUSED — you are in control";
+  if (!a.active) text = "autonomy: starts with the session";
+  $("auto-text").textContent = text;
+  const pill = $("auto-pill");
+  pill.className = "pill" + (a.paused ? " amber" : "");
+  pill.querySelector(".dot").className = "dot" + (a.active && !a.paused ? " ok" : "");
+  const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
+  let next = a.next || "";
+  if (a.next_in != null && /in$|until$|left:$/.test(next)) next += ` ${mmss(a.next_in)}`;
+  else if (a.next_in != null) next += ` (${mmss(a.next_in)})`;
+  if (a.flow === "wind_down" && a.snoozes_left != null) next += ` · snoozes left: ${a.snoozes_left}`;
+  $("auto-next").textContent = next + (a.nudges ? ` · ${a.nudges} nudge${a.nudges > 1 ? "s" : ""} this session`
+                                                    + (a.last_outcome ? `, last: ${a.last_outcome.replace("_", " ")}` : "") : "");
+  const btn = $("auto-pause");
+  btn.textContent = a.paused ? "Resume autonomy" : "Pause autonomy";
+  btn.hidden = !a.active && !a.paused;
 }
 
 function renderSession(se) {

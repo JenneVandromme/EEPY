@@ -43,6 +43,17 @@ Level 0 is almost nothing. The top level says something out loud, or goes to
 sleep. **Every level must exist** — the decision logic asks for "bedtime,
 level 3" and there has to be something there.
 
+In the **rules** mode the robot climbs these ladders **on its own**. It waits
+for a reaction after each level, goes one level up when there is none, and
+starts again once the student is back on task. Level 0 is the background
+loop while in that role. The timings are in `config/escalation.yaml`, explained
+in [eepy/interaction/README.md](../eepy/interaction/README.md).
+
+**Role switches** (optional): a behaviour named `role_to_refocus`,
+`role_to_bedtime` or `role_to_study_buddy` (e.g. in a new
+`behaviors/roles.yaml`) is played automatically when the robot switches into
+that role. None exist yet: design them if you like.
+
 The files:
 
 ```
@@ -418,6 +429,12 @@ a session: `calibration_intro`, `calibration_face_check`, `calibration_look_dot`
 the IDs. They get no button on the Wizard panel, because the calibration says them
 by itself. What each one is for:
 [eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md).
+
+**Escalation lines.** `break_welcome_back` is said when the student comes back
+after the break the robot offered (refocus level 4). `wind_down_reminder` is said
+one minute before the "15 more minutes" are up (bedtime level 4). Both are
+**placeholder text**: rewrite them. When they are used:
+[eepy/interaction/README.md](../eepy/interaction/README.md).
 
 ---
 

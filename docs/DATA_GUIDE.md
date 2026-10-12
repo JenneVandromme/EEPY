@@ -96,6 +96,15 @@ event at every change: `from`, `to`, the reason, the evidence (feature, value, t
 what was skipped. Re-run the states with other thresholds, and compare them with the operator's
 markers: `python -m eepy.state.replay <session>`. See [eepy/state/README.md](../eepy/state/README.md).
 
+**Autonomy** (rules mode): every nudge the robot chose is a `nudge_decision` (ladder, level,
+behaviour, tone, reason, `propensity`, and the `context` it decided on), followed by exactly one
+`nudge_outcome` with the same `decision_id`: `success`, `no_reaction`, `dismissed`, `snoozed`,
+`interrupted_focus` (a false alarm) or `censored` (no fair verdict), with `seconds` and a `detail`.
+`role_changed` and `escalation` events (breaks, the wind-down, goodnight, pauses, replies) fill in
+the rest. The robot's own behaviours have `source` `auto`, the operator's `wizard`. The markers
+`user_accepted` / `user_snoozed` / `user_dismissed` are the participant's answers. See
+[eepy/interaction/README.md](../eepy/interaction/README.md#what-is-recorded-for-the-analysis-and-the-bandit).
+
 **Action units** (optional): `s.aus` has one row per result, timed to the frame it came
 from; `au_window` events hold their 10 s / 60 s averages and the cross-checks with the eye
 and yawn features. See [eepy/perception/aus/README.md](../eepy/perception/aus/README.md).

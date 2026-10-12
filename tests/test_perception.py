@@ -483,3 +483,48 @@ def test_mediapipe_runs_and_finds_no_face_in_a_blank_picture():
         assert result.face_landmarks == []
     finally:
         landmarker.close()
+
+
+def test_eyes_are_not_judged_while_looking_down_or_aside():
+    """Found in a real session: reading notes (head ~19 deg down) narrows OPEN eyes
+    to the camera, which read as closed -- 20 false 'microsleeps' in 10 minutes.
+    Eyes now only count while the head is near its normal posture."""
+    from dataclasses import replace
+
+    from eepy.perception.extractors import EyeExtractor
+
+    eye = EyeExtractor()
+    base = Baseline()
+    events = []
+
+    def frame(t, ear, pitch=0.0, yaw=0.0, i=1):
+        obs = replace(face_obs(t, ear, i), head=HeadAngles(yaw, pitch, 0))
+        out = eye.update(obs, base)
+        events.extend(out.events)
+        return out.values
+
+    v = frame(0.0, 0.28)
+    assert v["eyes_judged"] == 1.0 and v["eye_closure"] is not None
+    # Look down at the notes for 5 s with the eyes OPEN but narrowed (EAR 0.14):
+    for k, t in enumerate(sample(30, 5, offset=1.0)):
+        v = frame(t, 0.14, pitch=19.0, i=k + 2)
+    assert v["eyes_judged"] == 0.0 and v["eye_closure"] is None
+    v = frame(6.1, 0.28)                                    # back to the screen
+    assert events == []                                     # no "microsleep"
+    for k, t in enumerate(sample(30, 2, offset=7.0)):       # turned aside 25 deg: not judged either
+        assert frame(t, 0.14, yaw=25.0, i=k + 300)["eyes_judged"] == 0.0
+    # A real blink while looking forward is still a blink.
+    for k, t in enumerate(sample(30, 1, offset=10.0)):
+        frame(t, 0.03 if 10.3 <= t < 10.5 else 0.28, i=k + 400)
+    assert [round(e.fields["duration_ms"] / 100) for e in events] == [2]
+
+
+def test_perclos_counts_only_the_time_the_eyes_were_judged():
+    def values(t):
+        down = (t % 10) >= 5                                # half the time reading notes
+        return {"face_present": 1.0, "eye_closure": None if down else (0.95 if t % 10 < 1 else 0.0),
+                "head_yaw": 0.0, "head_pitch": 20.0 if down else 0.0}
+
+    out = run_windows(15, values, 60.5)
+    assert out["eyes_measured_s_60s"] == pytest.approx(30, abs=1.5)
+    assert out["perclos_60s"] == pytest.approx(0.2, abs=0.03)   # 1 s closed per 5 s judged

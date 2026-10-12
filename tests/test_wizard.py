@@ -110,7 +110,7 @@ def test_buttons_are_generated_from_the_behaviour_files(make):
     assert "approving_nod" in [b["target"] for b in groups["basics"]["buttons"]]
     assert "study_buddy_idle" not in [b["target"] for b in groups["basics"]["buttons"]], \
         "the idle has its own on/off button"
-    assert len(groups["markers"]["buttons"]) == 8
+    assert len(groups["markers"]["buttons"]) == 10       # incl. user_accepted / user_snoozed (A14)
 
 
 def test_a_new_behaviour_appears_after_reload_with_a_key(make, files):
@@ -457,15 +457,15 @@ def test_the_mode_is_shown_and_recorded(make, files):
 
 
 def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files):
-    _, client = make(mode="rules")
+    _, client = make(mode="hmm")              # (rules is built since A14; the HMM is not yet)
     status = client.get("/api/state").json()["status"]
-    assert status["mode"] == "rules" and not status["mode_implemented"]
+    assert status["mode"] == "hmm" and not status["mode_implemented"]
     assert "no controller" in status["last_error"]["message"]
     client.post("/api/session/start", json={"participant": "P21"})
     assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"]
     client.post("/api/session/end")
-    assert session_folder(files).name.endswith("_P21_rules")
-    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "rules" for r in lines(files))
+    assert session_folder(files).name.endswith("_P21_hmm")
+    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "hmm" for r in lines(files))
 
 
 def test_session_metadata_is_complete(make, files):
@@ -727,3 +727,90 @@ def test_calibration_lines_get_no_panel_buttons(files, tmp_path):
         assert not any(b.startswith("l:calibration_") for b in buttons)
     finally:
         wizard.shutdown()
+
+
+# --- the rules mode: autonomy (A14) ----------------------------------------------------------
+
+
+@pytest.fixture
+def quick_escalation(tmp_path, monkeypatch):
+    """The shipped escalation with no waiting: the first nudge on the first distracted
+    report (the timings themselves are tested in test_escalation.py)."""
+    import yaml
+
+    from eepy.interaction import config as escalation_config
+
+    raw = yaml.safe_load(escalation_config.DEFAULT_PATH.read_text())
+    raw["onset"] = {"distracted": 0, "drowsy": 0, "very_drowsy": 0}
+    raw["guards"].update(after_calibration=0, min_gap=0)
+    path = tmp_path / "escalation.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    monkeypatch.setattr(escalation_config, "DEFAULT_PATH", path)
+
+
+def _recent(wizard, kind):
+    return [r for r in wizard.log_since(0)[1] if r.get("type") == kind]
+
+
+def _until(check, seconds=5.0):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_rules_mode_nudges_on_its_own_from_the_vision_state(make, quick_escalation):
+    wizard, client = make(mode="rules")
+    assert wizard.mode_implemented and wizard.status()["autonomy"]["active"] is False
+    wizard.start_session("P30")
+    wizard.calibration_command("skip", reason="test")
+    wizard._state_report({"state": "distracted", "reason": "looking away for 6 s", "pending": None,
+                          "calibrated": True})
+    decision = _recent(wizard, "nudge_decision")
+    assert decision and decision[0]["source"] == "auto"
+    assert (decision[0]["ladder"], decision[0]["level"]) == ("refocus", 1)
+    assert _until(lambda: any(r.get("source") == "auto" for r in _recent(wizard, "behavior_started")))
+    status = wizard.status()["autonomy"]
+    assert status["role"] == "refocus" and status["level"] == 1 and "reaction" in status["next"]
+
+    # The participant's answer, through the marker buttons: logged as an annotation AND steering.
+    r = client.post("/api/annotate", json={"marker": "user_dismissed", "via": "click"}).json()
+    assert r["autonomy"].startswith("dismissed: this ladder pauses")
+    assert _recent(wizard, "nudge_outcome")[0]["outcome"] == "dismissed"
+    assert _recent(wizard, "annotation")[-1]["marker"] == "user_dismissed"
+
+    # The operator's own behaviours stay source=wizard.
+    assert _until(lambda: not wizard.player.is_playing())
+    client.post("/api/play", json={"behavior": "approving_nod", "intensity": 1.0})
+    assert _until(lambda: any(r.get("source") == "wizard" and r.get("behavior") == "approving_nod"
+                              for r in _recent(wizard, "behavior_started")))
+    wizard.end_session()
+
+
+def test_pause_autonomy_from_the_panel(make, quick_escalation):
+    wizard, client = make(mode="rules")
+    wizard.start_session("P31")
+    wizard.calibration_command("skip", reason="test")
+    r = client.post("/api/autonomy", json={"paused": True}).json()
+    assert r["autonomy"]["paused"] is True
+    wizard._state_report({"state": "distracted", "reason": "x", "pending": None, "calibrated": True})
+    assert _recent(wizard, "nudge_decision") == []             # the operator is in control
+    assert _recent(wizard, "wizard_command")[-1]["action"] == "autonomy_pause"
+    client.post("/api/autonomy", json={"paused": False})
+    wizard._state_report({"state": "distracted", "reason": "x", "pending": None, "calibrated": True})
+    assert len(_recent(wizard, "nudge_decision")) == 1
+    wizard.end_session()
+    assert _recent(wizard, "nudge_outcome")[-1]["outcome"] == "censored"   # session ended
+
+
+def test_wizard_mode_has_no_autonomy(make):
+    wizard, client = make(mode="wizard")
+    assert wizard.status()["autonomy"] is None
+    wizard.start_session("P32")
+    wizard._state_report({"state": "distracted", "reason": "x", "pending": None, "calibrated": True})
+    r = client.post("/api/annotate", json={"marker": "user_accepted"}).json()
+    assert r["ok"] and r["autonomy"] is None                    # just a marker
+    assert client.post("/api/autonomy", json={"paused": True}).status_code >= 400
+    wizard.end_session()

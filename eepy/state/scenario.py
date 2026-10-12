@@ -26,7 +26,7 @@ class Phase:
 SCENARIO: Tuple[Phase, ...] = (
     Phase("Work normally", "Work as usual: read or type, look at the screen and your notes.", 40,
           ("focused",), "starts as unknown: ~5 s of data + 5 s dwell"),
-    Phase("Phone", "Look down at an imaginary PHONE in your lap, and keep looking at it.", 20,
+    Phase("Phone", "Look at an imaginary PHONE beside you (turn your head to the side), and keep looking.", 20,
           ("distracted",), "5 s looking away + 5 s dwell"),
     Phase("Back to work", "Back to work: look at the screen as usual.", 20, ("focused",), "5 s dwell"),
     Phase("Act sleepy", "Act sleepy: close your eyes slowly for about a second, every few "

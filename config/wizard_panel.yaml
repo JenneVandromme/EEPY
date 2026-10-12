@@ -47,6 +47,8 @@ keys:
     bedtime_negotiate: "9"
     bedtime_goodnight: "0"
     approving: "-"
+    break_welcome_back: u
+    wind_down_reminder: i
 
 # What the operator can mark as OBSERVED. Each press is written to the session
 # log with an exact timestamp; these become the labels the HMM is fitted to,
@@ -62,4 +64,9 @@ markers:
   - { id: eyes_closing,     label: "eyes closing",     key: b }
   - { id: user_replied,     label: "user replied",     key: n }
   - { id: user_dismissed,   label: "user dismissed",   key: m }
+  # The participant's answer to a nudge. In the rules mode these also steer the
+  # escalation (A14): accepted (a break, the wind-down deal, goodnight), snoozed
+  # ("15 more minutes"), dismissed (leave me alone). Later speech does this (A28).
+  - { id: user_accepted,    label: "user accepted",    key: "." }
+  - { id: user_snoozed,     label: "user snoozed",     key: "/" }
   - { id: user_went_to_bed, label: "user went to bed", key: "," }

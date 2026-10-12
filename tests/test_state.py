@@ -35,7 +35,8 @@ FACE = {"coverage_s_10s": 10.0, "coverage_s_60s": 60.0, "fps_10s": 15.0, "fps_60
         "perclos_10s": 0.02, "perclos_60s": 0.02, "blink_confidence_10s": "ok", "blink_confidence_60s": "ok",
         "blink_rate_60s": 15.0, "blink_mean_ms_60s": 150.0, "blink_mean_ms_rel_60s": 1.0,
         "blink_max_ms_60s": 220.0, "long_blinks_60s": 0, "yawns_60s": 0, "nods_60s": 0,
-        "eyes_closed_now_s": 0.0, "baseline_calibrated": True}
+        "eyes_closed_now_s": 0.0, "eyes_measured_s_10s": 10.0, "eyes_measured_s_60s": 60.0,
+        "baseline_calibrated": True}
 GAZE = {"calibrated": True, "off_work_ratio_10s": 0.0, "off_work_ratio_60s": 0.05,
         "no_face_ratio_10s": 0.0, "no_face_ratio_60s": 0.0, "down_other_ratio_10s": 0.0,
         "away_current_s": 0.0}
@@ -92,7 +93,6 @@ DIRECT = [   # (rule, face, gaze, aus, the state it makes)
     ("no_face", {"face_absent_ratio_10s": 0.9}, {}, None, "absent"),
     ("looking_away_now", {}, {"away_current_s": 6.0}, None, "distracted"),
     ("often_away", {}, {"off_work_ratio_60s": 0.5}, None, "distracted"),
-    ("looking_down_at_lap", {}, {"down_other_ratio_10s": 0.6}, None, "distracted"),
 ]
 
 
@@ -108,7 +108,6 @@ POINTS = [   # drowsy signs: each adds its points, none is drowsy alone (except 
     ("long_blinks", {"long_blinks_60s": 3}, None, 0.6),
     ("yawning", {"yawns_60s": 1}, None, 0.5),
     ("nodding", {"nods_60s": 1}, None, 0.7),
-    ("au_eyes_closing", {}, {"status": "running", "AU43_active_60s": 0.2}, 0.5),
 ]
 
 
@@ -138,7 +137,7 @@ def test_nothing_fires_is_focused_with_a_reason():
     est = estimator()
     raw, fired, skipped, _ = est.evaluate(feats())
     assert raw == "focused" and fired["focused"][0].rule == "no_signs"
-    assert skipped == ["au_eyes_closing: needs au_status == running (is missing)"]   # AUs not installed
+    assert skipped == []
 
 
 # --- priority ---------------------------------------------------------------------------------
@@ -153,10 +152,14 @@ def test_priority_order(face, gaze, state):
     assert estimator().evaluate(feats(face=face, gaze=gaze))[0] == state
 
 
-def test_perclos_waits_for_30_s_of_data():
-    raw, _, skipped, _ = estimator().evaluate(feats(face={"perclos_60s": 0.4, "coverage_s_60s": 19.0}))
+def test_eye_rules_need_20_s_of_eyes_seen_looking_forward():
+    """Looking down at notes makes open eyes look half closed: those moments are not
+    judged, and with under 20 s of judged eyes in the minute the eye rules are skipped."""
+    face = {"perclos_60s": 0.4, "long_blinks_60s": 5, "eyes_measured_s_60s": 12.0}
+    raw, _, skipped, _ = estimator().evaluate(feats(face=face))
     assert raw == "focused"
-    assert any(x.startswith("perclos_very_high: needs coverage_s_60s >= 30") for x in skipped)
+    assert any(x.startswith("perclos_very_high: needs eyes_measured_s_60s >= 20 (is 12.0)") for x in skipped)
+    assert any(x.startswith("long_blinks: needs") for x in skipped)
 
 
 def test_an_empty_desk_is_absent_not_drowsy():
@@ -272,10 +275,11 @@ def test_blink_rules_are_skipped_when_the_camera_is_too_slow_for_blinks():
     assert any(s.startswith("long_blinks: needs blink_confidence_60s == ok (is low)") for s in skipped)
 
 
-def test_au_rules_only_with_action_units_running():
-    for aus in (None, {"status": "paused", "AU43_active_60s": 0.5}):
-        _, _, skipped, values = estimator().evaluate(feats(aus=aus))
-        assert values["drowsy_points"] == 0 and any(s.startswith("au_eyes_closing") for s in skipped)
+def test_the_action_unit_eye_rule_is_off_for_now():
+    """AU43 also reads looking down as closing the eyes: off until filtered."""
+    raw, _, _, values = estimator().evaluate(feats(aus={"status": "running", "AU43_active_60s": 0.9}))
+    assert raw == "focused" and values["drowsy_points"] == 0
+    assert "au_eyes_closing" not in {r.id for r in load().rules}
 
 
 @pytest.mark.parametrize("face, words", [
@@ -439,7 +443,7 @@ def test_replay_gives_the_same_states_as_live(tmp_path):
     changes = [json.loads(line) for line in (folder / "events.vision.jsonl").read_text().splitlines()
                if '"state_changed"' in line]
     assert [c["to"] for c in changes] == states
-    assert changes[2]["rules"] == ["looking_away_now", "looking_down_at_lap"]   # both fired
+    assert changes[2]["rules"] == ["looking_away_now"]
     assert changes[2]["values"]["away_current_s"] >= 5 and changes[2]["from"] == "focused"
 
     result = agreement(replayed, [(t0 + 31, "phone_picked_up"), (t0 + 80, "yawn")])

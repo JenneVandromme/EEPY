@@ -1,0 +1,101 @@
+# The escalation (A14): what EEPY DOES about the participant's state.
+#
+# The state comes from config/state_rules.yaml (A13): focused, distracted,
+# drowsy, very_drowsy, absent, unknown. This file says when EEPY nudges, how
+# it climbs the ladders in behaviors/refocus.yaml and behaviors/bedtime.yaml,
+# and when it stops.
+#
+# Plain-language guide (when EEPY nudges, and why): eepy/interaction/README.md
+# Try a change without a camera:
+#     python -m eepy.interaction.simulate phone_break
+#
+# All times are in SECONDS. A mistake here stops the panel with a message that
+# says what and where.
+
+# Which role EEPY takes in each state.
+#   study_buddy  quiet presence (the panel's idle); never interrupts real focus
+#   refocus      the "back to work" ladder        bedtime  the "time to sleep" ladder
+#   paused       nothing (no talking to an empty chair)   none  nothing at all
+roles:
+  focused: study_buddy
+  distracted: refocus
+  drowsy: bedtime
+  very_drowsy: bedtime
+  absent: paused
+  unknown: none
+
+# Played when EEPY switches role -- only if a behaviour with that name exists
+# (none do yet: the designers may add them, e.g. in behaviors/roles.yaml).
+role_switch:
+  study_buddy: role_to_study_buddy
+  refocus: role_to_refocus
+  bedtime: role_to_bedtime
+
+# How long a state must last before the FIRST nudge.
+onset:
+  distracted: 20      # on top of A13's ~10 s: ~30 s off task before a wordless nudge
+  drowsy: 30          # drowsiness builds slowly; react to a pattern, not a moment
+  very_drowsy: 10     # strong evidence: react sooner
+
+ladders:
+  refocus:
+    start_level: 1
+    # Seconds to wait for a reaction after each level, before going one up.
+    reaction: {1: 30, 2: 30, 3: 45, 4: 120}   # wordless nudges short; spoken longer;
+                                               # a break offer needs time to get up
+    intensity: {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}
+    # After the top level without a reaction: wait, then start again lower.
+    cooldown: 300       # 5 minutes: no endless loop
+    restart_level: 2    # a fresh but not the very first, faintest nudge
+  bedtime:
+    start_level: 1
+    start_level_very_drowsy: 2    # very drowsy skips the faintest hint
+    reaction: {1: 60, 2: 60, 3: 90, 4: 120}   # the drowsiness features use 60 s windows:
+                                               # a reaction cannot show sooner
+    intensity: {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}
+    cooldown: 600       # after "no" to the wind-down offer: respect it for 10 minutes
+    restart_level: 3
+
+# Back to focused: the ladder starts from scratch.
+focused:
+  reset_after: 10               # seconds of focus (A13 already waited 5) before resetting
+  approving_nod: approving_nod  # the behaviour; "" for none
+  nod_only_after_success: true  # only when a nudge just worked -- not every time
+  nod_min_interval: 600         # at most one nod per 10 minutes: no dog-trainer feel
+
+# Limits that hold whatever the state.
+guards:
+  min_gap: 20             # never two nudges within 20 s (the operator's count too)
+  max_per_hour: 12        # about three full ladders an hour; more is nagging
+  after_calibration: 180  # no nudges in the first 3 minutes after calibration
+                          # (or after the session start, without a calibration)
+
+absent:
+  reset_after: 300        # gone 5 minutes (no break offered): start fresh when back
+  went_to_bed_after: 300  # gone 5 minutes after bedtime level >= went_to_bed_level:
+  went_to_bed_level: 3    #   they took the hint -- bedtime success
+
+# Refocus level 4 offers a break.
+break:
+  offer_level: 4
+  absent_within: 120          # leaving within 2 minutes of the offer = taking the break
+  seconds: 600                # pause nudging for 10 minutes
+  welcome_line: break_welcome_back   # said when they are back (behaviors/lines.yaml)
+
+# Bedtime level 4 offers "15 more minutes?"; level 5 is the goodnight routine.
+wind_down:
+  offer_level: 4
+  seconds: 900                # the timer: 15 minutes ({minutes} in the line)
+  snoozes: 1                  # "user snoozed" restarts the timer this many times
+  snooze_seconds: 900
+  reminder_line: wind_down_reminder  # said shortly before the timer runs out
+  reminder_before: 60
+  goodnight_level: 5
+
+# A nudge counts as a false alarm (interrupted_focus) when the state turns
+# focused this soon after it started: A13 needs 5 s of focus before saying
+# "focused", so the person was already back on task.
+false_alarm_seconds: 5
+
+# How often the panel checks the timers (seconds).
+tick_seconds: 0.5

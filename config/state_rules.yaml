@@ -20,7 +20,9 @@
 #   state:  very_drowsy, drowsy, absent or distracted
 #   when:   <feature> <compare> <number>   compare: >=  >  <=  <  ==  !=
 #   needs:  conditions that must hold for the rule to count at all (else it is
-#           SKIPPED, not false -- e.g. blinks need a camera fast enough to see them)
+#           SKIPPED, not false -- e.g. blinks need a camera fast enough to see them,
+#           and every eye rule needs 20 s of eyes seen while looking forward:
+#           looking down at notes makes open eyes look half closed)
 #   uncalibrated: the condition to use instead when the person is not calibrated
 #           (the `when` feature then has no value)
 #   points: drowsy rules only
@@ -76,7 +78,7 @@ rules:
   - id: perclos_very_high
     state: very_drowsy
     when: perclos_60s >= 0.25
-    needs: [face_present_ratio_10s >= 0.5, coverage_s_60s >= 30]   # a share of a few seconds is noise
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20]   # eyes seen (forward) 20 s+
     # Above ~25 % PERCLOS the drowsiness literature (Wierwille; Dinges) sees severe
     # drowsiness and microsleep risk.
     says: "eyes closed {value:.0%} of the last minute"
@@ -113,7 +115,7 @@ rules:
     state: drowsy
     points: 1.0
     when: perclos_60s >= 0.12
-    needs: [face_present_ratio_10s >= 0.5, coverage_s_60s >= 30]   # a share of a few seconds is noise
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20]   # eyes seen (forward) 20 s+
     # 12-15 % PERCLOS is the usual onset of drowsiness; alone it is enough.
     says: "eyes closed {value:.0%} of the last minute"
 
@@ -122,7 +124,7 @@ rules:
     points: 0.6
     when: blink_mean_ms_rel_60s >= 1.5
     uncalibrated: blink_mean_ms_60s >= 300
-    needs: [face_present_ratio_10s >= 0.5, blink_confidence_60s == ok]
+    needs: [face_present_ratio_10s >= 0.5, blink_confidence_60s == ok, eyes_measured_s_60s >= 20]
     # Blinks get longer with fatigue: 1.5x the person's usual; without a calibration
     # 300 ms (typical alert blinks are 100-250 ms).
     says: "blinks {value:.1f}x as long as usual"
@@ -132,7 +134,7 @@ rules:
     state: drowsy
     points: 0.6
     when: long_blinks_60s >= 3
-    needs: [face_present_ratio_10s >= 0.5, blink_confidence_60s == ok]
+    needs: [face_present_ratio_10s >= 0.5, blink_confidence_60s == ok, eyes_measured_s_60s >= 20]
     # Several blinks over 0.5 s in a minute: eyes "resting" rather than blinking.
     says: "{value:.0f} long blinks in the last minute"
 
@@ -152,13 +154,15 @@ rules:
     # One nod: a strong sign, but a single one can be looking down quickly.
     says: "nodded off once in the last minute"
 
-  - id: au_eyes_closing
-    state: drowsy
-    points: 0.5
-    when: AU43_active_60s >= 0.10
-    needs: [face_present_ratio_10s >= 0.5, au_status == running]
-    # Action units (optional): AU43 "eyes closed" active 10 % of the minute.
-    says: "eyes-closed action unit active {value:.0%} of the minute"
+  # (au_eyes_closing -- AU43 "eyes closed" -- is OFF for now: the action units read
+  #  looking down as closing the eyes too. Re-enable once filtered to forward looks.)
+  # - id: au_eyes_closing
+  #   state: drowsy
+  #   points: 0.5
+  #   when: AU43_active_60s >= 0.10
+  #   needs: [face_present_ratio_10s >= 0.5, au_status == running]
+  #   # Action units (optional): AU43 "eyes closed" active 10 % of the minute.
+  #   says: "eyes-closed action unit active {value:.0%} of the minute"
 
   # --- absent ------------------------------------------------------------------
   - id: no_face
@@ -181,9 +185,11 @@ rules:
     # Repeatedly looking away, even in short bursts: over a third of the minute.
     says: "looked away {value:.0%} of the last minute"
 
-  - id: looking_down_at_lap
-    state: distracted
-    when: down_other_ratio_10s >= 0.5
-    needs: [face_present_ratio_10s >= 0.5]
-    # Looking down, but not at the notes: the phone-in-the-lap pattern.
-    says: "looking down (not at the notes) {value:.0%} of the last 10 s"
+  # (looking_down_at_lap is OFF in the base version: reading notes or typing looked the same.
+  #  Looking down counts as work now; a phone in the lap is detected later, A29.)
+  # - id: looking_down_at_lap
+  #   state: distracted
+  #   when: down_other_ratio_10s >= 0.5
+  #   needs: [face_present_ratio_10s >= 0.5]
+  #   # Looking down, but not at the notes: the phone-in-the-lap pattern.
+  #   says: "looking down (not at the notes) {value:.0%} of the last 10 s"

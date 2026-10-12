@@ -96,6 +96,30 @@ lines:
         - "Good going."
         - "{evidence} -- nice work."
 
+  break_welcome_back:
+    description: >
+      Said when the participant comes back after taking the break the robot
+      offered (refocus level 4). PLACEHOLDER TEXT: rewrite freely.
+    variants:
+      hedged:
+        - "Welcome back."
+        - "Oh, you're back. Ready to go on?"
+      direct:
+        - "Welcome back. Let's go on."
+        - "Back again. Shall we?"
+
+  wind_down_reminder:
+    description: >
+      Said shortly before the wind-down timer ends (bedtime level 4 agreed
+      "{minutes} more minutes"). PLACEHOLDER TEXT: rewrite freely.
+    variants:
+      hedged:
+        - "Almost time to stop, {minutes} more minute."
+        - "Nearly done? We said we'd stop soon."
+      direct:
+        - "One more minute, then bed."
+        - "Time's nearly up."
+
   # --- calibration (A12) ------------------------------------------------------
   # Spoken during the calibration at the start of a session (the face check,
   # the gaze dots, one minute of normal work). PLACEHOLDER TEXT: rewrite freely.

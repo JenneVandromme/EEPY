@@ -158,7 +158,13 @@ class EyeExtractor(Extractor):
     ear_left/right/ear   Eye Aspect Ratio: eyelid opening / eye width (~0.28
                          open, ~0.05 shut). Per eye and the mean of both.
     eye_closure          0 = open as usual for this person, 1 = shut
-                         (relative to Baseline.ear_open / ear_floor).
+                         (relative to Baseline.ear_open / ear_floor). EMPTY while
+                         the eyes are not judged (see eyes_judged).
+    eyes_judged          1 while the head is within eyes.judge_max_down_deg down
+                         and eyes.judge_max_turn_deg aside of the person's normal
+                         posture, else 0: looking down at notes or a keyboard, or
+                         aside, makes OPEN eyes look half closed to the camera.
+                         No blinks are detected then (one under way is dropped).
     blink_left/right     MediaPipe's own eyeBlink blendshapes (0-1): a
                          cross-check, computed by a separate model.
     Event `blink`        eye_closure rose past blink.close and fell back below
@@ -168,7 +174,7 @@ class EyeExtractor(Extractor):
     """
 
     name = "eyes"
-    columns = ("ear_left", "ear_right", "ear", "eye_closure", "blink_left", "blink_right")
+    columns = ("ear_left", "ear_right", "ear", "eye_closure", "eyes_judged", "blink_left", "blink_right")
 
     def __init__(self, config: Optional[PerceptionConfig] = None) -> None:
         super().__init__(config)
@@ -188,11 +194,24 @@ class EyeExtractor(Extractor):
         right = lm.eye_aspect_ratio(points, lm.RIGHT_EYE)
         left = lm.eye_aspect_ratio(points, lm.LEFT_EYE)
         ear = (left + right) / 2
-        closure = baseline.eye_closure(ear)
         values = {"ear_left": round(left, 4), "ear_right": round(right, 4), "ear": round(ear, 4),
-                  "eye_closure": round(closure, 4),
                   "blink_left": _shape(obs, "eyeBlinkLeft"), "blink_right": _shape(obs, "eyeBlinkRight")}
+        if not self.judged(obs, baseline):
+            self.reset()                       # a blink under way is dropped: its end is unknown
+            return Output(dict(values, eye_closure=None, eyes_judged=0.0))
+        closure = baseline.eye_closure(ear)
+        values.update(eye_closure=round(closure, 4), eyes_judged=1.0)
         return Output(values, self.track(obs.t, closure))
+
+    def judged(self, obs: FaceObservation, baseline: Baseline) -> bool:
+        """Is the person looking roughly forward, so eye openness means something?"""
+        head = obs.head
+        if head is None:
+            return True                        # no head pose: nothing to go by
+        down = head.pitch - baseline.pitch0
+        aside = abs(head.yaw - baseline.yaw0)
+        return down <= self.config.get("eyes", "judge_max_down_deg") and \
+            aside <= self.config.get("eyes", "judge_max_turn_deg")
 
     def track(self, t: float, closure: float) -> List[FaceEvent]:
         """The blink state machine on its own: also used by the tests."""

@@ -6,8 +6,10 @@ MAX_WEIGHT seconds -- a long gap is unknown time, not more of the same), so a
 dip in frame rate does not shift the ratios.
 
 Per window (suffix _10s / _60s in the event log):
-    perclos            share of face-present time with the eyes >= 80 % shut (P80)
-    blink_rate         blinks per minute of face-present time
+    perclos            share of the JUDGED eye time with the eyes >= 80 % shut (P80)
+    blink_rate         blinks per minute of judged eye time
+    eyes_measured_s    seconds the eyes were judged (looking roughly forward; see
+                       EyeExtractor.eyes_judged). Eye figures over little time are noise
     blink_mean_ms      mean blink duration
     blink_max_ms       the longest eye closure (a microsleep is > 1500 ms)
     long_blinks        blinks longer than blink.long_ms
@@ -44,6 +46,7 @@ MAX_WEIGHT = 0.5   # seconds one frame can stand for
 class _Sample:
     t: float
     present: bool
+    judged: bool            # eyes judged (looking roughly forward)
     closed: bool
     away: bool
     pitch: Optional[float]
@@ -65,7 +68,7 @@ class WindowAggregator:
         closure = values.get("eye_closure")
         yaw, pitch = values.get("head_yaw"), values.get("head_pitch")
         sample = _Sample(
-            t=t, present=present,
+            t=t, present=present, judged=present and closure is not None,
             closed=present and closure is not None and closure >= self.config.get("eyes", "perclos_closure"),
             away=present and yaw is not None and abs(yaw - baseline.yaw0) > self.config.get("", "look_away_deg"),
             pitch=pitch if present else None)
@@ -127,10 +130,13 @@ class WindowAggregator:
         weight = sum(w for _, w in pitches)
         mean = sum(p * w for p, w in pitches) / weight if weight > 0 else None
         var = (sum(w * (p - mean) ** 2 for p, w in pitches) / weight) if mean is not None else None
-        enough_face = present_time >= 0.1 * seconds
+        judged = [s for s in present if s.judged]
+        judged_time = sum(s.weight for s in judged)
+        enough_face = judged_time >= 0.1 * seconds
         return {
-            "perclos": share([s for s in present if s.closed], present_time),
-            "blink_rate": round(len(blinks) / (present_time / 60), 1) if enough_face else None,
+            "perclos": share([s for s in judged if s.closed], judged_time),
+            "eyes_measured_s": round(judged_time, 1),
+            "blink_rate": round(len(blinks) / (judged_time / 60), 1) if enough_face else None,
             "blink_mean_ms": round(sum(e.fields["duration_ms"] for e in blinks) / len(blinks), 1) if blinks else None,
             "blink_max_ms": round(max(e.fields["duration_ms"] for e in blinks), 1) if blinks else None,
             "long_blinks": sum(1 for e in blinks if e.fields.get("long")),
@@ -144,7 +150,7 @@ class WindowAggregator:
             # 10 % slack: a camera set to 15 fps measures 14.8-15.1.
             "blink_confidence": "ok" if fps >= 0.9 * self.config.get("", "min_blink_fps") else "low",
             "coverage_s": round(total, 1),
-            **self._relative(blinks, present_time, enough_face),
+            **self._relative(blinks, judged_time, enough_face),
         }
 
     def _relative(self, blinks: List[FaceEvent], present_time: float, enough_face: bool) -> Dict[str, Any]:

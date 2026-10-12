@@ -374,3 +374,18 @@ def test_relay_say_poll_and_calib():
     finally:
         client.close()
         bare.stop()
+
+
+
+def test_the_normal_posture_and_open_eyes_come_from_looking_at_the_screen():
+    """Reading notes during the baseline minute lowers head and eyelids: the
+    'forward' reference and the open-eye value must come from the screen moments."""
+    frames = person(ear_open=0.30)
+    for i, r in enumerate(frames):
+        if i % 3:                                        # two thirds of the time: notes
+            r.values.update(gaze_zone="notes", head_pitch=19.0, ear=0.18, ear_left=0.18, ear_right=0.18)
+        else:
+            r.values.update(gaze_zone="screen", head_pitch=2.0)
+    values = collect(frames).values()
+    assert values["pitch0"] == pytest.approx(2.0, abs=0.5)
+    assert values["ear_open"] == pytest.approx(0.30, abs=0.01)

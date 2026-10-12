@@ -28,6 +28,11 @@ SPEC: Dict[Tuple[str, str], Tuple[float, float, float]] = {
     ("eyes", "ear_open"): (0.28, 0.05, 1.0),      # default baseline: a normally open eye
     ("eyes", "ear_floor"): (0.05, 0.0, 0.5),      # EAR of a fully closed eye
     ("eyes", "perclos_closure"): (0.8, 0.5, 1.0),  # P80
+    # Eyes are only judged while looking roughly forward: looking down (notes,
+    # keyboard) or aside narrows the eyes from the camera's view, which read as
+    # "closed" (found in a real session: 20 false microsleeps while reading).
+    ("eyes", "judge_max_down_deg"): (10, 3, 60),   # head this far below its normal pitch
+    ("eyes", "judge_max_turn_deg"): (15, 5, 90),   # or turned this far from its normal yaw
 
     ("blink", "close"): (0.5, 0.1, 1.0),          # eye_closure that starts a blink
     ("blink", "open"): (0.35, 0.0, 1.0),          # ...and ends it (lower: hysteresis)

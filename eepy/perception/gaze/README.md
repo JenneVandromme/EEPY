@@ -84,7 +84,7 @@ hides or shows it):
 |---|---|
 | `screen` | looking at the screen (on work) |
 | `notes` | looking at the notes on the desk (on work) |
-| `down_other` | looking **down, but not at the notes**: a phone in the lap, under the desk. Kept apart so it can later be combined with phone detection |
+| `down_other` | looking **down, but not at the notes**: a keyboard, a phone in the lap. **Counts as on work** in the base version (notes and lap could not be told apart reliably); kept apart in the data for phone detection later (A29) |
 | `away` | to the side, or up |
 | `no_face` | no face visible (left the desk, turned around) |
 
@@ -141,8 +141,9 @@ the real one. Both are settings in `config/eepy.yaml`, section `gaze:`.
 - **Looking down narrows the eyes,** so the iris is often not trusted at the
   notes or the lap. Gaze then follows the head (mode `head only`). The
   calibration learns separate head-only zones for exactly this.
-- **Notes and lap must be apart.** If the notes lie right where a phone would
-  be, they can't be told apart. Calibrate the notes where they really lie.
+- **Looking down always counts as work** (base version): notes, keyboard and
+  lap are all "down". Only turning away (or leaving) is off work. A phone in
+  the lap needs phone detection (A29).
 
 ## The robot looks at the real student
 
@@ -171,8 +172,8 @@ Two terminals, as in [../README.md](../README.md#start-here-open-two-terminals).
 **3. Watch it live.** `python -m eepy.camera.preview` (A)
 ✅ The gaze map shows two boxes and no "UNCALIBRATED". Read something on the
 screen: **ON WORK**, and the dot sits in the blue box. Look at your notes: the
-dot moves to the green box, still ON WORK. Look at your lap: `down other`, and
-after a second **AWAY**. Look out of the window: `away`.
+dot moves to the green box, still ON WORK. Look at your lap: `down other`, still
+**ON WORK** (base version: looking down counts as work). Look out of the window: `away`.
 
 **4. The self-test.** `python -m eepy.perception.selftest --no-aus` (A)
 ✅ The four gaze steps (screen, away, notes, phone: alternating on and off work) say **PASS**. Each shows

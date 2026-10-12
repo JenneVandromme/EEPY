@@ -165,6 +165,12 @@ class Wizard:
             self._error(f'Mode "{mode}" has no controller yet, so nothing decides on its own: '
                         "the robot only does what you press. Sessions are still recorded "
                         f'as mode "{mode}".')
+        # The rules mode (A14): the robot nudges on its own, from the state the vision
+        # process sends. eepy/interaction/README.md.
+        self.autonomy: Any = None
+        self._autonomy_thread: threading.Thread | None = None
+        if mode == "rules":
+            self._start_autonomy()
 
         # The camera relay: the robot's camera and head pose, for the vision
         # process, on 127.0.0.1 only (eepy/camera/relay.py). (port, fps); None
@@ -356,6 +362,8 @@ class Wizard:
             raise WizardError(str(exc)) from None
         self._note("wizard_command", "wizard", t=pressed, action="play", behavior=behavior,
                    intensity=round(intensity, 3), via=via)
+        if self.autonomy is not None:
+            self.autonomy.operator_played(behavior, pressed)
 
     def stop(self, via: str = "click") -> None:
         # Deliberately no lock and no connection check: STOP must never wait
@@ -386,14 +394,20 @@ class Wizard:
             raise WizardError(str(exc)) from None
         self._note("wizard_command", "wizard", t=pressed, action="say", line_id=line_id,
                    text=text, tone=tone, via=via)
+        if self.autonomy is not None:
+            self.autonomy.operator_played(line_id or "free text", pressed)
         return spoken
 
     def annotate(self, marker: str, via: str = "key") -> dict:
         markers = {m.id: m for m in self.config.markers}
         if marker not in markers:
             raise WizardError(f'There is no marker called "{marker}".')
-        return self._note("annotation", "wizard", marker=marker,
-                          label=markers[marker].label, via=via)
+        record = self._note("annotation", "wizard", marker=marker,
+                            label=markers[marker].label, via=via)
+        if self.autonomy is not None and marker in self.REPLY_MARKERS:
+            # The participant's answer steers the escalation (later speech does, A28).
+            record = dict(record, autonomy=self.autonomy.reply(self.REPLY_MARKERS[marker], record["t_mono"]))
+        return record
 
     def note(self, text: str) -> dict:
         text = (text or "").strip()
@@ -414,10 +428,14 @@ class Wizard:
         if not self.mode_implemented:
             self._note("mode_not_implemented", "system", mode=self.mode)
         self._offer_calibration(participant)
+        if self.autonomy is not None:
+            self.autonomy.session_started(shared_clock())
         self.panel_version += 1
         return record
 
     def end_session(self, reason: str = "operator", notes: str | None = None) -> dict:
+        if self.autonomy is not None and self.sessions.active:
+            self.autonomy.session_ended(shared_clock(), f"session ended ({reason})")
         try:
             record = self.sessions.end(reason, notes=(notes or "").strip() or None)
         except SessionError as exc:
@@ -532,6 +550,8 @@ class Wizard:
             self.sessions.event("calibration", "wizard", result="skipped", user=user,
                                 setup=self._calibration_setup(), reason=reason[:300])
             self.sessions.set_meta("calibration", {"result": "skipped", "reason": reason[:300]})
+            if self.autonomy is not None:
+                self.autonomy.calibration("skipped", shared_clock())
             return self.calibration
         if action == "reuse" and not self.calibration.get("reuse"):
             raise WizardError("There is no recent calibration to reuse for this participant.")
@@ -564,6 +584,8 @@ class Wizard:
         """Progress or the result from the vision process."""
         state = progress.get("state")
         self.calibration = dict(self.calibration, **progress)
+        if self.autonomy is not None and state:
+            self.autonomy.calibration(str(state), shared_clock())
         if state in ("done", "failed", "reused", "stopped") and self.sessions.active:
             summary = {k: progress.get(k) for k in ("taken_at", "late_evening", "message", "age_days")
                        if progress.get(k) not in (None, "")}
@@ -579,6 +601,56 @@ class Wizard:
         """The vision process's newest state estimate (about once a second)."""
         self.user_state = estimate
         self._user_state_seen = time.monotonic()
+        if self.autonomy is not None:
+            self.autonomy.on_state(estimate, shared_clock())
+
+    # ------------------------------------------------------------- autonomy (A14)
+
+    REPLY_MARKERS = {"user_accepted": "accepted", "user_snoozed": "snoozed",
+                     "user_dismissed": "dismissed"}
+
+    def _start_autonomy(self) -> None:
+        from eepy.interaction.actuator import PlayerActuator
+        from eepy.interaction.config import EscalationConfigError, check_library
+        from eepy.interaction.config import load as load_escalation
+        from eepy.interaction.engine import EscalationEngine
+        from eepy.interaction.policy import FixedEscalation
+
+        try:
+            config = load_escalation()
+            check_library(config, self.library)
+        except EscalationConfigError as exc:
+            self._error(f"The rules mode cannot nudge: the escalation config has a problem.\n{exc}")
+            return
+        actuator = PlayerActuator(lambda: self.player, on_error=self._error, library=lambda: self.library)
+        self.autonomy = EscalationEngine(
+            config, FixedEscalation(config), actuator,
+            log=lambda event_type, t, **fields: self._note(event_type, "auto", t=t, **fields),
+            idle=self.panel.idle)
+        self._autonomy_thread = threading.Thread(target=self._autonomy_loop, args=(config.tick_seconds,),
+                                                 name="eepy-autonomy", daemon=True)
+        self._autonomy_running = True
+        self._autonomy_thread.start()
+
+    def _autonomy_loop(self, period: float) -> None:
+        while getattr(self, "_autonomy_running", False):
+            try:
+                self.autonomy.tick(shared_clock())
+            except Exception as exc:  # noqa: BLE001 -- shown, and the loop goes on
+                log.exception("The escalation failed")
+                self._error(f"The escalation hit a bug (it carries on): {exc}")
+                time.sleep(5)
+            time.sleep(period)
+
+    def set_autonomy_paused(self, paused: bool, via: str = "click") -> dict:
+        if self.autonomy is None:
+            raise WizardError("Autonomy only runs in the rules mode (start the panel with --mode rules).")
+        self._note("wizard_command", "wizard", action="autonomy_pause" if paused else "autonomy_resume", via=via)
+        self.autonomy.set_paused(paused, shared_clock())
+        return self.autonomy.status(shared_clock())
+
+    def autonomy_status(self) -> dict | None:
+        return None if self.autonomy is None else self.autonomy.status(shared_clock())
 
     def state_status(self) -> dict | None:
         """The state for the status bar; `fresh` False when the vision process went quiet."""
@@ -610,6 +682,7 @@ class Wizard:
 
     def shutdown(self) -> None:
         self._watching = False
+        self._autonomy_running = False
         if self.camera_relay is not None:
             self.camera_relay.stop()
             self.camera_relay = None
@@ -642,6 +715,7 @@ class Wizard:
             "camera": self.camera_status(),
             "calibration": self.calibration_status(),
             "user_state": self.state_status(),
+            "autonomy": self.autonomy_status(),
         }
 
     def log_since(self, seq: int) -> tuple[int, list[dict]]:
@@ -714,6 +788,11 @@ class EndIn(BaseModel):
     notes: str | None = None
 
 
+class AutonomyIn(BaseModel):
+    paused: bool
+    via: str = "click"
+
+
 class CalibrationIn(BaseModel):
     action: str                      # calibrate, reuse, skip, stop
     reason: str | None = None
@@ -768,7 +847,11 @@ def create_app(wizard: Wizard) -> FastAPI:
     @app.post("/api/annotate")
     def annotate(body: AnnotateIn):
         record = wizard.annotate(body.marker, body.via)
-        return _ok(saved=record["saved"], t=record["t_mono"])
+        return _ok(saved=record["saved"], t=record["t_mono"], autonomy=record.get("autonomy"))
+
+    @app.post("/api/autonomy")
+    def autonomy(body: AutonomyIn):
+        return _ok(autonomy=wizard.set_autonomy_paused(body.paused, body.via))
 
     @app.post("/api/note")
     def note(body: TextIn):
