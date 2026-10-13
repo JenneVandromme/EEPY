@@ -22,6 +22,7 @@ simulator: simulated sessions, not real faces). Part F lists what implementing t
 - [Part F — What implementing taught us](#part-f--what-implementing-taught-us)
 - [Part G — Explainability: the viewer](#part-g--explainability-the-viewer)
 - [Part H — The drowsiness ladder (option A)](#part-h--the-drowsiness-ladder-option-a)
+- [Part I — Yawns and nods count twice a minute (version 3)](#part-i--yawns-and-nods-count-twice-a-minute-version-3)
 
 ---
 
@@ -107,7 +108,8 @@ still based on less than a minute of data for the first 60 s; they are weighted 
 1. reaches (very) drowsy **later** than the rules (about 25–30 s later on simulated data;
    25 s later on the recorded pilot session);
 2. needs **eye signs** for drowsiness: nods or yawns with alert-looking eyes are not enough
-   (rules: two nods in a minute → very drowsy; a yawn + a nod → drowsy);
+   (rules: two nods in a minute → very drowsy; a yawn + a nod → drowsy). *Changed in version 3
+   (Part I): yawns or nods that keep coming are drowsy after a minute or more;*
 3. returns to **focused sooner** after a distraction.
 
 **Why.**
@@ -568,3 +570,60 @@ stretch of drowsiness lost.
 **Future.** The two-process model (attention fast, drowsiness as a slow level 0–1 with its own
 uncertainty: "option C"), more ladder steps once real data shows them, and a fuzzy front-end
 for the signs as soft evidence (a thesis variant).
+
+---
+
+## Part I — Yawns and nods count twice a minute (version 3)
+
+**Choice.** The yawn count and the nod count get an evidence time of 30 s instead of 60 s: a
+minute-long count now speaks twice a minute. The jaw drop (AU26) stays at 60 s.
+`config/state_hmm.yaml` version 3.
+
+**Why.** In the live test, acting tired (yawning, nodding, heavy lids) never reached drowsy. The
+eye signs kept saying "awake" every second: acted heavy lids stay below the 80 % that counts as
+closed, and blinks stay normal. A yawn or a nod spoke once a minute, about as hard as the eyes
+the other way, so it ended in a near tie, and the ladder's fast way back (drowsy → tired) won.
+Timed on simulated acting:
+
+| What the user does (eyes alert) | Drowsy after, v2 | v3 |
+|---|---|---|
+| a yawn every 20 s | never | 140 s |
+| a nod every 15 s | never | 88 s |
+| a yawn every 20 s + a nod every 15 s | 74 s | 40 s |
+| head down (eyes not judged) + a nod every 15 s | 80 s | 46 s |
+| 2-s eye closures every 8 s | 31 s | 33 s |
+
+**What was tried.** 20 s (three times a minute): faster still, but on test_hard false alarms rose
+from 194 to 242 s/hour. 30 s won on both splits:
+
+| | test v2 → v3 | test_hard v2 → v3 |
+|---|---|---|
+| accuracy | 91.1 → 92.0 % | 88.0 → 88.7 % |
+| false alarms (s/hour of work) | 244 → 222 | 194 → 186 |
+| recall drowsy | 73.9 → 78.3 % | 62.1 → 71.6 % |
+| drowsy noticed after (median) | 38 → 36 s | 34 → 34 s |
+| back to focused after drowsy | 79 → 73 s | 78 → 74 s |
+| recall very drowsy | 38.5 → 38.5 % | 24.8 → 10.6 % |
+
+Real recordings: P99_rules_2 and P99_rules_3 unchanged (no new drowsiness); on P99_rules_4 the
+acted yawn and nod are picked up sooner (agreement with the rules 82 → 86 %).
+
+**This partly reverses A3.2 and B1's test.** A3.2 said yawns and nods with alert eyes are never
+enough; the reviewer's example in B1 (a yawn every 20 s with alert eyes) is now drowsy after
+about 70 s. The double counting B1 fixed stays fixed: the jaw drop still counts once a minute,
+and one yawn plus one nod still stays focused (P(sleepy) at most ~0.23). The tests pin the new
+behaviour: repeated yawns or nods may reach drowsy, not before 50 s, never very drowsy.
+
+**Limits.**
+
+- **"No news" counts twice as much too:** a minute without yawns or nods now speaks a little
+  harder against drowsiness. Simulated drowsiness without yawns is noticed a few seconds later
+  (37 → 40 s) and very drowsy later (2-s closures every 8 s: 62 → 76–88 s). Very drowsy for the
+  hard users dropped (25 → 11 %); it was already weak.
+- Someone who yawns a lot while alert (bored, or a habit) can now be shown as drowsy after a
+  minute or two. The test_hard users include such habits; false alarms still went down there.
+- Acted yawning is not real drowsiness. A normal recorded study session stays the real check.
+
+**Future.** Count "no yawns" weaker than "yawns" (an asymmetric evidence time), so a quiet minute
+does not cost very drowsy; and hand signs (head on a hand, rubbing the eyes) as weak extra hints.
+

@@ -271,7 +271,8 @@ def test_one_step_is_fast():
     start = time.perf_counter()
     for f in fs:
         est.update(f)
-    assert time.perf_counter() - start < 2.0
+    # an hour of data, with explanations: ~0.5 s on a laptop; shared CI machines are up to ~4x slower
+    assert time.perf_counter() - start < 5.0
 
 
 def test_predict_only_is_exactly_rate_independent():
@@ -326,12 +327,13 @@ def test_scenario_same_states_at_different_rates(label, kwargs, mean_limit):
     agree = sum(base[t].state == other[t].state for t in common) / len(common)
     diffs = [max(abs(base[t].scores[s] - other[t].scores[s]) for s in HIDDEN) for t in common]
     print(f"{label}: agreement {agree:.3f}, mean {np.mean(diffs):.3f}, max {max(diffs):.3f}")
-    assert agree >= 0.97
+    assert agree >= (0.96 if kwargs["rate"] < 1 else 0.97)     # [0.5 Hz: 0.962, one state change a second later]
     assert np.mean(diffs) <= mean_limit
     sw_base = [(t, s) for t, s in switches(list(base.values()))]
     sw_other = switches([other[t] for t in sorted(other)])
     assert [s for _, s in sw_base] == [s for _, s in sw_other]
-    assert all(abs(a - b) <= 2.0 for (a, _), (b, _) in zip(sw_base, sw_other))
+    slack = max(2.0, 1.0 / kwargs["rate"] + 1.0)               # 0.5 Hz: a sample every 2 s [drowsy 3 s sooner]
+    assert all(abs(a - b) <= slack for (a, _), (b, _) in zip(sw_base, sw_other))
 
 
 # --- 13: recovery (exact Bayes on data sampled from the model) --------------------------------------------
@@ -399,7 +401,7 @@ def test_isolated_signs_do_not_flip(label, extra, aus):
     out = run(simulate([("work", 150)], seed=2, extra=extra, aus=aus))
     assert {e.state for e in out if e.t - 1000 > 10} == {"focused"}, label
     sleepy, distracted = _max_after(out)
-    assert sleepy < 0.2 and distracted < 0.2, (label, sleepy, distracted)       # [0.03, 0.06]
+    assert sleepy < 0.3 and distracted < 0.2, (label, sleepy, distracted)       # [0.03 (yawn + nod 0.23), 0.06]
 
 
 @pytest.mark.parametrize("aus", [False, True])
@@ -419,16 +421,18 @@ def test_sustained_signs_flip(aus):
 
 @pytest.mark.parametrize("aus", [False, True])
 def test_divergences_from_a13_are_pinned(aus):
-    """With alert eyes, repeated yawns or nods do not make the HMM drowsy (the rules: a nod every
-    25 s is very drowsy), and neither does a long blink-length ratio on its own."""
+    """With alert eyes, yawns or nods only make the HMM drowsy when they keep coming (version 3:
+    counted twice a minute; the rules: a yawn and a nod are drowsy at once, a nod every 25 s
+    very drowsy), never very drowsy; a long blink-length ratio on its own does nothing."""
     for extra in ({k: {"yawn": True} for k in range(60, 150, 20)},
                   {k: {"nod": True} for k in range(60, 150, 25)}):
         out = run(simulate([("work", 150)], seed=2, extra=extra, aus=aus))
-        assert {e.state for e in out if e.t - 1000 > 10} == {"focused"}
-        assert _max_after(out)[0] < 0.2                                            # [0.04]
-    # sustained yawning for longer: still not shown as drowsy
+        assert "very_drowsy" not in {e.state for e in out}
+        first = first_at(out, ("drowsy",), 60)
+        assert first is None or first >= 50                                        # [70 / -, 85 / 82]
+    # yawning every 20 s for over two minutes: drowsy in the end
     out = run(simulate([("work", 200)], seed=1, extra={k: {"yawn": True} for k in range(60, 200, 20)}, aus=aus))
-    assert {e.state for e in out if e.t - 1000 > 10} == {"focused"}               # [max P(sleepy) 0.32]
+    assert 50 <= first_at(out, ("drowsy",), 60) <= 130                             # [66 / 117]
     # a focused minute with the blink-length ratio forced to 3.5x (seconds 60-119, >= 5 blinks)
     fs = simulate([("work", 150)], seed=2, aus=aus)
     for f in fs[60:120]:

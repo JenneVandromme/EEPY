@@ -117,24 +117,29 @@ per number) in `data/synthetic/v1/state_hmm_trained.yaml`. Use it with `eval`, r
 ## Results
 
 Default dataset (`v1`, seed 1). **Test** split (14 users): the rules, HMM version 1 (one
-drowsy step), version 2 (the drowsiness ladder, shipped) and numbers trained from version 2:
+drowsy step), version 2 (the drowsiness ladder), version 3 (yawns and nods count twice a
+minute, shipped) and numbers trained from version 2:
 
-| | rules | HMM v1 | **HMM v2** | trained from v2 |
-|---|---|---|---|---|
-| accuracy (5 states) | 83 % | 88 % | 91 % | 96 % |
-| false alarms (s/hour of work) | 391 | 390 | 244 | 132 |
-| drowsy noticed after (median) | 22 s | 44 s | 38 s | 30 s |
-| back to focused after drowsy | 65 s | 121 s | 79 s | 57 s |
-| recall very drowsy | 100 % | 39 % | 39 % | 14 % |
+| | rules | HMM v1 | HMM v2 | **HMM v3** | trained from v2 |
+|---|---|---|---|---|---|
+| accuracy (5 states) | 83 % | 88 % | 91 % | 92 % | 96 % |
+| false alarms (s/hour of work) | 391 | 390 | 244 | 222 | 132 |
+| recall drowsy | 10 % | 79 % | 74 % | 78 % | 100 % |
+| drowsy noticed after (median) | 22 s | 44 s | 38 s | 36 s | 30 s |
+| back to focused after drowsy | 65 s | 121 s | 79 s | 73 s | 57 s |
+| recall very drowsy | 100 % | 39 % | 39 % | 39 % | 14 % |
 
-**test_hard** (12 users): accuracy 78 / 86 / 88 / 92 %, false alarms 639 / 303 / 194 / 113
-s/hour, recall very drowsy 100 / 2 / 25 / 0 %, recall distracted 79 / 48 / 48 / 55 %.
+**test_hard** (12 users), rules / v1 / v2 / v3 / trained: accuracy 78 / 86 / 88 / 89 / 92 %,
+false alarms 639 / 303 / 194 / 186 / 113 s/hour, recall very drowsy 100 / 2 / 25 / 11 / 0 %,
+recall distracted 79 / 48 / 48 / 48 / 55 %.
 
-What it showed, and what was done (docs/A16_HMM_DECISIONS.md, Part H):
+What it showed, and what was done (docs/A16_HMM_DECISIONS.md, Parts H and I):
 
 - **Drowsiness "stuck"** in v1 (121 s to get back to focused): fixed with the ladder (79 s).
 - **Very drowsy was hardly ever shown**: partly a simulator mistake (fixed: a microsleep now
   lasts its full length), partly "no news" signs counting against it; better, still weak.
+- **Acted yawns and nods never reached drowsy** with alert-looking eyes (found live): they now
+  count twice a minute (version 3); very drowsy for the hard users paid for it (25 → 11 %).
 - **Distraction is missed for unusual users** (48 % on test_hard): users who look back at
   their work during a phone call, or glance a lot while working. Not yet addressed.
 - **The rules over-call very drowsy** (their drowsy recall is 10 %: they say very drowsy).

@@ -52,11 +52,13 @@ class Observation:
         self.uncalibrated, self.show = uncalibrated, show
 
 
-def _family_max(v: np.ndarray, groups: Optional[List[List[int]]] = None) -> np.ndarray:
-    """Per family (focused, distracted, sleepy): the best of its hidden states."""
+def _family_max(v: np.ndarray, groups: Optional[Tuple[np.ndarray, np.ndarray]] = None) -> np.ndarray:
+    """Per family (focused, distracted, sleepy): the best of its hidden states. `groups`: the
+    hidden states sorted by family and where each family starts (see HMMEstimator)."""
     if groups is None:                       # the four reported states
         return np.array([v[0], v[1], max(v[2], v[3])])
-    return np.array([max(v[i] for i in g) for g in groups])
+    order, starts = groups
+    return np.maximum.reduceat(v[order], starts)
 
 
 class HMMEstimator:
@@ -67,7 +69,9 @@ class HMMEstimator:
         p_ = self.params
         self.states, self.reports = p_.states, p_.reports
         fam = [FAMILY_OF_REPORTED[r] for r in self.reports]
-        self._groups = [[i for i, f in enumerate(fam) if f == k] for k in range(3)]
+        members = [[i for i, f in enumerate(fam) if f == k] for k in range(3)]
+        self._groups = (np.array([i for m in members for i in m]),
+                        np.cumsum([0] + [len(m) for m in members[:-1]]))
         self._to_reported = np.zeros((len(self.states), len(HIDDEN)))
         for i, r in enumerate(self.reports):
             self._to_reported[i, HIDDEN.index(r)] = 1.0
@@ -234,7 +238,7 @@ class HMMEstimator:
         # 3 update
         observations: List[Observation] = []
         skipped: List[str] = []
-        contrib: Dict[str, Tuple[np.ndarray, np.ndarray, float]] = {}
+        contrib: Dict[str, Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray]] = {}
         updated = False
         if unknown_reason is None and not absent:
             if self.was_flagged and self.t_last_obs is not None:
@@ -249,8 +253,9 @@ class HMMEstimator:
                 w = weights[o.spec.id] * (p_.uncalibrated_weight if o.uncalibrated else 1.0)
                 c = w * min(dt_ev, o.spec.tau) / o.spec.tau * ll
                 total += c
-                contrib[o.spec.id] = (c, ll, w)
-                self.recent[o.spec.id] = self.recent.get(o.spec.id, np.zeros(3)) + _family_max(c, self._groups)
+                g = _family_max(c, self._groups)       # per family, used by the explanations too
+                contrib[o.spec.id] = (c, ll, w, g, _family_max(ll, self._groups))
+                self.recent[o.spec.id] = self.recent.get(o.spec.id, np.zeros(3)) + g
             log_b = log_b + total
             self.t_last_obs = t
             self.obs_seconds += min(dt_ev, 5.0)
@@ -389,39 +394,40 @@ class HMMEstimator:
             return "strong drowsiness"
         return PHRASE[FAMILIES[family]]
 
-    def _evidence(self, observations: List[Observation], contrib: Dict[str, Tuple[np.ndarray, np.ndarray, float]],
+    def _evidence(self, observations: List[Observation], contrib: Dict[str, Tuple[Any, ...]],
                   probs: np.ndarray) -> List[Dict[str, Any]]:
         """This step's signs, sorted by impact (nats moved in this step)."""
         items = []
         for o in observations:
-            c, ll, w = contrib[o.spec.id]
-            g, big = _family_max(c, self._groups), _family_max(ll, self._groups)
+            _, _, w, g_, big_ = contrib[o.spec.id]
+            g, big = g_.tolist(), big_.tolist()   # plain floats: much faster than numpy scalars here
             order = sorted(range(3), key=lambda k: -g[k])
             supports = order[0] if g[order[0]] - g[order[1]] > 1e-9 else None
             against = order[2] if g[order[1]] - g[order[2]] > 1e-9 else None
-            impact = float(g.max() - g.min())
+            impact = max(g) - min(g)
             if supports is not None:
-                strength = w * float(big[supports] - max(big[k] for k in range(3) if k != supports))
+                strength = w * (big[supports] - max(big[k] for k in range(3) if k != supports))
                 words = next((wd for limit, wd in STRENGTH_WORDS if strength < limit), "strongly suggests")
                 text = f"{o.spec.label} ({o.show}) {words} {self._phrase(supports, probs)}"
             elif against is not None:
-                strength = w * float(max(big[k] for k in range(3) if k != against) - big[against])
+                strength = w * (max(big[k] for k in range(3) if k != against) - big[against])
                 text = f"{o.spec.label} ({o.show}) speaks against {PHRASE[FAMILIES[against]]}"
             else:
                 strength = 0.0
                 text = f"{o.spec.label} ({o.show}) says nothing about the state"
-            push = w * (big - big.mean())         # per full window, by family, centred (dt-free)
+            big_mean, g_mean = sum(big) / 3, sum(g) / 3
+            push = [w * (v - big_mean) for v in big]   # per full window, by family, centred (dt-free)
             items.append({"feature": o.spec.id, "input": o.spec.input, "value": o.value,
                           "supports": FAMILIES[supports] if supports is not None else None,
                           "against": FAMILIES[against] if against is not None else None,
                           "impact": round(impact, 3), "strength": round(strength, 3), "weight": round(w, 3),
                           "quiet": o.quiet, "text": text, "label": o.spec.label, "show": o.show,
-                          "group": o.spec.group, "push": [round(float(v), 3) for v in push],
-                          "step": [round(float(v - g.mean()), 4) for v in g]})
+                          "group": o.spec.group, "push": [round(v, 3) for v in push],
+                          "step": [round(v - g_mean, 4) for v in g]})
         items.sort(key=lambda d: -d["impact"])
         return items
 
-    def _reasons(self, observations: List[Observation], contrib: Dict[str, Tuple[np.ndarray, np.ndarray, float]],
+    def _reasons(self, observations: List[Observation], contrib: Dict[str, Tuple[Any, ...]],
                  family: int, pf: np.ndarray, probs: np.ndarray, confidence: float, shown: str,
                  pending: Optional[str] = None) -> List[Reason]:
         """Why the shown state. A sign qualifies on what it says NOW: for focused, that it
@@ -433,8 +439,7 @@ class HMMEstimator:
         alt = max((k for k in range(3) if k != family), key=lambda k: (pf[k], -k))
         ranked = []
         for o in observations:
-            c, ll, w = contrib[o.spec.id]
-            g = _family_max(c, self._groups)
+            _, _, w, g, big = contrib[o.spec.id]
             if family == 0:
                 if g[0] - g[alt] <= 1e-9:
                     continue
@@ -443,7 +448,6 @@ class HMMEstimator:
                 if o.quiet or any(g[family] - g[k] <= 1e-9 for k in range(3) if k != family):
                     continue
                 text = f"{o.spec.label} ({o.show}) suggests {self._phrase(family, probs)}"
-            big = _family_max(ll, self._groups)
             strength = w * float(big[family] - big[alt])
             if strength < MIN_REASON:
                 continue

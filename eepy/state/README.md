@@ -425,16 +425,20 @@ Measured on simulated sessions (seconds after the behaviour starts):
 | start → focused | 10 s | 9 s |
 | looking at a phone → distracted | 10 s | 12 s |
 | back to work after the phone → focused | not within 20 s | 13 s |
-| acting sleepy → drowsy | 10–17 s | 37–39 s |
-| 2-s eye closures every 8 s → drowsy / very drowsy | 4 s / 4 s | 31 s / 62 s |
-| awake again after 2 minutes of drowsiness → focused | ~65 s | 70 s (one-step model of v1: 97 s) |
+| acting sleepy → drowsy | 10–17 s | 40–41 s |
+| 2-s eye closures every 8 s → drowsy / very drowsy | 4 s / 4 s | 34 s / 76–88 s |
+| awake again after 2 minutes of drowsiness → focused | ~65 s | 66 s (one-step model of v1: 97 s) |
+| a yawn every 20 s, eyes alert → drowsy | 20 s or less | 66–117 s (before version 3: never) |
 | leaving → absent | 25 s | 13 s |
 
 On purpose, the HMM:
 
 1. says **drowsy later** than the rules;
-2. needs **eye signs** for drowsiness: yawns or nods with eyes that look alert
-   are not enough (the rules: a nod every 25 s is very drowsy);
+2. trusts **eye signs** most: one yawn and one nod with eyes that look alert are
+   not drowsy (the rules: drowsy at once). Yawns or nods that **keep coming** are
+   drowsy after a minute or more, but never very drowsy (the rules: a nod every 25 s
+   is very drowsy). Version 3 changed this: before, they were never enough, so acted
+   yawning never reached drowsy;
 3. says **focused again sooner** after a distraction.
 
 It is also less fooled by lowered eyelids while reading (eyes that look half
@@ -558,9 +562,9 @@ time of day) multiplies the rates into drowsiness.
 | microsleep | `blink_max_ms_60s ≥ 1500` | Bernoulli | 60 s |
 | eyes shut now | `eyes_closed_now_s ≥ 1.5` | Bernoulli | 2 s |
 | eyes-closed AU | `AU43_active_60s` (judged frames) | Beta | 10 s |
-| yawns | `yawns_60s`, exposure = face seconds | Poisson | 60 s |
+| yawns | `yawns_60s`, exposure = face seconds | Poisson | 30 s |
 | jaw drop AU | `AU26_active_60s` | Beta | 60 s |
-| nods | `nods_60s`, exposure = face seconds | Poisson | 60 s |
+| nods | `nods_60s`, exposure = face seconds | Poisson | 30 s |
 | looking away (minute) | `gaze_off_ratio_60s` | Beta | 20 s |
 | looking away now | `away_current_s`, bins 0/5/10/20/60 s | categorical | 2 s |
 

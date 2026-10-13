@@ -9,7 +9,7 @@
 # recorded sessions first:
 #     python -m eepy.state.replay latest --estimator both
 format: eepy.state_hmm/1
-version: 2
+version: 3
 source: hand_set
 created: "2026-10-13"
 author: "EEPY team (A16)"
@@ -195,7 +195,7 @@ features:
     exposure_seconds: face_seen_s_60s
     group: yawning
     calibration: none
-    evidence_seconds: {value: 60, why: "a count over 60 s: each yawn counts once"}
+    evidence_seconds: {value: 30, why: "a count over 60 s, counted twice: once a minute, yawns with alert-looking eyes never outweighed the eye signs (acted yawns never reached drowsy; docs/A16_HMM_DECISIONS.md, Part I)"}
     needs: [face_present_ratio_10s >= 0.5, face_seen_s_60s >= 10]
     needs_why: "yawns are only seen with a face; 10 s minimum"
     label: yawning
@@ -230,7 +230,7 @@ features:
     family: poisson
     exposure_seconds: face_seen_s_60s
     calibration: none
-    evidence_seconds: {value: 60, why: "a count over 60 s: each nod counts once"}
+    evidence_seconds: {value: 30, why: "as yawns: counted twice a minute (head down + nods: drowsy after 46 s instead of 80 s)"}
     needs: [face_present_ratio_10s >= 0.5, face_seen_s_60s >= 10]
     needs_why: "as yawns"
     label: nodding off
