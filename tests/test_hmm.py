@@ -141,9 +141,10 @@ _DELETE = object()
     (_set("transitions_per_hour.drowsy.focused", _DELETE),
      'transitions_per_hour.drowsy: missing "focused" (every pair of different states needs a rate).'),
     (lambda raw: [raw["transitions_per_hour"][s]["very_drowsy"].update(value=0)
-                  for s in ("focused", "distracted", "drowsy")],
+                  for s in raw["states"] if s != "very_drowsy"],
      "transitions_per_hour: very_drowsy can never be reached (all rates into it are 0)."),
-    (_set("initial.focused.value", 0.80), "initial: the probabilities add up to 0.95; they must add up to 1."),
+    (lambda raw: raw["initial"]["focused"].update(value=raw["initial"]["focused"]["value"] - 0.05),
+     "initial: the probabilities add up to 0.95; they must add up to 1."),
     (_set("features.perclos.input", "perclos_6s"),
      'features.perclos: unknown input "perclos_6s" (did you mean "perclos_60s"?). The features are listed '
      "in eepy/state/README.md."),
@@ -233,7 +234,7 @@ def test_expm_is_a_proper_transition_matrix(dt):
     assert (p >= 0).all()
     assert np.allclose(p.sum(axis=1), 1, atol=1e-12)
     if dt == 0:
-        assert np.array_equal(p, np.eye(4))
+        assert np.array_equal(p, np.eye(len(PARAMS.states)))
     a, b = dt * 0.3, dt * 0.7
     assert np.allclose(model.transition(Q, a) @ model.transition(Q, b), p, atol=1e-12)
     if dt == 1e7:
@@ -241,8 +242,9 @@ def test_expm_is_a_proper_transition_matrix(dt):
 
 
 def test_the_stationary_distribution_and_dwell_times():
-    pi = model.stationary(Q)
-    assert np.allclose(pi, [0.704, 0.075, 0.149, 0.072], atol=0.002)
+    pi = model.stationary(Q)              # focused, distracted, tired, drowsy, very_drowsy
+    assert np.allclose(pi, [0.635, 0.080, 0.153, 0.091, 0.042], atol=0.002)
+    assert abs(pi @ Q).max() < 1e-12 and abs(pi.sum() - 1) < 1e-12
     assert (np.diag(model.transition(Q, 1.0)) >= 0.983).all()
 
 
@@ -275,7 +277,7 @@ def test_one_step_is_fast():
 def test_predict_only_is_exactly_rate_independent():
     def belief(times: List[float]) -> np.ndarray:
         est = HMMEstimator(PARAMS)
-        est.log_b = np.log(np.array([0.4, 0.2, 0.3, 0.1]))
+        est.log_b = np.log(np.array([0.3, 0.2, 0.15, 0.25, 0.1]))
         est.t_last = 0.0
         for t in times:
             est.update(empty(t))
@@ -351,22 +353,27 @@ def _sample(spec: Any, state: int, rng: np.random.Generator) -> Any:
 
 
 def test_filter_recovers_sampled_states():
-    q = model.generator(PARAMS.rates_per_hour) * 10           # dwells 51 / 6 / 33 / 28 s
+    """Scored on the reported state: "tired" looks exactly like focused by design (a step on the
+    ladder), so only the transitions tell them apart."""
+    n = len(PARAMS.states)
+    shown = [HIDDEN.index(r) for r in PARAMS.reports]
+    q = model.generator(PARAMS.rates_per_hour) * 10           # dwells ten times shorter
     p1 = model.transition(q, 1.0)
     rng = np.random.default_rng(0)
     accuracies, p_true = [], []
     for _ in range(20):
-        state = int(rng.choice(4, p=list(PARAMS.initial)))
+        state = int(rng.choice(n, p=list(PARAMS.initial)))
         log_b = np.log(np.array(PARAMS.initial))
         hits = 0
         for t in range(600):
             if t:
-                state = int(rng.choice(4, p=p1[state]))
+                state = int(rng.choice(n, p=p1[state]))
             ll = sum(model.loglik(spec, _sample(spec, state, rng)) for spec in PARAMS.features)
-            log_b = model.forward_step(log_b, p1 if t else np.eye(4), ll, 1e-300)
-            probs = np.exp(log_b)
-            hits += int(np.argmax(probs)) == state
-            p_true.append(probs[state])
+            log_b = model.forward_step(log_b, p1 if t else np.eye(n), ll, 1e-300)
+            probs = np.zeros(len(HIDDEN))
+            np.add.at(probs, shown, np.exp(log_b))
+            hits += int(np.argmax(probs)) == shown[state]
+            p_true.append(probs[shown[state]])
         accuracies.append(hits / 600)
     print(f"recovery: min {min(accuracies):.3f}, mean {np.mean(accuracies):.3f}, P(true) {np.mean(p_true):.3f}")
     assert min(accuracies) >= 0.93 and np.mean(accuracies) >= 0.95 and np.mean(p_true) >= 0.90
@@ -454,14 +461,15 @@ def test_gaze_off_orders_distracted_first():
 
 def test_log_ratio_tables():
     """The tables in eepy/state/README.md (per full window, vs focused)."""
+    iR, iV = PARAMS.states.index("drowsy"), PARAMS.states.index("very_drowsy")
     t = PARAMS.feature("blink_duration")
     for ratio, r, v in ((1.0, -1.06, -1.88), (2.0, 1.43, 1.31), (3.5, 1.72, 2.65)):
         ll = model.loglik(t, math.log(ratio))
-        assert abs((ll[2] - ll[0]) - r) < 0.02 and abs((ll[3] - ll[0]) - v) < 0.02
+        assert abs((ll[iR] - ll[0]) - r) < 0.02 and abs((ll[iV] - ll[0]) - v) < 0.02
     pc = PARAMS.feature("perclos")
     for x, r, v in ((0.12, 1.70, 1.12), (0.25, 5.17, 5.76)):
         ll = model.loglik(pc, x)
-        assert abs((ll[2] - ll[0]) - r) < 0.02 and abs((ll[3] - ll[0]) - v) < 0.02
+        assert abs((ll[iR] - ll[0]) - r) < 0.02 and abs((ll[iV] - ll[0]) - v) < 0.02
 
 
 # --- 18-25: missing data, absent, unknown, double counting -------------------------------------------------
@@ -520,7 +528,8 @@ def test_absent_is_a_flag_and_only_predicts():
     assert states[:5] != ["absent"] * 5 and states[5] == "absent"            # 5 s after the condition holds
     assert e.updated is False and e.state == "absent"
     expected = before @ model.transition(Q, 140.0 - t_before)
-    assert np.abs(np.array([e.scores[s] for s in HIDDEN]) - expected).max() < 1e-9
+    assert np.abs(np.exp(est.log_b) - expected).max() < 1e-9
+    assert np.abs(np.array([e.scores[s] for s in HIDDEN]) - est.reported(expected)).max() < 1e-9
     e = est.update(feats(141.0, face={"face_absent_ratio_10s": 0.4}))
     assert e.state in HIDDEN and e.updated
 
@@ -576,9 +585,10 @@ def _pair_params(rho: float) -> Any:
 def test_double_counting_correction():
     def log_odds_change(params: Any) -> float:
         est = HMMEstimator(params)
-        before = est.log_b[2] - est.log_b[0]
+        i = params.states.index("drowsy")
+        before = est.log_b[i] - est.log_b[0]
         est.update(feats(100.0, face={"perclos_60s": 0.2}))
-        return float(est.log_b[2] - est.log_b[0] - before)
+        return float(est.log_b[i] - est.log_b[0] - before)
 
     single = log_odds_change(params_with(lambda raw: [raw["features"][k].update(enabled=(k == "perclos"))
                                                       for k in raw["features"]]))
@@ -848,7 +858,8 @@ def test_recorder_hmm_columns_and_state_model_retry():
     kinds = [k for k, _ in events.calls]
     assert kinds[0] == "state_model" and kinds.count("state_model") == 2      # failed once, then logged once
     model_event = next(f for k, f in events.calls[1:] if k == "state_model")
-    assert model_event["estimator"] == "hmm" and model_event["version"] == 1 and len(model_event["sha256"]) == 64
+    assert model_event["estimator"] == "hmm" and model_event["version"] == PARAMS.version
+    assert len(model_event["sha256"]) == 64 and model_event["states"] == list(PARAMS.states)
     assert model_event["prior"]["source"] == "default" and "perclos" in model_event["features"]
     change = next(f for k, f in events.calls if k == "state_changed" and f["to"] == "focused")
     assert set(change["probs"]) == set(HIDDEN) and "hmm_evidence" in change and change["most_likely"] == "focused"
@@ -1011,15 +1022,19 @@ def test_session_prior_is_clipped_and_shrunk():
     assert applied.source == "kss" and applied.trust == 0.5 and not applied.fell_back
     assert applied.drowsiness_multiplier == pytest.approx(2.0)                # 10 -> 4 (clipped), then sqrt
     assert any("drowsiness_multiplier" in c for c in applied.clipped)
+    from eepy.state.hmm_prior import reported_initial
+
+    base = reported_initial(PARAMS)                   # tired counts as focused
     for i, s in enumerate(HIDDEN):
-        assert applied.initial[s] == pytest.approx(0.5 * PARAMS.initial[i] + 0.5 * given[s])
+        assert applied.initial[s] == pytest.approx(0.5 * base[i] + 0.5 * given[s])
     assert water_fill([1, 0, 0, 0], 0.01, 0.95) == pytest.approx([0.95, 0.05 / 3, 0.05 / 3, 0.05 / 3])
     assert water_fill([0.5, 0.5, 0, 0], 0.01, 0.95) == pytest.approx([0.49, 0.49, 0.01, 0.01])
     est = HMMEstimator(ENABLED, prior=applied)
-    assert np.allclose(np.exp(est.log_b), [applied.initial[s] for s in HIDDEN])
+    assert np.allclose(est.reported(np.exp(est.log_b)), [applied.initial[s] for s in HIDDEN])
     base = model.generator(ENABLED.rates_per_hour)
-    for i in range(4):
-        for j in range(4):
+    n = len(ENABLED.states)
+    for i in range(n):
+        for j in range(n):
             if i != j:
                 factor = 2.0 if (i, j) in ENABLED.drowsiness_pairs else 1.0
                 assert est.q[i, j] == pytest.approx(base[i, j] * factor)
@@ -1080,7 +1095,7 @@ from eepy.state import explain  # noqa: E402
 def _embedded(page: str) -> Dict[str, Any]:
     import json
 
-    blob = page.split("const DATA = ", 1)[1].split(";\nconst S = DATA.steps", 1)[0]
+    blob = page.split("let DATA = ", 1)[1].split(";\nconst LIVE", 1)[0]
     return json.loads(blob.replace("<\\/", "</"))
 
 
@@ -1137,3 +1152,126 @@ def test_explain_reads_the_robots_decisions(tmp_path):
     assert events[1]["text"] == "held back: distracted 62% < 70%" and events[1]["t"] == 10.0
     assert events[4]["confidence"] == 0.75 and events[5]["outcome"] == "success"
     assert explain._thresholds(tmp_path)["source"] == "today"                     # no snapshot: today's file
+
+
+# --- the synthetic dataset (eepy/state/dataset.py) and the live page's server ---------------------------
+
+from eepy.state import dataset as ds_mod  # noqa: E402
+
+
+def test_synthetic_dataset_build_train_eval(tmp_path, capsys):
+    folder = tmp_path / "synthetic" / "t"
+    manifest = ds_mod.build(folder, users=6, minutes=(4, 5), seed=3, hard_users=2, say=None)
+    again = ds_mod.build(tmp_path / "synthetic" / "t2", users=6, minutes=(4, 5), seed=3, hard_users=2, say=None)
+    assert [u["profile"] for u in manifest["users"]] == [u["profile"] for u in again["users"]]   # reproducible
+    assert {u["split"] for u in manifest["users"]} == {"train", "test", "test_hard"}
+    first = folder / manifest["users"][0]["folder"]
+    truth = ds_mod.truth_of(first)
+    assert truth[0][0] == 0 and all(s in ds_mod.STATES5 for _, _, s in truth)
+    assert session_features(first)                                   # a normal session folder
+    folders = [folder / u["folder"] for u in ds_mod.users_of(folder, ["train"])]
+    data, trans = ds_mod.collect(folders, PARAMS)
+    fitted = ds_mod.fit(PARAMS, data, trans, "t")
+    assert fitted.source == "fitted" and fitted.version == PARAMS.version + 1
+    assert loads(dump(fitted)) == fitted                             # a valid, loadable parameter file
+    scores = ds_mod.run_model("hmm", [folder / u["folder"] for u in ds_mod.users_of(folder, ["test"])])
+    assert 0 <= scores["accuracy"] <= 1 and "false_alarm_s_per_hour" in scores
+    assert ds_mod.main(["eval", "--name", "t", "--data", str(tmp_path), "--split", "all", "--model", "rules"]) == 0
+    assert "accuracy (5 states)" in capsys.readouterr().out
+
+
+def test_evaluate_scores_against_the_truth():
+    from eepy.state.estimate import StateEstimate
+
+    truth = [(0, 100, "focused"), (100, 160, "distracted"), (160, 300, "focused")]
+
+    def est(t: float, s: str) -> StateEstimate:
+        return StateEstimate(t=1000.0 + t, state=s, scores={}, reasons=[], calibrated=True)
+
+    perfect = [est(t, "distracted" if 100 <= t < 160 else "focused") for t in range(300)]
+    r = ds_mod.combine([ds_mod.evaluate(perfect, truth)])
+    assert r["accuracy"] == 1.0 and r["false_alarm_s_per_hour"] == 0 and r["detected"]["distracted"] == 1.0
+    late = [est(t, "distracted" if 110 <= t < 190 else "focused") for t in range(300)]   # 10 s past the grace
+    r = ds_mod.combine([ds_mod.evaluate(late, truth)])
+    assert r["delay_median_s"]["distracted"] == 10 and r["false_alarm_s_per_hour"] > 0
+
+
+def test_the_live_page_serves_data_and_the_page():
+    import json
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from eepy.perception.live import LiveState, _handler
+
+    state = LiveState(PARAMS)
+    est = HMMEstimator(PARAMS)
+    for f in simulate([("work", 12)], seed=1):
+        state.add(est.update(f), "focused", {"perclos_60s": f.get("perclos_60s")})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(state, "<html>live</html>"))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_address[1]
+        page = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
+        data = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/data?since=10", timeout=5).read())
+        assert page == "<html>live</html>" and data["total"] == 12 and len(data["steps"]) == 2
+        assert data["steps"][-1]["raw"] and data["features"]
+    finally:
+        server.shutdown()
+
+
+# --- the drowsiness ladder (A16 option A: docs/A16_HMM_DECISIONS.md, Part H) ----------------------------
+
+
+def test_the_ladder_shows_tired_as_focused():
+    assert PARAMS.states == ("focused", "distracted", "tired", "drowsy", "very_drowsy")
+    assert PARAMS.reports == ("focused", "distracted", "focused", "drowsy", "very_drowsy")
+    est = HMMEstimator(PARAMS)
+    for t in range(100, 110):                                    # past the warm-up
+        est.update(feats(float(t)))
+    est.log_b = np.log(np.array([0.2, 0.05, 0.6, 0.1, 0.05]))     # mostly tired
+    e = est.update(feats(110.0))
+    assert e.state == "focused" and set(e.scores) >= set(HIDDEN) and "tired" not in e.scores
+    assert e.values["hidden"]["tired"] > 0.4 and 0.2 < e.values["drowsiness_level"] < 0.6
+    assert abs(sum(e.scores[s] for s in HIDDEN) - 1) < 1e-9
+
+
+def test_waking_up_is_faster_with_the_ladder():
+    """A 2-minute drowsy spell, then work: focused again within 85 s of looking alert again
+    [70 s; the one-step model of v1: 97 s], and drowsiness still noticed within 45 s [37]."""
+    out = run(simulate([("work", 60), ("sleepy", 120), ("work", 240)], seed=2))
+    assert first_at(out, ("drowsy", "very_drowsy"), 60) <= 45
+    assert first_at(out, ("focused",), 180) <= 85
+
+
+@pytest.mark.parametrize("change, message", [
+    (lambda raw: raw.update(reported_as={"tired": "sleepy"}), 'reported_as.tired: "sleepy" is not one of'),
+    (lambda raw: raw.update(reported_as={"drowsy": "focused"}), 'reported_as: "drowsy" is not an extra hidden state'),
+    (lambda raw: raw.pop("reported_as"), 'states: "tired" is not one of focused, distracted, drowsy, very_drowsy, so reported_as must say'),
+    (lambda raw: raw.pop("reported_as_why"), "reported_as: reported_as needs a reported_as_why."),
+])
+def test_ladder_mistakes_are_explained(change, message):
+    raw = copy.deepcopy(RAW)
+    change(raw)
+    with pytest.raises(HMMConfigError) as err:
+        parse(raw)
+    assert message in str(err.value)
+
+
+def test_a_four_state_file_still_works():
+    raw = copy.deepcopy(RAW)
+    raw["states"] = ["focused", "distracted", "drowsy", "very_drowsy"]
+    for key in ("reported_as", "reported_as_why"):
+        raw.pop(key)
+    raw["initial"].pop("tired")
+    raw["initial"]["focused"]["value"] += 0.08
+    raw["transitions_per_hour"].pop("tired")
+    for row in raw["transitions_per_hour"].values():
+        row.pop("tired")
+    for entry in raw["features"].values():
+        entry["params"].pop("tired")
+    raw["modulation"]["applies_to"] = ["focused->drowsy", "drowsy->very_drowsy"]
+    four = parse(raw)
+    assert four.states == HIDDEN
+    e = run(simulate([("work", 30)], seed=1), HMMEstimator(four))[-1]
+    assert e.state == "focused" and "hidden" not in e.values

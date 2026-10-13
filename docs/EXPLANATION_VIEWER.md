@@ -13,6 +13,7 @@ guide covers the two ways to see that:
 Contents:
 
 - [Quick start](#quick-start)
+- [Live: watch it while it happens](#live-watch-it-while-it-happens)
 - [What the viewer shows](#what-the-viewer-shows)
 - [Reading it: a worked example](#reading-it-a-worked-example)
 - [The live decision chain in the panel](#the-live-decision-chain-in-the-panel)
@@ -66,6 +67,35 @@ Recorded sessions show their real robot actions in either environment.
 
 ---
 
+## Live: watch it while it happens
+
+To debug with your own face, use the live page. The camera, the rules, the HMM and the viewer
+are all in **one browser window**, so you can keep looking at your screen (that counts as
+looking at your work):
+
+```bash
+source .venv-vision/bin/activate
+python -m eepy.perception.live                    # free run; opens http://127.0.0.1:8770
+python -m eepy.perception.live --scenario         # the self-test parts, with a score in the terminal
+python -m eepy.perception.live --record P99       # also records the features as a session
+```
+
+On top: a small camera picture (face box green while the eyes are judged, orange when not),
+the live status (face, eyes judged now, eye closure now, gaze zone, calibrated), the raw signs
+the HMM gets, and with `--scenario` the instructions and the time left. Below: the same five
+steps as the viewer, every second, and a growing timeline. Click back to pause; **● live**
+follows again. With `--record`, open the same run afterwards in the viewer or replay it with
+other numbers. Only this computer can open the page; no pictures are written. Options:
+`--camera`, `--hmm-params FILE`, `--no-aus`, `--port`, `--seconds`.
+
+**Where to look when it says "focused" while you act drowsy:** *eyes judged now* and
+`eyes_measured_s_60s`. If those drop (head down, turned), the eye signs are skipped. Then
+the eye closure: acted half-closed lids stay below the 80 % that counts as closed.
+
+To test versions on many simulated users instead: [SYNTHETIC_DATASET.md](SYNTHETIC_DATASET.md).
+
+---
+
 ## What the viewer shows
 
 The page has two halves: **one second, in detail** (top) and **the whole session**
@@ -104,6 +134,9 @@ focused straight to very drowsy). They are fixed and come from `config/state_hmm
 - **uncertainty** goes from 0 (completely sure) to 1 (no idea). "On hold" means nobody was
   there or the camera gave no usable data: the belief only drifts then, and the circles
   look faded.
+- With the **drowsiness ladder** (HMM version 2) the bottom row shows its steps: *tired*
+  (shown as focused), drowsy, very drowsy. The **drowsiness level** (0 alert … 1 very
+  drowsy) under the diagram adds them up.
 
 **3 · Shown state.** What the panel showed, and how sure the HMM was of it: the
 probability of that state's *family* (drowsy and very drowsy together form "sleepy").

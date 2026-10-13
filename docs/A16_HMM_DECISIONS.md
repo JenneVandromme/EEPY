@@ -21,6 +21,7 @@ simulator: simulated sessions, not real faces). Part F lists what implementing t
 - [Part E — Future improvements, collected](#part-e--future-improvements-collected)
 - [Part F — What implementing taught us](#part-f--what-implementing-taught-us)
 - [Part G — Explainability: the viewer](#part-g--explainability-the-viewer)
+- [Part H — The drowsiness ladder (option A)](#part-h--the-drowsiness-ladder-option-a)
 
 ---
 
@@ -504,3 +505,66 @@ only from this change on. The demo's robot needs `.venv-robot`. No designer has 
 
 **Future.** A live version, "what if" sliders, exports for A18, showing information gain
 (A20+), and the rules drawn as the decision tree they are.
+
+---
+
+## Part H — The drowsiness ladder (option A)
+
+**Choice.** A fifth hidden state, **tired** (awake but tired), between focused and drowsy:
+focused → tired → drowsy → very drowsy. Tired is **shown as focused** (no nudge) and has
+the **same sign values as focused**: it is a step reached through the switch rates, not a
+sign pattern of its own. Waking up goes drowsy → tired fast (40 an hour) and then to focused.
+Also: *looking away now* is the same for drowsy and very drowsy (looking away says nothing
+about how deep drowsiness is). `config/state_hmm.yaml` version 2. The code now supports any
+number of hidden states, each shown as one of the four reported states (`reported_as`); a
+four-state file still works.
+
+**Why.** The synthetic benchmark (docs/SYNTHETIC_DATASET.md) showed two problems:
+
+1. **Drowsiness stuck:** after waking up, the eye signs were normal again after ~60 s (the
+   minute window emptied), but the belief stayed above 90 % drowsy until ~100 s and only fell
+   below 40 % after ~140 s. One "drowsy" state with a slow way back (3 an hour) held it there.
+2. **Very drowsy was hardly ever shown.** Partly a simulator mistake: a microsleep lasted one
+   simulated second, so *eyes shut now* never fired. Fixed in the simulator. Partly "no news"
+   signs that kept counting against very drowsy: every look at the work (*looking away now*),
+   a minute without nods.
+
+**What was tried** (tuned on the train users, confirmed on test and test_hard, then checked on
+the real recordings):
+
+| Version | What | Outcome |
+|---|---|---|
+| L1–L3 | a tired state with its own, in-between sign values | false alarms and recovery much better; drowsy noticed later |
+| L7 | faster step tired → drowsy | delay back to the old value |
+| L8–L10 | also weaker nods / eyes-shut-now for very drowsy | very drowsy over-called: rejected |
+| L12 | L7 + *looking away now* fix | best on simulated users, but on the real recording P99_rules_4 it **never said drowsy**: acted, weak signs were absorbed by "tired". **Rejected** |
+| **L14** | tired with **focused's** sign values (a pure step) | real recording as before, and the benchmark gains kept: **adopted** |
+
+**Result** (shipped v1 → v2, users never tuned on):
+
+| | test | test_hard |
+|---|---|---|
+| accuracy | 88.3 → 91.1 % | 85.8 → 88.0 % |
+| false alarms (s/hour of work) | 390 → 244 | 303 → 194 |
+| drowsy noticed after (median) | 44 → 38 s | 36 → 34 s |
+| back to focused after drowsy | 121 → 79 s | 110 → 78 s |
+| very drowsy found (recall) | 38.5 → 38.5 % | 2 → 25 % |
+| drowsy episodes found | 100 → 100 % | 94 → 94 % |
+
+Real recordings (P99_rules_2/3/4): agreement with the rules unchanged or slightly higher; no
+stretch of drowsiness lost.
+
+**Limits.**
+
+- **Very drowsy is still weak** for users whose eyes are rarely judged (head down): then only
+  nods can show it. The same blind spot as acting drowsy with the head down, live.
+- **Drowsy recall** (seconds) is a bit lower: the first moments of mild drowsiness can sit in
+  *tired* (shown as focused). On real faces this is unmeasured.
+- **Tuned on simulated users**, with one real recording as a veto. The real check is a normal
+  recorded study session.
+- The **trained** file (`python -m eepy.state.dataset train`) scores even higher on the
+  benchmark but never says very drowsy, and fits the simulator: not adopted.
+
+**Future.** The two-process model (attention fast, drowsiness as a slow level 0–1 with its own
+uncertainty: "option C"), more ladder steps once real data shows them, and a fuzzy front-end
+for the signs as soft evidence (a thesis variant).

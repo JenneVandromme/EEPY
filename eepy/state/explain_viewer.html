@@ -148,8 +148,11 @@
 </main>
 <script>
 "use strict";
-const DATA = /*__DATA__*/null;
-const S = DATA.steps, M = DATA.meta, F = DATA.features, EV = DATA.events;
+let DATA = /*__DATA__*/null;
+const LIVE = /*__LIVE__*/false;          // served by python -m eepy.perception.live: data arrives every second
+if (!DATA) DATA = { meta: { title: "Live", notes: [], parts: [], params: { path: "", version: "", source: "" }, thresholds: {} },
+                    features: [], groups: {}, rates: [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]], steps: [], events: [] };
+let S = DATA.steps, M = DATA.meta, F = DATA.features, EV = DATA.events;
 const HIDDEN = ["focused", "distracted", "drowsy", "very_drowsy"];
 const FAM = ["focused", "distracted", "sleepy"];
 const FAM_PHRASE = ["focus", "distraction", "drowsiness"];
@@ -165,7 +168,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const clock = (t) => { t = Math.max(0, Math.round(t)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
 
 // --- header ---------------------------------------------------------------------------------------
-$("title").textContent = M.title || "EEPY explanation";
+function renderHeader() {
+$("title").textContent = LIVE ? "EEPY live: the HMM as it decides" : (M.title || "EEPY explanation");
+$("notes").innerHTML = "";
 const sub = [];
 if (M.session) sub.push(`session ${M.session}`);
 if (M.mode) sub.push(`mode ${M.mode}`);
@@ -174,24 +179,30 @@ if (M.prior && M.prior.source && M.prior.source !== "default") sub.push(`prior: 
 sub.push(`${S.length} seconds`);
 $("sub").textContent = sub.join(" · ");
 for (const n of M.notes || []) { const li = document.createElement("li"); li.textContent = n; $("notes").appendChild(li); }
+}
+renderHeader();
 
 // --- helpers over the data -------------------------------------------------------------------------
-const T0 = S.length ? S[0].t : 0, T1 = S.length ? S[S.length - 1].t : 1;
+let T0 = S.length ? S[0].t : 0, T1 = S.length ? S[S.length - 1].t : 1;
 function stepAt(t) {               // the newest step at or before t
   let lo = 0, hi = S.length - 1;
   if (t <= S[0].t) return 0;
   while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (S[mid].t <= t) lo = mid; else hi = mid - 1; }
   return lo;
 }
-const nudges = EV.filter((e) => e.kind === "nudge");
-const outcomes = Object.fromEntries(EV.filter((e) => e.kind === "outcome").map((e) => [e.id, e]));
-const roles = EV.filter((e) => e.kind === "role");
-const gateSpans = [];                // [start, end, text] from the logged gate waits
+let nudges = [], outcomes = {}, roles = [], gateSpans = [];
+function derive() {
+nudges = EV.filter((e) => e.kind === "nudge");
+outcomes = Object.fromEntries(EV.filter((e) => e.kind === "outcome").map((e) => [e.id, e]));
+roles = EV.filter((e) => e.kind === "role");
+gateSpans = [];                      // [start, end, text] from the logged gate waits
 { let open = null;
   for (const e of EV) {
     if (e.kind === "gate_wait") { if (!open) open = e; }
     else if (e.kind === "gate_end" && open) { gateSpans.push([open.t, e.t, open.text, e.text]); open = null; } }
   if (open) gateSpans.push([open.t, T1, open.text, "until the end"]); }
+}
+derive();
 const familyOf = (state) => state === "focused" ? 0 : state === "distracted" ? 1 : (state === "drowsy" || state === "very_drowsy") ? 2 : -1;
 const ladderOf = (state) => state === "distracted" ? "refocus" : (state === "drowsy" || state === "very_drowsy") ? "bedtime" : null;
 
@@ -250,41 +261,57 @@ function signSentence(f, e) {
 }
 
 // --- 2 · belief ------------------------------------------------------------------------------------
-const POS = { focused: [70, 62], distracted: [230, 62], drowsy: [70, 196], very_drowsy: [230, 196] };
+const POS4 = { focused: [70, 62], distracted: [230, 62], drowsy: [70, 196], very_drowsy: [230, 196] };
+function layout() {          // the hidden states: 4 in a square, or a drowsiness ladder along the bottom
+  const names = (M.hidden && st0ph()) ? M.hidden : HIDDEN;
+  if (names.length === 4) return { names, pos: names.map((s) => POS4[s] || [150, 130]), R: 36 };
+  const ladder = names.filter((s, i) => (M.reports || [])[i] !== "distracted" && s !== "focused");
+  const pos = names.map((s) => s === "focused" ? [60, 62] : s === "distracted" ? [240, 62]
+    : [55 + ladder.indexOf(s) * (190 / Math.max(1, ladder.length - 1)), 196]);
+  return { names, pos, R: 29 };
+}
+function st0ph() { return S.length && S[0].ph; }
 function renderBelief(st, prev) {
-  const R = 36;
-  let svg = `<svg viewBox="0 0 300 268" role="img" aria-label="belief over the four states">
+  const LY = layout(), R = LY.R;
+  const probs = st.ph && LY.names.length !== 4 ? st.ph : st.p, pprev = prev ? (prev.ph && LY.names.length !== 4 ? prev.ph : prev.p) : null;
+  const POS = Object.fromEntries(LY.names.map((s, i) => [s, LY.pos[i]]));
+  let svg = `<svg viewBox="0 0 300 276" role="img" aria-label="belief over the four states">
     <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
     <path d="M0,0 L10,5 L0,10 z" fill="${css("--muted")}"/></marker></defs>`;
   // transitions (static): width by rate per hour
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
-    if (i === j) continue;
-    const rate = DATA.rates[i][j]; if (rate <= 0) continue;
-    const [x1, y1] = POS[HIDDEN[i]], [x2, y2] = POS[HIDDEN[j]];
+  const N = LY.names.length;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (i === j || !DATA.rates[i] || DATA.rates[i].length !== N) continue;
+    const rate = DATA.rates[i][j]; if (rate <= 0.2) continue;              // hide the very rare ones
+    const [x1, y1] = LY.pos[i], [x2, y2] = LY.pos[j];
     const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
     const ox = -uy * 9, oy = ux * 9;                                   // offset: the two directions apart
     const sx = x1 + ux * (R + 3) + ox, sy = y1 + uy * (R + 3) + oy, ex = x2 - ux * (R + 6) + ox, ey = y2 - uy * (R + 6) + oy;
     const w = 0.6 + 0.8 * Math.log10(1 + rate);
-    svg += `<line x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" stroke="${css("--muted")}" stroke-opacity=".55" stroke-width="${w}" marker-end="url(#ah)"><title>${nice(HIDDEN[i])} → ${nice(HIDDEN[j])}: about ${rate} times an hour</title></line>`;
+    svg += `<line x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" stroke="${css("--muted")}" stroke-opacity=".55" stroke-width="${w}" marker-end="url(#ah)"><title>${nice(LY.names[i])} → ${nice(LY.names[j])}: about ${rate} times an hour</title></line>`;
   }
-  HIDDEN.forEach((s, k) => {
-    const [x, y] = POS[s], p = st.p[k], col = css(STATE_VAR[s]);
+  LY.names.forEach((s, k) => {
+    const [x, y] = POS[s], p = probs[k];
+    const shownAs = (M.reports && LY.names.length !== 4) ? M.reports[k] : s;
+    const col = css(STATE_VAR[s] || (s === "tired" ? "--s-focused" : STATE_VAR[shownAs] || "--s-unknown"));
     const level = y + R - 2 * R * p;
-    const shown = st.s === s, ml = st.ml === s;
-    const dp = prev ? p - prev.p[k] : 0;
+    const shown = st.s === s || (shownAs !== s && st.s === shownAs && probs[k] > probs[LY.names.indexOf(shownAs)]);
+    const ml = st.ml === s;
+    const dp = pprev ? p - pprev[k] : 0;
     svg += `<clipPath id="cp${k}"><circle cx="${x}" cy="${y}" r="${R}"/></clipPath>
       <circle cx="${x}" cy="${y}" r="${R}" fill="${css("--soft")}" ${st.up ? "" : 'fill-opacity=".6"'}/>
-      <rect x="${x - R}" y="${level}" width="${2 * R}" height="${2 * R}" fill="${col}" fill-opacity="${st.up ? 0.9 : 0.4}" clip-path="url(#cp${k})"/>
+      <rect x="${x - R}" y="${level}" width="${2 * R}" height="${2 * R}" fill="${col}" fill-opacity="${(st.up ? 0.9 : 0.4) * (s === "tired" ? 0.55 : 1)}" clip-path="url(#cp${k})"/>
       <circle cx="${x}" cy="${y}" r="${R}" fill="none" stroke="${shown ? css("--ink") : css("--line")}" stroke-width="${shown ? 4 : 1.5}"/>
       <text x="${x}" y="${y + 6}" text-anchor="middle" font-size="17" font-weight="700" fill="${css("--ink")}">${Math.round(p * 100)}%</text>
-      <text x="${x}" y="${k < 2 ? y - R - 8 : y + R + 17}" text-anchor="middle" font-size="12.5" fill="${css("--ink")}">${nice(s)}${ml ? " ★" : ""}</text>`;
+      <text x="${x}" y="${y < 120 ? y - R - 8 : y + R + 17}" text-anchor="middle" font-size="12.5" fill="${css("--ink")}">${nice(s)}${ml ? " ★" : ""}</text>${shownAs !== s ? `<text x="${x}" y="${y + R + 30}" text-anchor="middle" font-size="10.5" fill="${css("--muted")}">shown as ${nice(shownAs)}</text>` : ""}`;
     if (Math.abs(dp) >= 0.005)
       svg += `<text x="${x + R + 4}" y="${y + 4}" font-size="11" fill="${dp > 0 ? css("--ok") : css("--bad")}">${dp > 0 ? "▲" : "▼"}${Math.abs(dp * 100).toFixed(0)}</text>`;
   });
   svg += "</svg>";
   const status = st.up ? "updated with this second's signs" : "on hold: the belief only drifts (no usable signs)";
+  const lvl = st.lvl === null || st.lvl === undefined ? "" : ` · drowsiness level <b>${st.lvl.toFixed(2)}</b> (0 alert, 1 very drowsy)`;
   $("belief").innerHTML = svg + `<div class="small muted">★ most likely · thick ring: shown state · ▲▼ change this second<br>
-    uncertainty ${st.u === null ? "–" : st.u.toFixed(2)} (0 sure, 1 no idea) · ${status}</div>`;
+    uncertainty ${st.u === null ? "–" : st.u.toFixed(2)} (0 sure, 1 no idea)${lvl} · ${status}</div>`;
 }
 
 // --- 3 · shown state --------------------------------------------------------------------------------
@@ -519,7 +546,49 @@ canvas.addEventListener("pointerup", () => { dragging = false; });
 canvas.addEventListener("pointerleave", () => { $("tip").style.display = "none"; });
 window.addEventListener("resize", () => { base = null; render(); });
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { base = null; shownIndex = -1; render(); });
-if (S.length) render(); else document.querySelector("main").innerHTML = "<p>No steps in this file.</p>";
+// --- live mode: poll the vision program ---------------------------------------------------------
+let follow = true;
+if (LIVE) {
+  const panel = document.createElement("div");
+  panel.className = "card"; panel.style.marginBottom = "10px";
+  panel.innerHTML = `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+    <img id="cam" alt="camera" style="width:360px;max-width:100%;border-radius:8px;background:var(--soft)">
+    <div style="flex:1;min-width:260px"><div id="banner" style="font-size:16px;font-weight:700"></div>
+      <div id="bannertext" class="muted"></div><div id="now" style="margin:8px 0"></div>
+      <div id="raw" class="small" style="columns:2;column-gap:20px"></div></div></div>`;
+  document.querySelector("main").prepend(panel);
+  const liveBtn = document.createElement("button"); liveBtn.id = "golive"; liveBtn.textContent = "● live";
+  $("next").after(liveBtn);
+  liveBtn.onclick = () => { follow = true; seek(T1); };
+  $("play").style.display = "none";
+  const stopFollow = () => { follow = false; };
+  $("back").addEventListener("click", stopFollow); canvas.addEventListener("pointerdown", stopFollow);
+  document.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") stopFollow(); });
+  setInterval(() => { $("cam").src = "/frame.jpg?" + Date.now(); }, 300);
+  async function poll() {
+    try {
+      const r = await fetch("/data?since=" + S.length); const d = await r.json();
+      if (!F.length) { DATA.features = F = d.features; DATA.groups = d.groups; DATA.rates = d.rates;
+                       DATA.meta = M = Object.assign(d.meta, { title: "Live" }); renderHeader(); }
+      for (const st of d.steps) S.push(st);
+      EV = DATA.events = d.events;
+      if (S.length) { T0 = S[0].t; T1 = Math.max(S[S.length - 1].t, T0 + 1); derive(); base = null; }
+      renderHeader();
+      const lv = d.live || {}, b = lv.banner || {};
+      $("banner").textContent = b.part ? `${b.part}${b.left ? " · " + clock(b.left) + " left" : ""}` : "Free run";
+      $("bannertext").textContent = b.text || "Work as usual; the page shows what the camera and the HMM make of it.";
+      $("now").innerHTML = `face: <b>${lv.face ? "yes" : "no"}</b> · eyes judged now: <b>${lv.eyes_judged ? "yes" : "no (not looking forward)"}</b>`
+        + ` · eye closure now: <b>${lv.eye_closure == null ? "–" : Math.round(lv.eye_closure * 100) + " %"}</b>`
+        + ` · gaze: <b>${nice(lv.zone || "–")}</b> · calibrated: <b>${lv.calibrated ? "yes" : "no"}</b>`;
+      const last = S[S.length - 1];
+      if (last && last.raw) $("raw").innerHTML = Object.entries(last.raw).map(([k, v]) =>
+        `<div><span class="muted">${esc(k)}</span> ${esc(typeof v === "number" ? Math.round(v * 1000) / 1000 : v)}</div>`).join("");
+      if (S.length) { if (follow) now = T1; shownIndex = -1; render(); }
+    } catch (e) { $("banner").textContent = "No connection to the live program (stopped?)"; }
+    setTimeout(poll, 1000);
+  }
+  poll();
+} else if (S.length) render(); else document.querySelector("main").innerHTML = "<p>No steps in this file.</p>";
 </script>
 </body>
 </html>

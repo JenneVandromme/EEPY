@@ -308,8 +308,12 @@ HMM with the rules on the same sessions (A18).
 page that shows, for every second of a session, the whole decision: the signs and how
 much each pushed, the belief, the shown state, whether EEPY was sure enough to act, and
 what the robot did. Scrub through the timeline or play it in slow motion. In the hmm mode
-the panel shows the same chain in one line. Guide:
-[docs/EXPLANATION_VIEWER.md](../../docs/EXPLANATION_VIEWER.md).
+the panel shows the same chain in one line. Live, with your camera, all in one window:
+`python -m eepy.perception.live`. Guide: [docs/EXPLANATION_VIEWER.md](../../docs/EXPLANATION_VIEWER.md).
+
+**Comparing versions without recording anyone:** `python -m eepy.state.dataset build / train /
+eval` makes 60 simulated users, fits numbers on some and scores versions on the others
+([docs/SYNTHETIC_DATASET.md](../../docs/SYNTHETIC_DATASET.md)).
 
 ## Self-test: the states with a real person (about 3 minutes)
 
@@ -421,8 +425,9 @@ Measured on simulated sessions (seconds after the behaviour starts):
 | start → focused | 10 s | 9 s |
 | looking at a phone → distracted | 10 s | 12 s |
 | back to work after the phone → focused | not within 20 s | 13 s |
-| acting sleepy → drowsy | 10–17 s | 35–40 s |
-| 2-s eye closures every 8 s → drowsy / very drowsy | 4 s / 4 s | 33 s / 73 s |
+| acting sleepy → drowsy | 10–17 s | 37–39 s |
+| 2-s eye closures every 8 s → drowsy / very drowsy | 4 s / 4 s | 31 s / 62 s |
+| awake again after 2 minutes of drowsiness → focused | ~65 s | 70 s (one-step model of v1: 97 s) |
 | leaving → absent | 25 s | 13 s |
 
 On purpose, the HMM:
@@ -434,6 +439,23 @@ On purpose, the HMM:
 
 It is also less fooled by lowered eyelids while reading (eyes that look half
 shut with no blinks), which made the rules say drowsy after about a minute.
+
+### The drowsiness ladder: "tired" (version 2)
+
+Drowsiness has steps: **focused → tired → drowsy → very drowsy**. *Tired* means awake
+but tired: still working, so it is **shown as focused** and EEPY never nudges for it.
+It is a step, not a pattern of its own (its signs look like focused): the HMM gets there
+through the switches. What it changes:
+
+- **waking up is faster:** after a drowsy spell, alert eyes move the belief to *tired*
+  quickly (~1.5 minutes), and from there to focused. Drowsiness no longer sticks for
+  minutes after someone woke up;
+- **drowsiness is noticed a little sooner:** from *tired*, the step to drowsy is quick;
+- **the drowsiness level** (0 alert … 1 very drowsy) adds the steps up: someone who just
+  woke up still shows about 0.25, "a bit tired". The viewer shows it next to the belief.
+
+Why and how it was chosen (and what was tried):
+[docs/A16_HMM_DECISIONS.md, Part H](../../docs/A16_HMM_DECISIONS.md#part-h--the-drowsiness-ladder-option-a).
 
 ### Changing a number
 
@@ -511,16 +533,19 @@ an LLM can write the same file (A17/A18).
 
 ## The HMM model (for the report)
 
-**States and flags.** Four hidden states S = {focused, distracted, drowsy,
-very_drowsy}. *absent* and *unknown* are flags decided outside the model (A13's
-conditions); during them a step is predict-only.
+**States and flags.** Five hidden states S = {focused, distracted, tired, drowsy,
+very_drowsy}; *tired* is reported as focused (`reported_as`), so everything downstream
+sees the four reported states (the hidden probabilities are added up per reported state).
+*absent* and *unknown* are flags decided outside the model (A13's conditions); during
+them a step is predict-only. A parameter file with the four states only still works.
 
 **Transitions: continuous time.** A generator Q (rates per hour in the YAML,
 Q[i][i] = −Σ). The step matrix for Δt seconds is P = expm(QΔt), computed by
 scaling and squaring with a 12th-order Taylor series (numpy only; ≤ 1e-15 from
 scipy for Δt ≤ 1 day). Predict-only stretches are exactly rate-independent
-(expm(Qa)·expm(Qb) = expm(Q(a+b))). Mean dwell times: focused 511 s, distracted
-59 s, drowsy 327 s, very drowsy 277 s. A drowsiness factor (session prior; later
+(expm(Qa)·expm(Qb) = expm(Q(a+b))). The rates form a ladder: mostly focused ↔
+tired ↔ drowsy ↔ very drowsy, with waking up (drowsy → tired, 40 an hour) much faster
+than drowsy → focused (2 an hour). A drowsiness factor (session prior; later
 time of day) multiplies the rates into drowsiness.
 
 **Emissions** (per state, see the YAML for every number and its reason):
@@ -559,7 +584,7 @@ jaw drop, ρ 0.8): 1.11. Looking away (ρ 0.5): 1.33. Nods: alone.
 **The forward step.** log b ← logsumexp-predict(log b, P), plus the evidence;
 normalised; no state below `min_prob` = 1e-6.
 
-**Reporting.** Families focused / distracted / sleepy (drowsy + very drowsy). The
+**Reporting.** Families focused (focused + tired) / distracted / sleepy (drowsy + very drowsy). The
 shown family switches when another reaches 60 %, or when the current one falls
 below 40 %; within sleepy, very drowsy enters at 60 % of the sleepy share and
 leaves at 40 %. No time-based dwell. `confidence` = P(shown family);

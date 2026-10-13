@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PATH = REPO_ROOT / "config" / "state_hmm.yaml"
 FORMAT = "eepy.state_hmm/1"
 
-HIDDEN = ("focused", "distracted", "drowsy", "very_drowsy")
+HIDDEN = ("focused", "distracted", "drowsy", "very_drowsy")   # the REPORTED states (what everything downstream sees)
 FAMILIES = ("beta", "student_t", "gaussian", "poisson", "bernoulli", "categorical")
 FAMILY_PARAMS = {"beta": ("mean", "concentration"), "student_t": ("mean", "sd"),
                  "gaussian": ("mean", "sd"), "poisson": ("rate_per_minute",),
@@ -42,7 +42,7 @@ PRIOR_SOURCES = ("default", "heuristic", "kss", "llm")
 
 # The canonical key order (dump() writes keys in this order).
 TOP_ORDER = ("format", "version", "source", "created", "author", "description", "fit", "states",
-             "initial", "transitions_per_hour", "groups", "features", "report", "absent", "unknown",
+             "reported_as", "reported_as_why", "initial", "transitions_per_hour", "groups", "features", "report", "absent", "unknown",
              "gap_seconds", "uncalibrated_weight", "numerics", "modulation", "session_prior")
 FEATURE_ORDER = ("input", "family", "enabled", "df", "transform", "clip", "clip_why", "uncalibrated",
                  "exposure_seconds", "event", "event_why", "missing_value", "missing_value_why",
@@ -59,7 +59,7 @@ class HMMConfigError(ValueError):
 
 @dataclass(frozen=True)
 class FeatureSpec:
-    """One sign the HMM listens to, ready to use (numbers per hidden state in HIDDEN order)."""
+    """One sign the HMM listens to, ready to use (numbers per hidden state, in params.states order)."""
 
     id: str
     input: str
@@ -99,6 +99,8 @@ class HMMParams:
     the other fields are the same numbers, ready to use."""
 
     raw: Dict[str, Any]
+    states: Tuple[str, ...]                             # the hidden states (e.g. with a drowsiness ladder)
+    reports: Tuple[str, ...]                            # per hidden state: the reported state it is shown as
     version: int
     source: str
     initial: Tuple[float, ...]
@@ -302,16 +304,42 @@ def parse(raw: Any, where: str = "config/state_hmm.yaml", windows: Sequence[floa
             raise fail(f"fit.log_likelihood must be a number, not {_fmt(fit['log_likelihood'])}.")
     out["fit"] = copy.deepcopy(fit)
 
-    states = raw.get("states")
-    if states != list(HIDDEN):
-        raise fail(f"states must be exactly {list(HIDDEN)}, not {states}.")
-    out["states"] = list(HIDDEN)
+    states_raw = raw.get("states")
+    if (not isinstance(states_raw, list) or len(set(map(str, states_raw))) != len(states_raw)
+            or not all(isinstance(x, str) and re.match(r"^[a-z][a-z0-9_]*$", x) for x in states_raw)):
+        raise fail(f"states must be a list of different names, like {list(HIDDEN)}, not {states_raw}.")
+    states: Tuple[str, ...] = tuple(states_raw)
+    reported_raw = raw.get("reported_as") or {}
+    if not isinstance(reported_raw, dict):
+        raise fail("reported_as must be hidden state: reported state pairs, like {tired: focused}.")
+    for name, shown in reported_raw.items():
+        if name not in states or name in HIDDEN:
+            raise fail(f'reported_as: "{name}" is not an extra hidden state (the states {list(HIDDEN)} '
+                       "are always shown as themselves).")
+        if shown not in HIDDEN:
+            raise fail(f'reported_as.{name}: "{shown}" is not one of {", ".join(HIDDEN)}.')
+    reports = tuple(s if s in HIDDEN else reported_raw.get(s, "") for s in states)
+    extra = [s for s, r in zip(states, reports) if not r]
+    if extra:
+        raise fail(f'states: "{extra[0]}" is not one of {", ".join(HIDDEN)}, so reported_as must say how it '
+                   'is shown (e.g. reported_as: {tired: focused}).')
+    for needed in HIDDEN:
+        if needed not in reports:
+            raise fail(f"states: no hidden state is shown as {needed} (every reported state needs one).")
+    for needed in ("focused", "distracted"):
+        if needed not in states:
+            raise fail(f"states must include {needed}.")
+    out["states"] = list(states)
+    if reported_raw:
+        why(raw, "reported_as", "reported_as_why")
+        out["reported_as"] = dict(reported_raw)
+        out["reported_as_why"] = raw["reported_as_why"]
 
     # initial
     init_raw = mapping(raw.get("initial"), "initial", "a probability per state")
-    only(init_raw, "initial", HIDDEN)
+    only(init_raw, "initial", states)
     initial, init_out = [], {}
-    for s in HIDDEN:
+    for s in states:
         if s not in init_raw:
             raise fail(f'initial: missing "{s}" (every state needs a starting probability).')
         v, node = valued(init_raw[s], f"initial.{s}", lambda x: None if 0 < x <= 1 else "between 0 and 1")
@@ -323,14 +351,14 @@ def parse(raw: Any, where: str = "config/state_hmm.yaml", windows: Sequence[floa
 
     # transitions
     trans_raw = mapping(raw.get("transitions_per_hour"), "transitions_per_hour", "rates per hour per pair of states")
-    only(trans_raw, "transitions_per_hour", HIDDEN)
-    rates = [[0.0] * 4 for _ in HIDDEN]
+    only(trans_raw, "transitions_per_hour", states)
+    rates = [[0.0] * len(states) for _ in states]
     trans_out: Dict[str, Any] = {}
-    for i, a in enumerate(HIDDEN):
+    for i, a in enumerate(states):
         row = trans_raw.get(a)
         if not isinstance(row, dict):
             raise fail(f'transitions_per_hour: missing "{a}" (every pair of different states needs a rate).')
-        others = [b for b in HIDDEN if b != a]
+        others = [b for b in states if b != a]
         only(row, f"transitions_per_hour.{a}", others)
         trans_out[a] = {}
         for b in others:
@@ -341,9 +369,9 @@ def parse(raw: Any, where: str = "config/state_hmm.yaml", windows: Sequence[floa
             if isinstance(node, dict) and not (_number(node.get("value")) and node["value"] >= 0):
                 raise fail(f"{label} must be a number >= 0 (times per hour), not {_fmt(node.get('value'))}.")
             v, node = valued(node, label)
-            rates[i][HIDDEN.index(b)] = v
+            rates[i][states.index(b)] = v
             trans_out[a][b] = node
-    for problem in _unreachable(rates):
+    for problem in _unreachable(rates, states):
         raise fail(f"transitions_per_hour: {problem}")
     out["transitions_per_hour"] = trans_out
 
@@ -368,7 +396,7 @@ def parse(raw: Any, where: str = "config/state_hmm.yaml", windows: Sequence[floa
     feats_out: Dict[str, Any] = {}
     for fid, entry in feats_raw.items():
         spec, canon = _feature(str(fid), entry, groups, fail, only, why, strength, valued, condition,
-                               feature_name, mapping)
+                               feature_name, mapping, states)
         features.append(spec)
         feats_out[str(fid)] = canon
     if not any(f.enabled for f in features):
@@ -458,9 +486,9 @@ def parse(raw: Any, where: str = "config/state_hmm.yaml", windows: Sequence[floa
     pairs = []
     for item in applies:
         parts = str(item).split("->")
-        if len(parts) != 2 or parts[0] not in HIDDEN or parts[1] not in HIDDEN or parts[0] == parts[1]:
+        if len(parts) != 2 or parts[0] not in states or parts[1] not in states or parts[0] == parts[1]:
             raise fail(f'modulation.applies_to: "{item}" is not a pair of two different states.')
-        pairs.append((HIDDEN.index(parts[0]), HIDDEN.index(parts[1])))
+        pairs.append((states.index(parts[0]), states.index(parts[1])))
     why(mod, "modulation", "applies_to_why")
     mod_out["applies_to"] = list(applies)
     mod_out["applies_to_why"] = mod["applies_to_why"]
@@ -493,7 +521,7 @@ def parse(raw: Any, where: str = "config/state_hmm.yaml", windows: Sequence[floa
                             "multiplier_bounds_why": sp["multiplier_bounds_why"]}
 
     canon = {k: out[k] for k in TOP_ORDER if k in out}
-    return HMMParams(raw=canon, version=version, source=source, initial=tuple(initial),
+    return HMMParams(raw=canon, states=states, reports=reports, version=version, source=source, initial=tuple(initial),
                      rates_per_hour=tuple(tuple(r) for r in rates), groups=groups, features=tuple(features),
                      switch_probability=switch, very_enter=float(enter), very_leave=float(leave),
                      warmup_seconds=warmup, evidence_top=int(top), recent_seconds=recent,
@@ -510,16 +538,16 @@ def _template(text: str, label: str, key: str, fail: Callable[[str], Exception])
         raise fail(f"{label}: `{key}` cannot be filled in ({exc}); use {{value}} only.") from None
 
 
-def _unreachable(rates: List[List[float]]) -> List[str]:
+def _unreachable(rates: List[List[float]], names: Sequence[str] = HIDDEN) -> List[str]:
     """Problems with the transition graph: a state no other state leads to, one that can
     never be left, or one not reachable from another."""
     n = len(rates)
     for j in range(n):
         if all(rates[i][j] <= 0 for i in range(n) if i != j):
-            return [f"{HIDDEN[j]} can never be reached (all rates into it are 0)."]
+            return [f"{names[j]} can never be reached (all rates into it are 0)."]
     for i in range(n):
         if all(rates[i][j] <= 0 for j in range(n) if j != i):
-            return [f"{HIDDEN[i]} can never be left (all rates out of it are 0)."]
+            return [f"{names[i]} can never be left (all rates out of it are 0)."]
     for start in range(n):
         seen, todo = {start}, [start]
         while todo:
@@ -528,15 +556,15 @@ def _unreachable(rates: List[List[float]]) -> List[str]:
                 if j not in seen and rates[i][j] > 0:
                     seen.add(j)
                     todo.append(j)
-        missing = [HIDDEN[j] for j in range(n) if j not in seen]
+        missing = [names[j] for j in range(n) if j not in seen]
         if missing:
-            return [f"{missing[0]} can never be reached from {HIDDEN[start]}."]
+            return [f"{missing[0]} can never be reached from {names[start]}."]
     return []
 
 
 def _feature(fid: str, entry: Any, groups: Dict[str, float], fail: Callable[[str], HMMConfigError],
              only: Any, why: Any, strength: Any, valued: Any, condition: Any, feature_name: Any,
-             mapping: Any) -> Tuple[FeatureSpec, Dict[str, Any]]:
+             mapping: Any, states: Sequence[str] = HIDDEN) -> Tuple[FeatureSpec, Dict[str, Any]]:
     label = f"features.{fid}"
     if not re.match(r"^[a-z][a-z0-9_]*$", fid):
         raise fail(f'{label}: an id is lower-case letters, digits and _ (like "perclos").')
@@ -647,10 +675,10 @@ def _feature(fid: str, entry: Any, groups: Dict[str, float], fail: Callable[[str
 
     # params per hidden state
     params_raw = mapping(entry["params"], f"{label}.params", "the numbers per state")
-    only(params_raw, f"{label}.params", HIDDEN)
+    only(params_raw, f"{label}.params", states)
     keys = FAMILY_PARAMS[family]
     params, params_out = [], {}
-    for s in HIDDEN:
+    for s in states:
         plabel = f"{label}.params.{s}"
         if s not in params_raw:
             raise fail(f"{label}.params: missing {s} (every state needs its numbers).")

@@ -493,7 +493,8 @@ head can physically reach a pose and how fast it moves. Details in
 | check the camera | [eepy/camera/README.md](eepy/camera/README.md) |
 | understand the face values (blinks, PERCLOS, …), or work on perception | [eepy/perception/README.md](eepy/perception/README.md) |
 | understand the user states and their reasons, or change a threshold | [eepy/state/README.md](eepy/state/README.md) |
-| see why the HMM decided what it did, second by second (a page per session, or a demo) | [docs/EXPLANATION_VIEWER.md](docs/EXPLANATION_VIEWER.md) |
+| see why the HMM decided what it did, second by second (a page per session, a demo, or live) | [docs/EXPLANATION_VIEWER.md](docs/EXPLANATION_VIEWER.md) |
+| train and compare HMM versions on simulated users | [docs/SYNTHETIC_DATASET.md](docs/SYNTHETIC_DATASET.md) |
 | understand when the robot nudges on its own (rules and hmm modes), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |

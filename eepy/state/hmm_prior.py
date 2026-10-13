@@ -51,9 +51,18 @@ class AppliedPrior:
         return out
 
 
+def reported_initial(params: HMMParams) -> List[float]:
+    """The parameter file's initial belief over the four reported states (extra hidden states,
+    like a drowsiness ladder's "tired", are added to the state they are shown as)."""
+    out = [0.0] * len(HIDDEN)
+    for value, shown in zip(params.initial, params.reports):
+        out[HIDDEN.index(shown)] += value
+    return out
+
+
 def default(params: HMMParams, reason: str = "no prior given", requested: str = "default",
             fell_back: bool = False) -> AppliedPrior:
-    return AppliedPrior("default", requested, dict(zip(HIDDEN, params.initial)), 1.0,
+    return AppliedPrior("default", requested, dict(zip(HIDDEN, reported_initial(params))), 1.0,
                         reason=reason, fell_back=fell_back)
 
 
@@ -112,7 +121,7 @@ def resolve(raw: Optional[Dict[str, Any]], params: HMMParams) -> AppliedPrior:
         return fallback("model_id is at most 64 letters, digits, '.', '_' or '-'")
 
     lo, hi = params.prior_initial_bounds
-    base = list(params.initial)
+    base = reported_initial(params)
     clipped: List[str] = []
     given = raw.get("initial")
     if given is None:

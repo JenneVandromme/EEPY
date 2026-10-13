@@ -32,7 +32,10 @@ from .hmm_prior import AppliedPrior, default as default_prior
 from .rules import KEY_VALUES
 
 FAMILIES = ("focused", "distracted", "sleepy")
-FAMILY_OF = (0, 1, 2, 2)                           # hidden state index -> family index
+FAMILY_OF_REPORTED = {"focused": 0, "distracted": 1, "drowsy": 2, "very_drowsy": 2}
+# How tired each reported state is, for the drowsiness level (0 alert .. 1 very drowsy); an extra
+# hidden state shown as focused (e.g. "tired") counts as a third.
+DEPTH = {"focused": 0.0, "distracted": 0.0, "drowsy": 2 / 3, "very_drowsy": 1.0}
 PHRASE = {"focused": "focus", "distracted": "distraction", "sleepy": "drowsiness"}
 MIN_REASON = 0.1          # nats per full window: a sign that barely separates the states is no reason
 STRENGTH_WORDS = ((0.5, "slightly suggests"), (1.5, "suggests"), (3.0, "clearly suggests"))
@@ -49,8 +52,11 @@ class Observation:
         self.uncalibrated, self.show = uncalibrated, show
 
 
-def _family_max(v: np.ndarray) -> np.ndarray:
-    return np.array([v[0], v[1], max(v[2], v[3])])
+def _family_max(v: np.ndarray, groups: Optional[List[List[int]]] = None) -> np.ndarray:
+    """Per family (focused, distracted, sleepy): the best of its hidden states."""
+    if groups is None:                       # the four reported states
+        return np.array([v[0], v[1], max(v[2], v[3])])
+    return np.array([max(v[i] for i in g) for g in groups])
 
 
 class HMMEstimator:
@@ -58,6 +64,15 @@ class HMMEstimator:
 
     def __init__(self, params: Optional[HMMParams] = None, prior: Optional[AppliedPrior] = None) -> None:
         self.params = params if params is not None else load()
+        p_ = self.params
+        self.states, self.reports = p_.states, p_.reports
+        fam = [FAMILY_OF_REPORTED[r] for r in self.reports]
+        self._groups = [[i for i, f in enumerate(fam) if f == k] for k in range(3)]
+        self._to_reported = np.zeros((len(self.states), len(HIDDEN)))
+        for i, r in enumerate(self.reports):
+            self._to_reported[i, HIDDEN.index(r)] = 1.0
+        self._depth = np.array([DEPTH[r] if (s == r or r != "focused") else 1 / 3
+                                for s, r in zip(self.states, self.reports)])
         self._q_base = model.generator(self.params.rates_per_hour)
         self.prior: AppliedPrior = default_prior(self.params)
         self.q = self._q_base
@@ -79,7 +94,7 @@ class HMMEstimator:
         self.reset()
 
     def reset(self) -> None:
-        init = np.array([self.prior.initial[s] for s in HIDDEN], dtype=float)
+        init = self._hidden_initial()
         self.log_b = np.log(init / init.sum())
         self.t_last: Optional[float] = None
         self.t_last_obs: Optional[float] = None
@@ -93,6 +108,25 @@ class HMMEstimator:
         self.since: Optional[float] = None
         self.recent: Dict[str, np.ndarray] = {}
 
+    def _hidden_initial(self) -> np.ndarray:
+        """The prior's belief over the reported states, spread over the hidden states that show
+        as each one in proportion to the parameter file's initial belief."""
+        base = np.array(self.params.initial, dtype=float)
+        if self.prior.source == "default" or len(self.states) == len(HIDDEN):
+            if len(self.states) == len(HIDDEN):
+                return np.array([self.prior.initial[s] for s in HIDDEN], dtype=float)
+            return base
+        out = np.zeros(len(self.states))
+        for k, r in enumerate(HIDDEN):
+            idx = [i for i, rr in enumerate(self.reports) if rr == r]
+            share = base[idx] / base[idx].sum()
+            out[idx] = self.prior.initial[r] * share
+        return out
+
+    def reported(self, hidden: np.ndarray) -> np.ndarray:
+        """Hidden probabilities -> the four reported states."""
+        return hidden @ self._to_reported
+
     def describe(self) -> Dict[str, Any]:
         """For the state_model event: which model and which prior run."""
         path = self.params.path
@@ -103,6 +137,7 @@ class HMMEstimator:
         return {"estimator": self.name, "params": path, "version": self.params.version,
                 "params_source": self.params.source, "sha256": digest,
                 "features": [f.id for f in self.params.enabled_features],
+                "states": list(self.states),
                 "gap_seconds": self.params.gap_seconds, "prior": self.prior.as_dict()}
 
     # --- the signs ------------------------------------------------------------------------------
@@ -208,14 +243,14 @@ class HMMEstimator:
             observations, skipped = self.extract(features)
             dt_ev = 1.0 if self.t_last_obs is None else max(0.0, t - self.t_last_obs)
             weights = model.group_weights([o.spec for o in observations], p_.groups)
-            total = np.zeros(len(HIDDEN))
+            total = np.zeros(len(self.states))
             for o in observations:
                 ll = model.bounded(model.loglik(o.spec, o.x), p_.max_log_ratio)
                 w = weights[o.spec.id] * (p_.uncalibrated_weight if o.uncalibrated else 1.0)
                 c = w * min(dt_ev, o.spec.tau) / o.spec.tau * ll
                 total += c
                 contrib[o.spec.id] = (c, ll, w)
-                self.recent[o.spec.id] = self.recent.get(o.spec.id, np.zeros(3)) + _family_max(c)
+                self.recent[o.spec.id] = self.recent.get(o.spec.id, np.zeros(3)) + _family_max(c, self._groups)
             log_b = log_b + total
             self.t_last_obs = t
             self.obs_seconds += min(dt_ev, 5.0)
@@ -225,7 +260,8 @@ class HMMEstimator:
         # 4 normalise and report
         self.log_b = model.normalise(log_b, p_.min_prob)
         self.t_last = t
-        probs = np.exp(self.log_b)
+        hidden = np.exp(self.log_b)
+        probs = self.reported(hidden)                        # focused, distracted, drowsy, very_drowsy
         pf = np.array([probs[0], probs[1], probs[2] + probs[3]])
         most_likely = HIDDEN[int(np.argmax(probs))]
         reported, pending = self._report(probs)
@@ -259,7 +295,10 @@ class HMMEstimator:
                 and updated:
             skipped.append("gaze not calibrated: default screen and notes zones")
         values = {k: features[k] for k in KEY_VALUES if features.get(k) is not None}
-        values.update(n_features=len(observations), params_version=p_.version)
+        values.update(n_features=len(observations), params_version=p_.version,
+                      drowsiness_level=round(float(hidden @ self._depth), 3))
+        if len(self.states) != len(HIDDEN):
+            values["hidden"] = {s: round(float(v), 4) for s, v in zip(self.states, hidden)}
         scores = {s: float(probs[i]) for i, s in enumerate(HIDDEN)}
         scores.update(absent=0.0, unknown=0.0)
         calibrated = bool(features.get("baseline_calibrated")) and bool(features.get("gaze_calibrated"))
@@ -356,7 +395,7 @@ class HMMEstimator:
         items = []
         for o in observations:
             c, ll, w = contrib[o.spec.id]
-            g, big = _family_max(c), _family_max(ll)
+            g, big = _family_max(c, self._groups), _family_max(ll, self._groups)
             order = sorted(range(3), key=lambda k: -g[k])
             supports = order[0] if g[order[0]] - g[order[1]] > 1e-9 else None
             against = order[2] if g[order[1]] - g[order[2]] > 1e-9 else None
@@ -395,7 +434,7 @@ class HMMEstimator:
         ranked = []
         for o in observations:
             c, ll, w = contrib[o.spec.id]
-            g = _family_max(c)
+            g = _family_max(c, self._groups)
             if family == 0:
                 if g[0] - g[alt] <= 1e-9:
                     continue
@@ -404,7 +443,7 @@ class HMMEstimator:
                 if o.quiet or any(g[family] - g[k] <= 1e-9 for k in range(3) if k != family):
                     continue
                 text = f"{o.spec.label} ({o.show}) suggests {self._phrase(family, probs)}"
-            big = _family_max(ll)
+            big = _family_max(ll, self._groups)
             strength = w * float(big[family] - big[alt])
             if strength < MIN_REASON:
                 continue

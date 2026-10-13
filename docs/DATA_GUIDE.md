@@ -103,8 +103,10 @@ of the four), `confidence` (P of the shown state), `uncertainty` (0 certain, 1 u
 evidence (feature, value, threshold) and what was skipped; the HMM adds `probs`, `most_likely`,
 `confidence`, `uncertainty`, `pending`, `updated` and `hmm_evidence` (its top signs). A
 `state_model` event, once per session, says which estimator ran with which parameter file
-(`params`, `version`, `params_source` hand_set / fitted, `sha256`), and the session prior applied
-(`prior`). A `prior.json` in the session folder (only with the panel's `--session-prior`) is the
+(`params`, `version`, `params_source` hand_set / fitted, `sha256`, the hidden `states`), and the
+session prior applied (`prior`). From HMM version 2 (the drowsiness ladder, with a hidden
+*tired* state shown as focused), `state_changed.values` also holds `drowsiness_level` (0 alert
+… 1 very drowsy) and `hidden` (the probability of each hidden state). A `prior.json` in the session folder (only with the panel's `--session-prior`) is the
 starting belief that was asked for.
 
 Rules sessions from before and after A16 differ slightly: the `microsleep` and `eyes_closed_now`
