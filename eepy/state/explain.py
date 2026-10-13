@@ -92,6 +92,11 @@ def _events(folder: Path, t0: float) -> List[Dict[str, Any]]:
             elif kind == "nudge_outcome":
                 item.update(kind="outcome", id=r.get("decision_id"), outcome=r.get("outcome"),
                             text=f"outcome of nudge {r.get('decision_id')}: {str(r.get('outcome')).replace('_', ' ')}")
+            elif kind == "policy_decision":            # hmm, belief decisions (A19): waits/holds as gate spans
+                decision = str(r.get("decision"))
+                text = f"{decision}: {r.get('reason') or ''}".strip(": ")
+                item.update(kind="gate_wait" if decision in ("wait", "hold") else "gate_end", ladder=r.get("ladder"),
+                            decision=decision, text=text, evidence=[e.get("text") for e in r.get("evidence") or []])
             elif kind == "role_changed":
                 item.update(kind="role", role=r.get("to"), text=f"role: {str(r.get('to')).replace('_', ' ')}")
             elif kind == "escalation":

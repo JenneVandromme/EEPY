@@ -82,11 +82,29 @@ class Keys(Strict):
         }
 
 
+class Aim(Strict):
+    """Aiming the robot's resting direction at the participant's face (see
+    eepy/wizard/README.md, "Aiming at the participant")."""
+
+    enabled: bool = False                                   # parked: docs/TODO.md
+    auto: bool = True                                       # aim by itself when it sees the participant
+    auto_after_s: float = Field(default=2.0, ge=0.0, le=30.0)     # ... off-centre for this long
+    auto_min_gap_s: float = Field(default=15.0, ge=0.0, le=600.0)  # ... at most this often
+    on_calibrate: bool = True                               # aim first when Calibrate is pressed
+    tolerance_deg: float = Field(default=8.0, ge=0.0, le=30.0)
+    yaw_limit_deg: float = Field(default=30.0, ge=0.0, le=45.0)
+    up_limit_deg: float = Field(default=25.0, ge=0.0, le=35.0)
+    down_limit_deg: float = Field(default=15.0, ge=0.0, le=30.0)
+    rounds: int = Field(default=3, ge=1, le=6)
+    settle_s: float = Field(default=1.8, ge=0.5, le=5.0)
+
+
 class PanelConfig(Strict):
     default_intensity: float = Field(default=0.7, ge=0.0, le=1.0)
     idle: str | None = None
     keys: Keys = Field(default_factory=Keys)
     markers: list[Marker] = Field(default_factory=list)
+    aim: Aim = Field(default_factory=Aim)
 
 
 class ConfigError(Exception):

@@ -349,6 +349,9 @@ function renderGate(st, changed) {
   }
   const span = gateSpans.find((g) => g[0] <= st.t && st.t < g[1]);
   if (span) html += `<div class="small" style="margin-top:8px">Logged: <b>${esc(span[2])}</b> since ${clock(span[0])}</div>`;
+  const dec = [...EV].reverse().find((e) => e.decision && e.t <= st.t);     // belief decisions (A19)
+  if (dec && !span) html += `<div class="small" style="margin-top:8px">Belief decision (${clock(dec.t)}): <b>${esc(dec.text)}</b>`
+    + `${(dec.evidence || []).length ? `<br><span class="muted">because: ${esc(dec.evidence.join("; "))}</span>` : ""}</div>`;
   $("gate").innerHTML = html;
 }
 

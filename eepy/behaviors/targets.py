@@ -47,6 +47,7 @@ class StaticTargetProvider:
     ) -> None:
         self._library = library
         self._overrides = dict(overrides or {})
+        self._initial = dict(self._overrides)
 
     def get(self, name: str) -> HeadPose:
         if name in self._overrides:
@@ -60,6 +61,12 @@ class StaticTargetProvider:
     def set(self, name: str, pose: HeadPose) -> None:
         """Override one target at runtime, e.g. once the user is located."""
         self._overrides[name] = pose
+
+    def clear(self, name: str) -> None:
+        """Back to the target from _blocks.yaml (or the override given at the start)."""
+        self._overrides.pop(name, None)
+        if name in self._initial:
+            self._overrides[name] = self._initial[name]
 
 
 class TrackingTargetProvider:
@@ -115,6 +122,11 @@ class TrackingTargetProvider:
                 new.append(old + step)
             self._target = (new[0], new[1])
         self._seen = now
+
+    def current(self) -> tuple | None:
+        """Where the student's face is now, as (yaw, pitch) head angles; None while
+        no face has been reported for `max_age` seconds."""
+        return self._target if self.tracking else None
 
     @property
     def tracking(self) -> bool:

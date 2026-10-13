@@ -496,6 +496,8 @@ head can physically reach a pose and how fast it moves. Details in
 | see why the HMM decided what it did, second by second (a page per session, a demo, or live) | [docs/EXPLANATION_VIEWER.md](docs/EXPLANATION_VIEWER.md) |
 | train and compare HMM versions on simulated users | [docs/SYNTHETIC_DATASET.md](docs/SYNTHETIC_DATASET.md) |
 | understand when the robot nudges on its own (rules and hmm modes), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
+| why the hmm mode decides on the whole belief, and how it compares to the rules | [docs/A19_BELIEF_DECISIONS.md](docs/A19_BELIEF_DECISIONS.md) |
+| open problems we parked (e.g. keeping the face in the robot camera's view) | [docs/TODO.md](docs/TODO.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
@@ -544,8 +546,9 @@ network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
 Every session is saved in `data/sessions/`, under the **mode** — the
 experimental condition — set in `config/eepy.yaml` (or `--mode wizard|rules|hmm|hmm_bandit`).
 In the **rules** and **hmm** modes the robot nudges on its own (the user state plus
-the escalation ladders; in the hmm mode the state is the HMM's belief, and the robot
-only acts when it is at least 70 % sure); the panel's **Pause autonomy** hands
+the escalation ladders; in the hmm mode the robot decides on the HMM's whole belief:
+evidence that adds up, waiting when unsure, the gentler option when unclear
+([docs/A19_BELIEF_DECISIONS.md](docs/A19_BELIEF_DECISIONS.md))); the panel's **Pause autonomy** hands
 control back to you. The vision program (`python -m eepy.perception`) follows the
 session's mode by itself (`--estimator auto`). How the HMM works and how to read
 its belief: [eepy/state/README.md](eepy/state/README.md#the-hmm-a-belief-instead-of-a-verdict).

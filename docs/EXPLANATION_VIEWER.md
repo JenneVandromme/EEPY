@@ -217,6 +217,18 @@ autonomy: bedtime · bedtime level 1     drowsy 82 %  →  ✓ sure enough (acts
 - **right:** what the robot is doing about it (quiet, the first nudge when due, a ladder
   level, or paused by you).
 
+With the belief decisions (A19, `hmm:` in `config/escalation.yaml`) the chain has four steps:
+
+```
+distracted 72 %, focused 28 %  →  evidence for distracted: 60 %  →  waiting: not sure yet  →  quiet
+```
+
+the belief (the two most likely states), how far the evidence is towards a first nudge, the
+decision (nudge, waiting, holding, switching ladder, back to focused, watching; hover it for the
+reason and the top evidence), and what the robot does. The line under it says the same in words,
+e.g. *Waiting: not sure yet (distracted 48%, focused 41%)*. In the viewer, the waits and holds are
+shown like the gate's (amber on the robot row), with the decision and its evidence in step 4.
+
 The middle step lights up when the verdict changes. The state pill and the belief bar
 next to it are unchanged (see the
 [Wizard panel guide](WIZARD_PANEL_GUIDE.md)). It is deliberately small: during a

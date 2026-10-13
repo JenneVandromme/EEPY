@@ -278,6 +278,16 @@ it started. That is how a nod works from any pose:
 
 Most blocks in `_blocks.yaml` are relative for exactly this reason.
 
+**"Absolute" means: from the robot's resting position.** Normally that is straight
+ahead. When the Wizard panel aims the robot at the participant (e.g. 12° up, see
+[WIZARD_PANEL_GUIDE.md](WIZARD_PANEL_GUIDE.md#aiming-the-robot-at-the-participant)),
+`pitch: 10` means 10° below *that* direction, and `intensity` scales toward it. The
+named `look_at` targets (`notes`, `screen`, `away`) are places on the desk and stay put;
+`look_at: user` follows the real face. So write behaviours as if the robot rests looking
+at the student, and keep some room: the more a behaviour looks up on its own, the less
+far up the robot can be aimed. Right now `bedtime_attentive` (looks up 24° with its yawn)
+limits the aim to about 13° up.
+
 ### ⚠️ The antennas are mirrored
 
 To make the antennas look **symmetric**, give them equal-and-opposite numbers:

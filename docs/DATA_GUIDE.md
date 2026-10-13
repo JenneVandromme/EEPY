@@ -120,13 +120,25 @@ markers: `python -m eepy.state.replay <session> [--estimator rules|hmm|both]`. S
 (signs, belief, gate, robot) on a page: `python -m eepy.state.explain <session>`, written to
 `data/explain/` ([docs/EXPLANATION_VIEWER.md](EXPLANATION_VIEWER.md)).
 
+**The robot's resting direction:** a `robot_base` event each time it changes: aimed at the
+participant (`reason` aim, with `yaw`, `pitch`, the `face_offset` it corrected, and `limited`
+when held back so every behaviour stays safe), restored with a reused calibration (`reuse`),
+or straight ahead again (`reset`, yaw/pitch null). Behaviours played after it are planned
+around that direction.
+
 **Autonomy** (rules and hmm modes): every nudge the robot chose is a `nudge_decision` (ladder, level,
 behaviour, tone, reason, `propensity`, and the `context` it decided on), followed by exactly one
 `nudge_outcome` with the same `decision_id`: `success`, `no_reaction`, `dismissed`, `snoozed`,
 `interrupted_focus` (a false alarm) or `censored` (no fair verdict), with `seconds` and a `detail`.
 `role_changed` and `escalation` events (breaks, the wind-down, goodnight, pauses, replies; in the
 hmm mode also `waiting_for_confidence` / `confidence_wait_ended` when the confidence gate holds a
-ladder back, with the confidence and the threshold) fill in the rest. The robot's own behaviours have `source` `auto`, the operator's `wizard`. The markers
+ladder back, with the confidence and the threshold) fill in the rest. With the hmm mode's belief
+decisions (A19), each `policy_decision` says what the policy chose and why, once per change: `act`
+(with the `decision_id` of its nudge), `wait` (the belief is unclear), `hold` (a ladder does not
+climb), `resume`, `switch` (to the other ladder, with `from_level` and `start_level`) or `reset`,
+with the `probs`, `confidence`, `uncertainty`, the top 3 `evidence` signs and `evidence_progress`
+(how far each ladder's evidence is, 0–1). Nudges in the hmm mode carry `probs` and `evidence` in
+their `context` too ([docs/A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md)). The robot's own behaviours have `source` `auto`, the operator's `wizard`. The markers
 `user_accepted` / `user_snoozed` / `user_dismissed` are the participant's answers. See
 [eepy/interaction/README.md](../eepy/interaction/README.md#what-is-recorded-for-the-analysis-and-the-bandit).
 

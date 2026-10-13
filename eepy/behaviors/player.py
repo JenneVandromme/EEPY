@@ -68,6 +68,15 @@ SAFETY -- nothing is ever clamped
     the robot returns to neutral.
   * stop(), close(), and Ctrl+C in the command-line tool, always end in a
     neutral pose, unless the robot is asleep -- sleep is already safe.
+
+RESTING DIRECTION (set_base)
+
+By default "neutral" looks straight ahead. set_base(HeadPose(yaw, pitch)) moves
+it, e.g. to the student's face (the Wizard panel aims it): every behaviour is
+then planned around it (Library.resolve's `base`), and the neutral return goes
+there. check_base() says whether every behaviour would still pass the safety
+checks from a candidate, so a caller can stay inside what is safe. close()
+returns to the true neutral.
 """
 
 from __future__ import annotations
@@ -87,7 +96,7 @@ from .backends import Backend
 from .events import Event, EventBus, EventPrinter
 from .loader import BEHAVIORS_DIR, SOUNDS_DIR, Library, Step, load_library
 from .pose import NEUTRAL, Pose
-from .schema import Behavior
+from .schema import Behavior, HeadPose
 from .targets import StaticTargetProvider, TargetProvider
 from eepy.logs.clock import monotonic as shared_clock
 from eepy.speech import Speaker, SpeechError
@@ -236,6 +245,7 @@ class BehaviorPlayer:
         self._asleep = False
         self._pending_plays = 0
         self._commanded: Pose = NEUTRAL
+        self._base: HeadPose | None = None      # the resting direction; None: straight ahead
         self._last_send: float | None = None
         self._lateness: deque[float] = deque(maxlen=20000)
         self._thread: threading.Thread | None = None
@@ -357,6 +367,53 @@ class BehaviorPlayer:
         """Name of the behaviour playing now, not counting the idle."""
         with self._lock:
             return self._active.name if self._active else None
+
+    @property
+    def base(self) -> HeadPose | None:
+        """The resting direction (None: straight ahead)."""
+        return self._base
+
+    def set_base(self, base: HeadPose | None) -> None:
+        """Move the resting direction (None: straight ahead again). Returns at once.
+        What is playing finishes; the robot then rests there, and every behaviour
+        started afterwards is planned around it. Check it first with check_base()."""
+        self._require_running()
+        self._commands.put(("base", None if base is None else
+                            HeadPose(yaw=float(base.yaw or 0.0), pitch=float(base.pitch or 0.0))))
+
+    def check_base(self, base: HeadPose, intensities: tuple = (0.5, 1.0)) -> list[str]:
+        """Would every behaviour pass the safety checks with this resting direction,
+        played from it? Returns the problems (empty: all fine). The player re-checks
+        each behaviour when it starts anyway; this is for choosing a base."""
+        library = self._library
+        start = Pose(yaw=float(base.yaw or 0.0), pitch=float(base.pitch or 0.0), roll=0.0, z=0.0,
+                     antenna_right=NEUTRAL.antenna_right, antenna_left=NEUTRAL.antenna_left, body_yaw=0.0)
+        rest = Step(start_s=0.0, duration=1.0, easing="minjerk", hold=0.0, head_yaw=start.yaw,
+                    head_pitch=start.pitch, head_roll=0.0, head_z=0.0, antenna_right=start.antenna_right,
+                    antenna_left=start.antenna_left, body_yaw=0.0, source="resting direction")
+        # Aimed at the student, "look_at: user" points about where the base does.
+        def gaze(name: str) -> HeadPose:
+            return HeadPose(yaw=start.yaw, pitch=start.pitch) if name == "user" else self.targets.get(name)
+
+        problems = [f"the resting direction itself: {v.message}"
+                    for _, v in Trajectory.build([rest], NEUTRAL, stretch="all").violations(
+                        rate_hz=self.rate_hz, check_reach=self.check_reach)[:1]]
+        for behavior in library.behaviors.values():
+            for intensity in intensities:
+                try:
+                    steps = library.resolve(behavior, start=start, gaze=gaze,
+                                            intensity_scale=intensity, base=base)
+                except KeyError as exc:
+                    problems.append(f"{behavior.name}: {exc}")
+                    break
+                found = Trajectory.build(steps, start, stretch="all").violations(
+                    rate_hz=self.rate_hz, check_reach=self.check_reach)
+                if found:
+                    segment, violation = found[0]
+                    problems.append(f"{behavior.name} (intensity {intensity:g}), keyframe "
+                                    f"{segment.index + 1}: {violation.message}")
+                    break
+        return problems
 
     def set_idle(self, name: str | None) -> None:
         """The behaviour to loop whenever nothing else plays. None for none."""
@@ -535,10 +592,17 @@ class BehaviorPlayer:
                 self.speaker.prepare_async()
             elif kind == "neutral":
                 self._return_to_neutral()
+            elif kind == "base":
+                self._base = command[1]
+                if self._idle_run is not None:          # the idle restarts around the new base
+                    self._end_run(self._idle_run, "interrupted", by="set_base")
+                if self._active is None:
+                    self._return_to_neutral()
             elif kind == "close":
                 self._closing = True
                 self._interrupt_all("close")
                 self.speaker.stop(by="close")
+                self._base = None                       # leave the robot truly neutral
                 if command[1]:
                     self._return_to_neutral()
 
@@ -554,7 +618,7 @@ class BehaviorPlayer:
     def _plan(self, behavior: Behavior, intensity: float) -> tuple[list[Step], Trajectory]:
         steps = self._library.resolve(
             behavior, start=self._commanded, gaze=self.targets.get,
-            intensity_scale=intensity,
+            intensity_scale=intensity, base=self._base,
         )
         return steps, Trajectory.build(steps, self._commanded, stretch="all")
 
@@ -638,8 +702,10 @@ class BehaviorPlayer:
         if self._asleep:
             return  # sleep is already a safe pose
         self._internal = None
+        yaw = float(self._base.yaw or 0.0) if self._base is not None else 0.0
+        pitch = float(self._base.pitch or 0.0) if self._base is not None else 0.0
         step = Step(start_s=0.0, duration=1.0, easing="minjerk", hold=0.0,
-                    head_yaw=0.0, head_pitch=0.0, head_roll=0.0, head_z=0.0,
+                    head_yaw=yaw, head_pitch=pitch, head_roll=0.0, head_z=0.0,
                     antenna_right=NEUTRAL.antenna_right,
                     antenna_left=NEUTRAL.antenna_left, body_yaw=0.0,
                     source="return to neutral")
@@ -652,7 +718,10 @@ class BehaviorPlayer:
             self._commanded = self.backend.run_action("wake_up")
             self._last_send = time.monotonic()
             return
-        if self._commanded.is_close(NEUTRAL, tolerance=0.2):
+        home = NEUTRAL if self._base is None else Pose(
+            yaw=yaw, pitch=pitch, roll=0.0, z=0.0, antenna_right=NEUTRAL.antenna_right,
+            antenna_left=NEUTRAL.antenna_left, body_yaw=0.0)
+        if self._commanded.is_close(home, tolerance=0.2):
             return
         self._internal = _Run(name="return to neutral", steps=[step],
                               trajectory=trajectory, t0=time.monotonic(),

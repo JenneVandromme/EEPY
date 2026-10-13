@@ -84,6 +84,11 @@ EVENT_TYPES: Dict[str, EventType] = {
                                "Nothing could be played. The words are still in `text`, "
                                "shown in the panel instead."),
     "sound_played": EventType("robot", ("file",), "A sound was sent to the speaker."),
+    "robot_base": EventType("robot", ("reason",),
+                            "The robot's resting direction changed: aimed at the participant's "
+                            "face (reason aim, with yaw, pitch, face_offset and limited: held back "
+                            "so every behaviour stays safe), restored with a reused calibration "
+                            "(reuse), or straight ahead again (reset; yaw/pitch null)."),
 
     # --- the operator ------------------------------------------------------------
     "wizard_command": EventType("operator", ("action",),
@@ -166,6 +171,12 @@ EVENT_TYPES: Dict[str, EventType] = {
                                "success, no_reaction, dismissed, snoozed, interrupted_focus or "
                                "censored (no fair verdict), with seconds and the detail. The "
                                "bandit's rewards (A22) are computed from these."),
+    "policy_decision": EventType("autonomy", ("decision",),
+                                 "hmm mode (A19): what the belief-based decisions chose, once per change: "
+                                 "act (with decision_id), wait (the belief is unclear), hold (a ladder does not "
+                                 "climb), resume, switch (to the other ladder, with the level carried over) or "
+                                 "reset; with the reason, state, probs, confidence, uncertainty, the top "
+                                 "evidence and how far each ladder's evidence is (evidence_progress)."),
     "role_changed": EventType("autonomy", ("to",),
                               "The robot's role: study_buddy, refocus, bedtime, paused, none."),
     "escalation": EventType("autonomy", ("what",),

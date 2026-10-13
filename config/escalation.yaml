@@ -109,3 +109,47 @@ confidence:
     refocus: 0.7     # start the refocus episode / play a refocus nudge only from 70 %
     bedtime: 0.7
   direct: 0.85       # the firmer "direct" tone also needs 85 %
+
+# hmm mode: decisions on the HMM's whole belief instead of "the shown state above a
+# threshold for N seconds" (A19; plain words: eepy/interaction/README.md, "Belief-based
+# decisions"; the choices and limits: docs/A19_BELIEF_DECISIONS.md). P(refocus) is
+# P(distracted), P(bedtime) is P(drowsy) + P(very drowsy). The rules mode ignores this
+# section. Remove it (or decisions: gate) for A16's gate: the onset timers above plus
+# confidence.act.
+hmm:
+  decisions: belief        # belief | gate
+  accumulate:
+    floor: 0.55            # evidence builds while P is above this and drains below it: a coin flip never adds up
+    needed:                # probability-seconds above the floor before the first nudge:
+      refocus: 8           #   ~20 s at 95 % (as onset.distracted), ~32 s at 80 %, ~53 s at 70 %
+      bedtime: 12          #   ~30 s at 95 % (as onset.drowsy), ~48 s at 80 %: drowsiness builds slowly
+      very_drowsy: 6       #   ~15 s at 95 %, only when calibrated: the weakest-detected state, and a false
+                           #   alarm jumps straight into the bedtime ladder (uncalibrated: the bedtime value)
+  # Starting a ladder also needs confidence.act (70 %) right now; going on needs only this:
+  keep: 0.55               # hysteresis: a ladder climbs on while P stays above 55 %; below, it holds
+  hold_if_focused: 0.30    # ... and holds once P(focused) is back at 30 %: the belief returns slowly after
+                           # drowsiness (~1 min), so ladders kept climbing at someone already back (synthetic
+                           # train users: false nudges 2.9 -> 2.2 per hour of work, fewer missed episodes)
+  reset:
+    focused: 0.75          # back to focused: P(focused) at least 75 % ...
+    seconds: 10            # ... for 10 s (as focused.reset_after) resets the ladder
+  wait:                    # wait for more evidence (logged as a decision) when the belief is unclear:
+    uncertainty: 0.6       #   the normalised entropy is above 0.6 (spread over several states), or
+    top_two_gap: 0.15      #   the two most likely states are less than 15 points apart,
+    consider: 0.40         #   while distracted or drowsy is at least 40 % likely (below: just focused, no wait)
+    margin: 0.05           #   a wait ends only when 0.05 clearer (uncertainty < 0.55, gap > 0.20): live, the
+                           #   uncertainty hovered at 0.6 and the wait went on and off four times in 30 s
+  ambiguous:               # distracted and drowsy both moderately likely: the gentler option
+    each: 0.30             #   both at least 30 % and neither ladder ready
+    needed: 12             #   probability-seconds of (distracted + sleepy) above the floor, as bedtime
+    long_work: 2700        #   after 45 minutes of work (since the start or the last break): offer the
+                           #   break (refocus level 4); before that: one wordless glance (level 1)
+  switch:                  # the belief moves to the other ladder mid-way (e.g. distracted -> drowsy):
+    step_back: 1           #   the new ladder starts one level below the old one: they already ignored
+                           #   nudges, but a new topic starts a step softer ...
+    max_level: 3           #   ... and never straight at the break offer, the wind-down or goodnight
+  intensity:               # confidence -> how big the movements are, never above the designer's value
+    scale: true
+    min: 0.7               # 70 % of ladders.*.intensity at the act threshold ...
+    full_at: 0.9           # ... the full value from 90 % sure
+  evidence_top: 3          # the top signs attached to every decision (for the panel, the log and A20)

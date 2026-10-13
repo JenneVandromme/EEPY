@@ -335,6 +335,7 @@ function renderStatus(s) {
   renderUserState(s.user_state, s.autonomy, s.session);
   renderSession(s.session);
   renderCalibration(s.calibration, s.session);
+  renderAim(s.aim, s.session);
   renderAutonomy(s.autonomy, s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
 }
@@ -431,6 +432,8 @@ function renderCalibration(c, se) {
     row.innerHTML = `<span class="pill" id="cal-pill"><span class="dot"></span><span id="cal-text"></span></span>
       <span class="calbar" ${busy ? "" : "hidden"}><span id="cal-fill"></span></span>
       <span class="muted" id="cal-msg"></span><span class="spacer"></span>
+      <span class="muted" id="aim-msg"></span>
+      <button class="small" id="aim-go" tabindex="-1" title="point the robot's resting position at the participant's face (config/wizard_panel.yaml, aim)">Aim at participant</button>
       ${busy ? `<button class="small" id="cal-stop" tabindex="-1">Stop</button>`
              : `<button class="small" id="cal-go" tabindex="-1">${c.state === "pending" || c.state === "skipped" ? "Calibrate" : "Calibrate again"}</button>
                 ${c.state === "pending" ? reuse : ""}
@@ -457,6 +460,21 @@ function renderCalibration(c, se) {
   $("cal-pill").querySelector(".dot").className = "dot" + (good ? " ok" : "");
   const fill = $("cal-fill"); if (fill) fill.style.width = `${Math.round((c.progress || 0) * 100)}%`;
   $("cal-msg").textContent = c.message || c.instruction || (c.reason ? `(${c.reason})` : "");
+}
+
+// Aiming the robot's resting position at the participant's face (config/wizard_panel.yaml,
+// aim). Calibrate aims first by itself; Reuse restores the saved aim.
+function renderAim(a, se) {
+  const msg = $("aim-msg"), go = $("aim-go");
+  if (!msg || !go) return;
+  go.hidden = !a || !a.enabled;
+  go.disabled = a && a.state === "aiming";
+  go.onclick = () => post("/api/aim", { action: "aim" }).then((r) => r && r.aim && toast(r.aim.message || "aiming..."));
+  let text = "";
+  if (a && a.message && a.state !== "none") text = a.message;
+  else if (a && a.base) text = `resting at yaw ${a.base.yaw}°, pitch ${a.base.pitch}°`;
+  msg.textContent = text;
+  msg.style.color = a && ["limited", "no_face", "failed"].includes(a.state) ? "var(--warn, #b26b00)" : "";
 }
 
 // Autonomy (A14, the rules mode): what the robot does on its own, and what comes
@@ -515,6 +533,7 @@ function renderChain(u, a) {
   const ladder = u.state === "distracted" ? "refocus" : (u.state === "drowsy" || u.state === "very_drowsy") ? "bedtime" : null;
   const need = ladder && a.act_confidence && a.act_confidence.act ? a.act_confidence.act[ladder] : null;
   const pctx = (p) => `${Math.round(p * 100)} %`;
+  if (a.decisions === "belief") { renderBeliefChain(box, u, a, pctx); return; }
   let gate = "nothing to act on", cls = "";
   if (ladder && need != null) {
     const ok = u.confidence >= need;
@@ -529,6 +548,32 @@ function renderChain(u, a) {
   box.innerHTML = `<span class="step" title="the HMM's belief: the shown state and how sure it is">${u.state.replace("_", " ")} ${pctx(u.confidence)}</span>→`
     + `<span class="step ${cls} ${lit ? "lit" : ""}" title="config/escalation.yaml, confidence.act">${gate}</span>→`
     + `<span class="step" title="what the robot does about it">${robot}</span>`;
+}
+
+// hmm mode with belief decisions (A19, config/escalation.yaml hmm:): belief -> evidence -> decision -> robot.
+function renderBeliefChain(box, u, a, pctx) {
+  const d = a.decision || {};
+  const prog = a.evidence_progress || {};
+  const lead = ["refocus", "bedtime", "ambiguous"].reduce((x, k) => ((prog[k] || 0) > (prog[x] || 0) ? k : x), "refocus");
+  const names = { refocus: "distracted", bedtime: "drowsy", ambiguous: "distracted or drowsy" };
+  const evidence = (prog[lead] || 0) > 0 ? `evidence for ${names[lead]}: ${pctx(prog[lead])}` : "no evidence building";
+  const kinds = { act: ["nudge", "yes"], wait: ["waiting: not sure yet", "no"], hold: ["holding", "no"],
+                  switch: ["switching ladder", "yes"], reset: ["back to focused", ""], resume: ["watching", ""] };
+  const [word, cls] = kinds[d.decision] || ["watching", ""];
+  const robot = a.paused ? "paused by you" : a.ladder && a.level != null ? `${a.ladder} level ${a.level}` : "quiet";
+  const why = (d.evidence || []).map((e) => `• ${e.text}`).join("\n");
+  const tip = (d.reason ? `${word}: ${d.reason}` : word) + (why ? `\nTop evidence:\n${why}` : "");
+  const key = `${d.decision}|${d.ladder}|${robot}`;
+  const lit = key !== lastChain && lastChain !== "";
+  lastChain = key;
+  const belief = u.probs ? Object.entries(u.probs).sort((x, y) => y[1] - x[1]).slice(0, 2)
+    .map(([s, p]) => `${s.replace("_", " ")} ${pctx(p)}`).join(", ") : `${u.state} ${pctx(u.confidence)}`;
+  box.innerHTML = `<span class="step" title="the HMM's belief (the two most likely states)"></span>→`
+    + `<span class="step" title="config/escalation.yaml hmm.accumulate: evidence must add up before a first nudge"></span>→`
+    + `<span class="step ${cls} ${lit ? "lit" : ""}"></span>→<span class="step" title="what the robot does about it"></span>`;
+  const steps = box.querySelectorAll(".step");
+  steps[0].textContent = belief; steps[1].textContent = evidence; steps[2].textContent = word; steps[2].title = tip;
+  steps[3].textContent = robot;
 }
 
 function renderSession(se) {

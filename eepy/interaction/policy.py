@@ -44,6 +44,8 @@ class NudgeContext:
     since_calibration: Optional[float]
     session_seconds: float
     history: Tuple[NudgeRecord, ...] = ()
+    start_level: Optional[int] = None  # hmm (A19): the first level of this episode, e.g. carried over from
+    start_reason: str = ""             # the other ladder after a switch, or the ambiguous gentle option
 
     @property
     def state(self) -> str:
@@ -66,11 +68,14 @@ class NudgeContext:
     def summary(self) -> Dict[str, Any]:
         """For the nudge_decision event: what the policy saw (no history)."""
         out = {k: v for k, v in asdict(self).items() if k not in ("history", "estimate", "now")}
+        if self.start_level is None:                  # A19 only: the rules' context stays as it was
+            out.pop("start_level")
+            out.pop("start_reason")
         out["state"] = self.state
         out["calibrated"] = self.calibrated
         out["reason_state"] = self.estimate.get("reason")
         out["estimator"] = self.estimator
-        for key in ("confidence", "uncertainty", "most_likely"):
+        for key in ("confidence", "uncertainty", "most_likely", "probs", "evidence"):
             if self.estimate.get(key) is not None:
                 out[key] = self.estimate[key]
         for key in ("state_seconds", "since_last_nudge", "since_break", "since_calibration",
@@ -124,6 +129,10 @@ class FixedEscalation:
                 start = max(start, ladder.start_level_very_drowsy)
             level, why = start, ("starting again after a pause" if context.restarting
                                  else f"{context.state.replace('_', ' ')} for {context.state_seconds:.0f} s")
+            if context.start_level is not None and not context.restarting:
+                level, why = context.start_level, context.start_reason or why
+                if very and ladder.start_level_very_drowsy is not None:
+                    level = max(level, ladder.start_level_very_drowsy)
         else:
             if context.level >= ladder.top:
                 return Action.wait("top of the ladder")

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import logging
 import threading
 import time
@@ -189,9 +190,17 @@ class Wizard:
         from eepy.behaviors.pose import Pose
         from eepy.behaviors.targets import StaticTargetProvider, TrackingTargetProvider
 
+        self._static_targets = StaticTargetProvider(lambda: self.library)
         self.user_target = TrackingTargetProvider(
-            StaticTargetProvider(lambda: self.library),
+            self._static_targets,
             pose=lambda: self.player.pose if self.player is not None else Pose())
+        # The robot's resting direction, aimed at the participant's face (see aim()).
+        # None: straight ahead, as before. Kept across reconnects and sessions.
+        self.base: Any = None
+        self.aim_state: dict = {"state": "none"}
+        self._aim_thread: threading.Thread | None = None
+        self._off_since: float | None = None          # the face off-centre since (automatic aim)
+        self._last_auto_aim = -1e9
         # The calibration step of a session (A12). It runs IN the vision process (that
         # program has the camera); the panel queues commands for it, speaks its lines
         # and shows its progress. See eepy/perception/calibration/remote.py.
@@ -262,6 +271,8 @@ class Wizard:
                                     targets=self.user_target)
             unsubscribe = player.events.subscribe(self._on_event)
             player.start()
+            if self.base is not None:                 # a reconnect keeps the aim
+                player.set_base(self.base)
         except Exception as exc:  # noqa: BLE001 -- shown to the operator
             with self._conn_lock:
                 self.player = None
@@ -518,7 +529,7 @@ class Wizard:
 
         relay = CameraRelay(port, frame_fn=frame, pose_fn=pose, fps=fps,
                             label=lambda: "real" if self._robot_camera_client() is not None else None,
-                            user_fn=self.user_target.observe, say_fn=self._calibration_say,
+                            user_fn=self._on_user, say_fn=self._calibration_say,
                             command_fn=self._next_calibration_command,
                             calib_fn=self._calibration_report, state_fn=self._state_report)
         try:
@@ -566,6 +577,16 @@ class Wizard:
             return self.calibration
         if action == "reuse" and not self.calibration.get("reuse"):
             raise WizardError("There is no recent calibration to reuse for this participant.")
+        if action == "reuse":
+            self._restore_aim(user)
+        if action == "calibrate" and self._aim_first():
+            # Aim at the face first, so the calibration is taken from the robot's new view;
+            # the command goes to the vision process when the aim is done (or gave up).
+            command = {"command": action, "user": user, **({"parts": list(parts)} if parts else {})}
+            self.calibration = dict(self.calibration, state="requested",
+                                    message="aiming at the participant first")
+            self.aim(then=command)
+            return self.calibration
         command = {"command": action, "user": user}
         if parts:
             command["parts"] = list(parts)
@@ -573,6 +594,220 @@ class Wizard:
         if action != "stop":
             self.calibration = dict(self.calibration, state="requested", message="")
         return self.calibration
+
+    # ------------------------------------------------------- aiming at the participant
+
+    def _on_user(self, offset: dict | None) -> None:
+        """The vision process reports where the face is (relay USER, ~5 a second)."""
+        self.user_target.observe(offset)
+        try:
+            self._maybe_auto_aim()
+        except Exception:  # noqa: BLE001 -- aiming must never break the face reports
+            log.exception("Automatic aim failed")
+
+    def _maybe_auto_aim(self) -> None:
+        """Aim by itself: the face has been more than aim.tolerance_deg from where the
+        robot rests for aim.auto_after_s, while no behaviour plays (the idle may) and no
+        calibration runs; at most every aim.auto_min_gap_s."""
+        cfg = self.config.aim
+        player = self.player
+        if (not cfg.enabled or not cfg.auto or player is None or player.error is not None
+                or (self._aim_thread is not None and self._aim_thread.is_alive())
+                or self.calibration.get("state") in ("requested", "running") or player.is_playing()):
+            self._off_since = None
+            return
+        face = self.user_target.current()
+        if face is None:
+            self._off_since = None
+            return
+        yaw0 = float(self.base.yaw or 0.0) if self.base is not None else 0.0
+        pitch0 = float(self.base.pitch or 0.0) if self.base is not None else 0.0
+        if max(abs(face[0] - yaw0), abs(face[1] - pitch0)) <= cfg.tolerance_deg or (
+                self.aim_state.get("state") == "limited" and self._same_limit(face)):
+            self._off_since = None
+            return
+        now = time.monotonic()
+        if self._off_since is None:
+            self._off_since = now
+            return
+        if now - self._off_since < cfg.auto_after_s or now - self._last_auto_aim < cfg.auto_min_gap_s:
+            return
+        self._off_since, self._last_auto_aim = None, now
+        self.aim()
+
+    def _same_limit(self, face: tuple) -> bool:
+        """Already aimed as far as is safe toward about this face: don't try again and again."""
+        last = self.aim_state.get("face")
+        return last is not None and max(abs(face[0] - last[0]), abs(face[1] - last[1])) <= self.config.aim.tolerance_deg
+
+    def _aim_first(self) -> bool:
+        cfg = self.config.aim
+        return (cfg.enabled and cfg.on_calibrate and self.player is not None
+                and self.player.error is None and self.user_target.tracking)
+
+    def aim(self, then: dict | None = None) -> dict:
+        """Point the robot's resting direction at the participant's face: centred,
+        within aim.tolerance_deg, and never further than every behaviour can still
+        play safely from. Runs in the background (a few seconds); `then` is a
+        calibration command to queue when it is done. Returns the aim state."""
+        cfg = self.config.aim
+        if not cfg.enabled:
+            self.aim_state = {"state": "off", "message": "aiming is switched off (config/wizard_panel.yaml, aim)"}
+            if then is not None:
+                self._calibration_commands.append(then)
+            return self.aim_state
+        if self.player is None or self.player.error is not None:
+            raise WizardError("The robot is not connected.")
+        if self._aim_thread is not None and self._aim_thread.is_alive():
+            return self.aim_state
+        self.aim_state = {"state": "aiming", "message": "looking for the face..."}
+        self._aim_thread = threading.Thread(target=self._aim_run, args=(then,), name="eepy-aim", daemon=True)
+        self._aim_thread.start()
+        return self.aim_state
+
+    def reset_aim(self) -> dict:
+        """Straight ahead again."""
+        self._apply_base(None, reason="reset")
+        self.aim_state = {"state": "none", "message": "resting straight ahead"}
+        return self.aim_state
+
+    def _aim_run(self, then: dict | None) -> None:
+        from eepy.behaviors.schema import HeadPose
+
+        cfg = self.config.aim
+        moved = False
+        try:
+            limited = False
+            for _ in range(cfg.rounds):
+                face = self.user_target.current()
+                if face is None:
+                    self.aim_state = {"state": "no_face", "message": "no face seen: is the vision program "
+                                      "running (python -m eepy.perception) and the participant in view?"}
+                    return
+                yaw0 = float(self.base.yaw or 0.0) if self.base is not None else 0.0
+                pitch0 = float(self.base.pitch or 0.0) if self.base is not None else 0.0
+                off = (face[0] - yaw0, face[1] - pitch0)
+                if max(abs(off[0]), abs(off[1])) <= cfg.tolerance_deg:
+                    self.aim_state = self._aimed_state(off, limited)
+                    return
+                want = HeadPose(yaw=max(-cfg.yaw_limit_deg, min(cfg.yaw_limit_deg, face[0])),
+                                pitch=max(-cfg.up_limit_deg, min(cfg.down_limit_deg, face[1])))
+                safe, limited = self._safe_base(want)
+                if (abs(float(safe.yaw or 0) - yaw0) < 0.5 and abs(float(safe.pitch or 0) - pitch0) < 0.5):
+                    self.aim_state = self._aimed_state(off, True)      # as far as it can go
+                    return
+                self._apply_base(safe, reason="aim", face_offset=[round(off[0], 1), round(off[1], 1)],
+                                 limited=limited)
+                moved = True
+                time.sleep(cfg.settle_s)
+            face = self.user_target.current()
+            off = (0.0, 0.0) if face is None or self.base is None else (
+                face[0] - float(self.base.yaw or 0), face[1] - float(self.base.pitch or 0))
+            self.aim_state = self._aimed_state(off, limited)
+        except Exception as exc:  # noqa: BLE001 -- shown to the operator, never stops the panel
+            log.exception("Aiming failed")
+            self.aim_state = {"state": "failed", "message": str(exc)}
+        finally:
+            face = self.user_target.current()
+            if face is not None:
+                self.aim_state["face"] = [round(face[0], 1), round(face[1], 1)]
+            if (self.aim_state.get("state") in ("aimed", "limited") and then is None
+                    and self.calibration.get("state") in ("done", "reused") and moved):
+                self.aim_state["message"] += ("; the robot's view changed after the calibration: "
+                                              "calibrate again if looking away is not detected well")
+            if self.aim_state.get("state") in ("aimed", "limited"):
+                self._save_aim()
+            if then is not None:
+                self._calibration_commands.append(then)
+
+    def _aimed_state(self, off: tuple, limited: bool) -> dict:
+        yaw = float(self.base.yaw or 0.0) if self.base is not None else 0.0
+        pitch = float(self.base.pitch or 0.0) if self.base is not None else 0.0
+        tol = self.config.aim.tolerance_deg
+        state = {"state": "aimed", "yaw": round(yaw, 1), "pitch": round(pitch, 1),
+                 "face_offset": [round(off[0], 1), round(off[1], 1)]}
+        where = f"resting at yaw {yaw:+.0f}°, pitch {pitch:+.0f}°"
+        if max(abs(off[0]), abs(off[1])) <= tol:
+            state["message"] = f"aimed at the face ({where}; face within {tol:g}°)"
+            return state
+        side = ("above" if off[1] < 0 else "below") if abs(off[1]) >= abs(off[0]) else "beside"
+        state.update(state="limited", message=(
+            f"{where}: as far as every behaviour can still play safely. The face is still "
+            f"{max(abs(off[0]), abs(off[1])):.0f}° {side} the centre"
+            + (": raise the robot a little (e.g. a book under it)" if side == "above" else "")
+            if limited else f"{where}; the face is still {max(abs(off[0]), abs(off[1])):.0f}° off the centre"))
+        return state
+
+    def _safe_base(self, want: Any) -> tuple:
+        """The resting direction closest to `want`, on the way from straight ahead, from
+        which every behaviour still passes the safety checks. (base, limited)."""
+        from eepy.behaviors.schema import HeadPose
+
+        player = self.player
+        if not player.check_base(want):
+            return want, False
+        low, high = 0.0, 1.0                           # straight ahead is always safe
+        for _ in range(12):
+            mid = (low + high) / 2
+            cand = HeadPose(yaw=float(want.yaw or 0) * mid, pitch=float(want.pitch or 0) * mid)
+            if player.check_base(cand):
+                high = mid
+            else:
+                low = mid
+        # Rounded TOWARD straight ahead (0.1 degree), so rounding never leaves the safe side.
+        def trunc(x: float) -> float:
+            return math.trunc(x * 10) / 10
+
+        return HeadPose(yaw=trunc(float(want.yaw or 0) * low), pitch=trunc(float(want.pitch or 0) * low)), True
+
+    def _apply_base(self, base: Any, reason: str, **extra: Any) -> None:
+        self.base = base
+        if base is None:
+            self._static_targets.clear("user")
+        else:
+            self._static_targets.set("user", base)         # no face for a moment: still look at them
+        player = self.player
+        if player is not None and player.error is None:
+            player.set_base(base)
+        self._note("robot_base", "wizard", reason=reason,          # saved when a session runs
+                   yaw=None if base is None else round(float(base.yaw or 0), 1),
+                   pitch=None if base is None else round(float(base.pitch or 0), 1), **extra)
+
+    def _calibration_file(self) -> Any:
+        from eepy.perception.gaze.calibration import CalibrationStore
+
+        return self.calibration_store or CalibrationStore()
+
+    def _save_aim(self) -> None:
+        """Kept with the participant's calibration, so Reuse restores it."""
+        user = self.calibration.get("user") or (self.sessions.participant if self.sessions.active else None)
+        if user is None or self.base is None:
+            return
+        try:
+            self._calibration_file().save_section(user, self._calibration_setup(), "robot_base", {
+                "yaw": round(float(self.base.yaw or 0), 1), "pitch": round(float(self.base.pitch or 0), 1),
+                "taken_at": time.strftime("%Y-%m-%d %H:%M")})
+        except Exception:  # noqa: BLE001 -- the aim still works this session
+            log.exception("Could not save the aim")
+
+    def _restore_aim(self, user: str) -> None:
+        from eepy.behaviors.schema import HeadPose
+
+        try:
+            saved = self._calibration_file().section(user, self._calibration_setup(), "robot_base")
+        except Exception:  # noqa: BLE001
+            log.exception("Could not read the saved aim")
+            return
+        if not saved or self.player is None or self.player.error is not None:
+            return
+        base = HeadPose(yaw=float(saved.get("yaw", 0)), pitch=float(saved.get("pitch", 0)))
+        if self.player.check_base(base):               # behaviours changed since: do not use it
+            self.aim_state = {"state": "none", "message": "the saved aim is no longer safe for every "
+                              "behaviour: aim again"}
+            return
+        self._apply_base(base, reason="reuse")
+        self.aim_state = {"state": "aimed", "yaw": base.yaw, "pitch": base.pitch,
+                          "message": f"aim restored from the calibration (yaw {base.yaw:+.0f}°, pitch {base.pitch:+.0f}°)"}
 
     def _next_calibration_command(self) -> dict | None:
         """The vision process asks (twice a second): anything for me?"""
@@ -761,6 +996,9 @@ class Wizard:
             "panel_version": self.panel_version,
             "camera": self.camera_status(),
             "calibration": self.calibration_status(),
+            "aim": dict(self.aim_state, enabled=self.config.aim.enabled,
+                        base=None if self.base is None else
+                        {"yaw": round(float(self.base.yaw or 0), 1), "pitch": round(float(self.base.pitch or 0), 1)}),
             "user_state": self.state_status(),
             "autonomy": self.autonomy_status(),
         }
@@ -840,6 +1078,10 @@ class AutonomyIn(BaseModel):
     via: str = "click"
 
 
+class AimIn(BaseModel):
+    action: str = "aim"                 # aim | reset
+
+
 class CalibrationIn(BaseModel):
     action: str                      # calibrate, reuse, skip, stop
     reason: str | None = None
@@ -908,6 +1150,12 @@ def create_app(wizard: Wizard) -> FastAPI:
     @app.post("/api/session/start")
     def session_start(body: ParticipantIn):
         return _ok(session=wizard.start_session(body.participant, body.notes)["session"])
+
+    @app.post("/api/aim")
+    def aim(body: AimIn):
+        if body.action not in ("aim", "reset"):
+            raise WizardError(f'"{body.action}" is not an aim action (aim or reset).')
+        return _ok(aim=wizard.reset_aim() if body.action == "reset" else wizard.aim())
 
     @app.post("/api/calibration")
     def calibration(body: CalibrationIn):

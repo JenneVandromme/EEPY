@@ -65,12 +65,14 @@ drowsy ─30 s─▶ level 1 ─60 s─▶ level 2 ─60 s─▶ level 3 ("Getti
 - **While the robot is still moving,** or while the participant seems to be
   getting back to work.
 - **When the operator pressed Pause autonomy.**
-- **In the hmm mode, while the HMM is not sure enough** (below 70 %, see
-  *How sure is sure enough* below).
+- **In the hmm mode, while the HMM is not sure enough**: too little evidence yet, below
+  70 %, or the belief is unclear (see *Belief-based decisions* below).
 
 ## How sure is sure enough (hmm mode)
 
-The HMM says how sure it is of the state, e.g. *distracted · 82 %*. In
+The HMM says how sure it is of the state, e.g. *distracted · 82 %*. `confidence.act` is also the
+start threshold of the belief decisions above; the rest of this section is A16's gate, used with
+`hmm: decisions: gate`. In
 [`config/escalation.yaml`](../../config/escalation.yaml), under `confidence:`:
 
 ```yaml
@@ -95,6 +97,51 @@ confidence:
 
 The percentages are decision scores, not exact chances (A18 checks them). Higher
 thresholds mean fewer false alarms but later nudges.
+
+## Belief-based decisions (hmm mode)
+
+With the `hmm:` section in [`config/escalation.yaml`](../../config/escalation.yaml) (shipped:
+`decisions: belief`), the hmm mode doesn't use the timers under `onset:`. It looks at the HMM's
+whole belief instead. Why and the numbers: [docs/A19_BELIEF_DECISIONS.md](../../docs/A19_BELIEF_DECISIONS.md).
+
+- **Evidence adds up.** Every second, EEPY adds how far the belief in *distracted* (or *drowsy*)
+  is above 55 %. When enough has added up, *and* the belief is at least 70 % right now, the
+  first nudge comes. So **a sure belief acts sooner, a borderline one later**:
+
+  | | 95 % sure | 80 % | 72 % | below 70 % |
+  |---|---|---|---|---|
+  | distracted → first nudge | 20 s | 32 s | 47 s | never |
+  | drowsy → first nudge | 30 s | 48 s | 71 s | never |
+  | very drowsy (calibrated only) | 15 s | | | |
+
+- **Once a ladder runs**, it goes on climbing above 55 % (no stop-start at one line). It **holds**
+  (no next level) below that, or as soon as focus is coming back (30 % focused). It **resets**
+  when they're clearly focused (75 %) for 10 s.
+- **Not sure: wait.** When the belief is spread out, or the two most likely states are close,
+  EEPY waits and says so: *"Waiting: not sure yet (distracted 48%, focused 41%)"*.
+- **Distracted or tired? The gentle option.** Both moderately likely (30 % or more each): one
+  wordless glance; after 45 minutes of work, the break offer instead. No climbing until it's clear.
+- **Switching mid-way** (e.g. distracted → drowsy): the role switch plays (if designed), and the
+  new ladder starts one level below where the old one was (at most level 3), not from scratch.
+- **Movement size follows confidence:** 70 % of the designer's intensity at 70 % sure, the full
+  value from 90 %. Never more than the designer set. The tone rule is unchanged.
+
+**In the panel,** the line under the autonomy row says in words what the policy is doing, and the
+chain shows *belief → evidence → decision → robot* (hover the decision for the reason and the top
+evidence). Each decision is logged as a `policy_decision` (act, wait, hold, resume, switch,
+reset) with the belief, confidence, uncertainty and the top 3 signs.
+
+**Try it without a camera** with beliefs: `distracted@0.65` means 65 % distracted (the rest
+focused), `distracted@0.4+drowsy@0.4` mixes:
+
+```bash
+python -m eepy.interaction.simulate belief_shift
+python -m eepy.interaction.simulate "focused 4m, distracted@0.72 2m, focused 1m"
+python -m eepy.interaction.simulate --session P03 --estimator hmm     # a recording, with the HMM
+```
+
+`decisions: gate` (or no `hmm:` section) brings back A16's behaviour: the onset timers plus the
+70 % gate described below.
 
 ## The special moments
 
@@ -174,6 +221,7 @@ a number, then **try it in the simulation** before a session.
 | `absent.reset_after`, `went_to_bed_after` | 5 min, 5 min | Gone this long: start fresh / went to bed |
 | `break.absent_within`, `seconds`, `welcome_line` | 2 min, 10 min, `break_welcome_back` | The break |
 | `wind_down.seconds`, `snoozes`, `snooze_seconds`, `reminder_before` | 15 min, 1, 15 min, 1 min | The wind-down |
+| `hmm.*` | see *Belief-based decisions* | The hmm mode's evidence, hysteresis, waiting, ambiguity, switching and intensity; each number has its reason in the file |
 | `role_switch` | (none exist yet) | Behaviours played when EEPY switches role, e.g. a `role_to_bedtime` you design. They're used automatically **if a behaviour with that name exists** in `behaviors/`. |
 
 **The words** are in [`behaviors/lines.yaml`](../../behaviors/lines.yaml). The two new
@@ -213,6 +261,9 @@ python -m eepy.interaction.simulate --session P03     # the states of a recorded
 | `takes_the_break` | ignores the whole ladder, leaves after the break offer: break, welcomed back 12 minutes later |
 | `late_evening` | drowsy: the bedtime ladder, the wind-down accepted, the reminder, goodnight |
 | `flicker` | glancing away every 15 s never triggers anything; very drowsy starts at bedtime level 2 |
+| `belief_sure_vs_borderline` | hmm: 95 % sure nudges after 20 s, 72 % only after 48 s |
+| `belief_unsure`, `belief_ambiguous`, `belief_ambiguous_late` | hmm: waiting; the gentle glance; the break offer after 45 minutes of work |
+| `belief_shift`, `belief_wavering` | hmm: switching ladders mid-way; holding and going on |
 
 Example (`phone_break`):
 
@@ -267,7 +318,9 @@ punish a nudge whose result can't be credited to it.
 - `escalation`, with `what`: cooldown_started, episode_reset, approving_nod,
   break_started/ended, welcome_back, wind_down_started/snoozed/reminder/cancelled,
   goodnight, went_to_bed, reply, autonomy_paused/resumed, waiting_for_confidence /
-  confidence_wait_ended (hmm mode: the confidence gate).
+  confidence_wait_ended (hmm mode: the confidence gate);
+- `policy_decision` (hmm mode, belief decisions): act / wait / hold / resume / switch / reset, with
+  the belief, confidence, uncertainty, top evidence and how far each ladder's evidence is.
 
 The robot's own behaviours carry `source=auto` and the operator's
 `source=wizard`. See the [DATA_GUIDE](../../docs/DATA_GUIDE.md).

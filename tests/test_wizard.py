@@ -879,3 +879,50 @@ def test_session_prior_is_written_before_the_vision_program_can_see_the_session(
     assert "_error" in json.loads((newest / "prior.json").read_text())
     assert "session prior cannot be used" in wizard.last_error["message"]
     client.post("/api/session/end")
+
+
+# --- belief decisions in the hmm mode (A19) ----------------------------------------------------------
+
+def _belief(distracted: float) -> dict:
+    probs = {"focused": round(1 - distracted, 3), "distracted": distracted, "drowsy": 0.0, "very_drowsy": 0.0}
+    state = "distracted" if distracted > 0.5 else "focused"
+    return {"state": state, "reason": "test", "pending": None, "calibrated": True, "estimator": "hmm",
+            "probs": probs, "confidence": max(distracted, 1 - distracted), "uncertainty": 0.5, "updated": True,
+            "say": "", "evidence": [{"feature": "away_now", "text": "looking away now (30 s) suggests distraction",
+                                     "supports": "distracted", "against": None, "strength": 2.0, "impact": 0.3}]}
+
+
+@pytest.fixture
+def quick_belief(tmp_path, monkeypatch):
+    """The shipped escalation, belief decisions with almost no evidence needed (the panel runs
+    on the real clock; the timings are tested in test_belief.py)."""
+    import yaml
+
+    from eepy.interaction import config as escalation_config
+
+    raw = yaml.safe_load(escalation_config.DEFAULT_PATH.read_text())
+    raw["guards"].update(after_calibration=0, min_gap=0)
+    raw["hmm"]["accumulate"]["needed"] = {"refocus": 0.01, "bedtime": 0.01, "very_drowsy": 0.01}
+    path = tmp_path / "escalation.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    monkeypatch.setattr(escalation_config, "DEFAULT_PATH", path)
+
+
+def test_hmm_mode_belief_decisions_in_the_panel(make, quick_belief):
+    wizard, _ = make(mode="hmm")
+    wizard.start_session("P42")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10
+    wizard._state_report(_belief(0.5))
+    auto = wizard.status()["autonomy"]
+    assert auto["decisions"] == "belief"
+    assert auto["next"] == "Waiting: not sure yet (focused 50%, distracted 50%)"
+    assert _recent(wizard, "nudge_decision") == []
+    assert _recent(wizard, "policy_decision")[0]["decision"] == "wait"
+    assert _until(lambda: wizard._state_report(_belief(0.95)) or _recent(wizard, "nudge_decision"))
+    decision = _recent(wizard, "nudge_decision")             # (a few reports: evidence needs a little time)
+    assert decision and (decision[0]["ladder"], decision[0]["level"]) == ("refocus", 1)
+    assert decision[0]["context"]["evidence"][0]["feature"] == "away_now"
+    acts = [d for d in _recent(wizard, "policy_decision") if d["decision"] == "act"]
+    assert acts and acts[0]["decision_id"] == decision[0]["decision_id"]
+    wizard.end_session()

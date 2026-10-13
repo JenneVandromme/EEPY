@@ -256,6 +256,135 @@ def run_model(spec: str, folders: Sequence[Path]) -> Dict[str, Any]:
     return combine(results)
 
 
+# --- nudges: the escalation on top of the estimates (A19) -------------------------------------------
+
+NUDGE_TOLERANCE = 10.0                                  # s around a change of behaviour (configurable)
+MIN_LENGTHS = {"distracted": (45, 60, 90), "drowsy": (90, 120, 180)}
+NUDGE_LADDER = {"distracted": "refocus", "drowsy": "bedtime"}
+
+
+def _episodes(truth: Sequence[Tuple[float, float, str]], kind: str) -> List[Tuple[float, float]]:
+    """Stretches of one kind; drowsy and very drowsy count as one drowsy episode."""
+    want = ("drowsy", "very_drowsy") if kind == "drowsy" else (kind,)
+    out: List[Tuple[float, float]] = []
+    for a, b, state in truth:
+        if state in want:
+            if out and abs(out[-1][1] - a) < 1e-6:
+                out[-1] = (out[-1][0], b)
+            else:
+                out.append((a, b))
+    return out
+
+
+def score_nudges(nudges: Sequence[Tuple[float, str]], truth: Sequence[Tuple[float, float, str]],
+                 tolerance: float = NUDGE_TOLERANCE, settle: float = 0.0,
+                 until: Optional[float] = None) -> Dict[str, Any]:
+    """nudges: (t from the session start, ladder). A false nudge comes while the truth is focused;
+    with the tolerance, not within `tolerance` s of a change of behaviour (just refocused, or just
+    starting). Episodes that end before `settle` (the escalation's settling-in time after the start)
+    or start after `until` (the goodnight: the robot sleeps for the rest of the session) cannot be
+    caught by design and are left out."""
+    changes = [a for a, _, _ in truth[1:]]
+    work_s = sum(b - a for a, b, state in truth if state == "focused")
+    false = [t for t, _ in nudges if (_segment(truth, t) or (0, 0, ""))[2] == "focused"]
+    false_tol = [t for t in false if all(abs(t - c) > tolerance for c in changes)]
+    episodes: Dict[str, List[Tuple[float, Optional[float]]]] = {}
+    for kind, ladder in NUDGE_LADDER.items():
+        rows = []
+        for a, b in _episodes(truth, kind):
+            if b <= settle or (until is not None and a >= until):
+                continue
+            start = max(a, settle)
+            hit = next((t - a for t, lad in nudges if lad == ladder and start <= t <= b + tolerance), None)
+            rows.append((b - start, hit))
+        episodes[kind] = rows
+    return {"work_s": work_s, "false": len(false), "false_tol": len(false_tol), "nudges": len(nudges),
+            "seconds": truth[-1][1] if truth else 0.0, "episodes": episodes}
+
+
+def combine_nudges(results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    work = sum(r["work_s"] for r in results)
+    total = sum(r["seconds"] for r in results)
+    out: Dict[str, Any] = {
+        "nudges_per_hour": round(sum(r["nudges"] for r in results) / max(1, total) * 3600, 1),
+        "false_per_hour": round(sum(r["false"] for r in results) / max(1, work) * 3600, 2),
+        "false_per_hour_tolerant": round(sum(r["false_tol"] for r in results) / max(1, work) * 3600, 2),
+        "missed": {}, "eligible": {}, "first_nudge_median_s": {}}
+    for kind, lengths in MIN_LENGTHS.items():
+        rows = [row for r in results for row in r["episodes"][kind]]
+        for n in lengths:
+            sel = [hit for length, hit in rows if length >= n]
+            out["eligible"][f"{kind}>={n}"] = len(sel)
+            out["missed"][f"{kind}>={n}"] = round(sum(h is None for h in sel) / len(sel), 3) if sel else None
+        hits = [hit for length, hit in rows if length >= lengths[0] and hit is not None]
+        out["first_nudge_median_s"][kind] = round(statistics.median(hits), 1) if hits else None
+    return out
+
+
+def run_nudges(spec: str, folders: Sequence[Path], tolerance: float = NUDGE_TOLERANCE,
+               escalation: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """The escalation (config/escalation.yaml) over each user's estimates, in virtual time.
+    rules -> one column; hmm[:PATH] -> two: A16's confidence gate and A19's belief decisions."""
+    from dataclasses import replace
+
+    from eepy.behaviors.loader import load_library
+    from eepy.interaction.config import load as load_escalation
+    from eepy.interaction.simulate import run_estimates
+
+    from .estimate import make_estimator
+    from .hmm_params import load
+    from .replay import run, session_features
+    from .runner import estimator_gap, panel_view
+
+    library = load_library()
+    config = load_escalation(escalation) if escalation else load_escalation()
+    params = load(Path(spec.split(":", 1)[1]) if ":" in spec else None) if spec.startswith("hmm") else None
+    if params is None:
+        variants = {"rules": config}
+    else:
+        variants = {"gate": replace(config, belief=None)}
+        if config.belief is not None:
+            variants["belief"] = replace(config, belief=replace(config.belief, decisions="belief"))
+    results: Dict[str, List[Dict[str, Any]]] = {k: [] for k in variants}
+    for folder in folders:
+        est = make_estimator("hmm", params=params) if params is not None else make_estimator("rules")
+        estimates = [dict(panel_view(e)) for e in run(session_features(folder), est, estimator_gap(est))]
+        if not estimates:
+            continue
+        t0, truth = estimates[0]["t"] - 1.0, truth_of(folder)
+        for name, cfg in variants.items():
+            recorder, _, _ = run_estimates(estimates, [], cfg, library)
+            nudges = [(t - t0, f["ladder"]) for kind, t, f in recorder.events if kind == "nudge_decision"]
+            night = next((t - t0 for kind, t, f in recorder.events
+                          if kind == "escalation" and f.get("what") == "goodnight"), None)
+            results[name].append(score_nudges(nudges, truth, tolerance, settle=cfg.after_calibration, until=night))
+    return {k: combine_nudges(v) for k, v in results.items()}
+
+
+def _nudge_table(scores: Dict[str, Dict[str, Any]], tolerance: float, say: Any = print) -> None:
+    names = list(scores)
+    w = max(14, max(len(n) for n in names) + 2)
+
+    def pct(v: Optional[float]) -> str:
+        return "-" if v is None else f"{v:.0%}"
+
+    rows = [
+        ("nudges per hour (all)", lambda s: f"{s['nudges_per_hour']:.1f}", "-"),
+        ("false nudges / hour of work", lambda s: f"{s['false_per_hour']:.2f}", "lower"),
+        (f"  ... not within {tolerance:g} s of a change", lambda s: f"{s['false_per_hour_tolerant']:.2f}", "lower"),
+        *[(f"missed {k.replace('>=', ' >= ')} s", (lambda k: lambda s: pct(s["missed"].get(k)))(k), "lower")
+          for kind, lengths in MIN_LENGTHS.items() for k in (f"{kind}>={n}" for n in lengths)],
+        *[(f"first nudge, {kind} (median)", (lambda k: lambda s: "-" if s["first_nudge_median_s"].get(k) is None
+                                             else f"{s['first_nudge_median_s'][k]:.0f} s")(kind), "lower")
+          for kind in MIN_LENGTHS],
+    ]
+    say("  " + f"{'':38}" + "".join(f"{n:>{w}}" for n in names) + "   (better)")
+    for label, fn, better in rows:
+        say("  " + f"{label:38}" + "".join(f"{fn(scores[n]):>{w}}" for n in names) + f"   ({better})")
+    first = scores[names[0]]["eligible"]
+    say("\n  Episodes counted: " + ", ".join(f"{k.replace('>=', ' >= ')} s: {v}" for k, v in first.items()))
+
+
 def _table(scores: Dict[str, Dict[str, Any]], say: Any = print) -> None:
     names = list(scores)
     w = max(14, max(len(n) for n in names) + 2)
@@ -436,6 +565,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     e.add_argument("--model", action="append",
                    help="rules, hmm (shipped) or hmm:PATH; repeat to compare (default: rules, hmm, and the trained file)")
     e.add_argument("--json", help="also write the scores as JSON")
+    e.add_argument("--nudges", action="store_true",
+                   help="score the escalation's nudges instead (rules, hmm with A16's gate, hmm with A19's "
+                        "belief decisions): false nudges, missed episodes, time to the first nudge")
+    e.add_argument("--tolerance", type=float, default=NUDGE_TOLERANCE,
+                   help="--nudges: seconds around a change of behaviour where a nudge is not counted as false "
+                        "(default 10)")
+    e.add_argument("--escalation", help="--nudges: another escalation file (default config/escalation.yaml)")
     for p in (b, t, e):
         p.add_argument("--name", default="v1", help="the dataset's name (default v1)")
         p.add_argument("--data", help="the data folder (default data/)")
@@ -473,6 +609,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         print(f"\n  {ds.name}, split {args.split}: {len(folders)} users, "
               f"{sum(1 for _ in folders)} sessions. Scoring {len(models)} model(s) ...\n")
+        if args.nudges:
+            nudge_scores: Dict[str, Dict[str, Any]] = {}
+            for spec in (args.model or ["rules", "hmm"]):
+                base = Path(spec.split(":", 1)[1]).stem if ":" in spec else spec
+                for variant, result in run_nudges(spec, folders, args.tolerance,
+                                                  Path(args.escalation) if args.escalation else None).items():
+                    nudge_scores[base if variant == "rules" else f"{base} {variant}"] = result
+            _nudge_table(nudge_scores, args.tolerance)
+            print("\n  Missed: episodes of at least that length with no nudge of the matching ladder (refocus / "
+                  "bedtime) before they ended (+ the tolerance); episodes inside the settling-in time after the "
+                  "start or after a goodnight are left out. False: a nudge while the truth was focused.\n")
+            if args.json:
+                Path(args.json).write_text(json.dumps(nudge_scores, indent=1), encoding="utf-8")
+            return 0
         scores: Dict[str, Dict[str, Any]] = {}
         for spec in models:
             label = "trained" if spec.endswith("state_hmm_trained.yaml") else (

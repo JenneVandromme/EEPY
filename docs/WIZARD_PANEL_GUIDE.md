@@ -38,6 +38,39 @@ logged). The card shows the progress and the result. The vision process must be 
 mean: [eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md). If it says `no face`, check the person sits inside the camera's view
 (`python -m eepy.camera.preview`).
 
+## Aiming the robot at the participant
+
+> **Switched off for now** (`aim.enabled: false`): not seen working on the real robot yet.
+> The exact problem and what is left: [TODO.md](TODO.md).
+
+When the robot sits lower than the student's face (e.g. at chest height), its resting
+position looks at their chest. The panel can point the resting position at the face
+instead. All the robot's movements then play around that direction: it looks up at the
+student and does its usual nods, glances and tilts from there.
+
+- **It aims by itself**, no button needed: as soon as the vision program
+  (`python -m eepy.perception`) sees the face off-centre for 2 s while the robot rests (the
+  idle may run), and again whenever the student has clearly moved (at most every 15 s).
+  It never re-aims while a behaviour plays or a calibration runs.
+- **Calibrate** aims first, so the calibration matches the robot's view; the card then
+  says *aiming at the participant first*. If it re-aims after the calibration (the student
+  moved a lot), the card suggests calibrating again: the robot's camera now sees the desk
+  from a different angle.
+- **Aim at participant** on the calibration card aims right away.
+- **Reuse** restores the aim saved with that calibration.
+- A face within **8°** of the centre of the robot's view is left as it is.
+- **Not further than is safe:** the robot never aims further than every behaviour can
+  still play safely from. With the shipped behaviours that is about **13° up** when the
+  student is straight in front (less when they also sit to the side). If the face is still
+  above the centre, the card says so: put the robot higher (a book under it).
+- The card's line says where the robot rests: *aimed at the face (resting at yaw +5°,
+  pitch −12°; face within 8°)*. Each change is logged (`robot_base`).
+
+Settings, in [`config/wizard_panel.yaml`](../config/wizard_panel.yaml) under `aim:`:
+`enabled`, `auto`, `auto_after_s`, `auto_min_gap_s`, `on_calibrate`, `tolerance_deg`, the
+yaw / up / down limits, `rounds`, `settle_s`. Restart the panel after changing code or this
+file's `aim:` section.
+
 ## Run a session
 
 1. Type the **participant code** (e.g. `P03` — always the code, never a name;

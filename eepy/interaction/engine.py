@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Deque, Dict, List, Optional, Protocol
 
+from .belief import FAMILY_NAME, LADDERS, BeliefTracker, belief_text, is_belief
 from .config import EscalationConfig
 from .policy import Action, NudgeContext, NudgePolicy, NudgeRecord
 
@@ -75,6 +76,10 @@ class Episode:
     cooldown_until: Optional[float] = None
     quiet_until: Optional[float] = None    # after "accepted": give them the window
     any_success: bool = False
+    # hmm mode (A19):
+    ambiguous: bool = False                # started on an ambiguous belief: one gentle nudge, no climbing
+    start_level: Optional[int] = None      # the first level (a switch carries the old level over)
+    start_reason: str = ""
 
 
 class EscalationEngine:
@@ -88,6 +93,7 @@ class EscalationEngine:
         self._lock = threading.RLock()
         self.active = False
         self.paused = False
+        self.belief = BeliefTracker(config.belief, config.act_confidence) if config.belief is not None else None
         self._reset_all(0.0)
 
     # --- inputs ----------------------------------------------------------------------------
@@ -113,6 +119,8 @@ class EscalationEngine:
         with self._lock:
             self.estimate = dict(estimate)
             self.estimate_t = now
+            if self.belief is not None:
+                self.belief.update(self.estimate, now)
             self._step(now)
 
     def tick(self, now: float) -> None:
@@ -186,6 +194,11 @@ class EscalationEngine:
                 out["snoozes_left"] = self.snoozes_left
             if self.flow == "break" and self.break_until is not None:
                 out["break_left"] = max(0.0, round(self.break_until - now))
+            if self.belief is not None and self.config.belief is not None:
+                out["decisions"] = self.config.belief.decisions if is_belief(self.estimate) else "gate"
+                if out["decisions"] == "belief":
+                    out["evidence_progress"] = self.belief.view()
+                    out["decision"] = self.decision
             return out
 
     # --- internals ---------------------------------------------------------------------------
@@ -219,6 +232,9 @@ class EscalationEngine:
         self._waiting_for: Optional[str] = None     # ladder held back by the confidence gate (logged once)
         self.next_at: Optional[float] = None
         self._decisions = 0
+        self.decision: Optional[Dict[str, Any]] = None   # hmm (A19): the last policy_decision
+        if getattr(self, "belief", None) is not None:
+            self.belief.reset()
 
     def _event(self, event_type: str, t: float, **fields: Any) -> None:
         if self._log_fn is not None:
@@ -286,6 +302,9 @@ class EscalationEngine:
                 return
         if self.flow == "wind_down":
             self._wind_down(now)
+            return
+        if self._belief_mode():
+            self._belief_step(now)
             return
         role = self.config.role_for(self._state)
         if role == "study_buddy":
@@ -376,7 +395,7 @@ class EscalationEngine:
             self._set_role(role, now)
         self._maybe_nudge(ep, now, since)
 
-    def _maybe_nudge(self, ep: Episode, now: float, since: float) -> None:
+    def _maybe_nudge(self, ep: Episode, now: float, since: float, belief: bool = False) -> None:
         ladder = self.config.ladders[ep.ladder]
         if self.open is not None:
             if self.open.window is not None:
@@ -391,7 +410,7 @@ class EscalationEngine:
         if ep.quiet_until is not None and now < ep.quiet_until:
             self._wait("they said OK: giving them time, next nudge at the earliest in", ep.quiet_until)
             return
-        blocked = self._guard(now)
+        blocked = self._guard(now, belief)
         if blocked is not None:
             text, until = blocked
             self._wait(text, until)
@@ -407,9 +426,17 @@ class EscalationEngine:
             else:
                 self._wait(f"policy: {action.reason}")
             return
+        if belief and self.belief is not None:      # confidence -> movement size, within the designer's value
+            action = replace(action, intensity=self.belief.intensity(action.intensity, context.confidence,
+                                                                     str(action.ladder)))
         self._play(action, context, now)
+        if belief:
+            self._decide("act", now, ladder=action.ladder, force=True, reason=action.reason,
+                         text=f"Nudging: {action.ladder} level {action.level} ({action.tone}) -- {action.reason}",
+                         decision_id=self._decisions, level=action.level, tone=action.tone,
+                         intensity=action.intensity)
 
-    def _guard(self, now: float) -> Optional[tuple]:
+    def _guard(self, now: float, belief: bool = False) -> Optional[tuple]:
         cfg = self.config
         start = max(self.session_start, self.calibrated_at or self.session_start)
         if now - start < cfg.after_calibration:
@@ -420,10 +447,11 @@ class EscalationEngine:
             return f"{cfg.max_per_hour} nudges in the last hour: waiting until", self._hour[0] + 3600
         if self.actuator.busy():
             return "the robot is still moving", None
-        unsure = self._unsure(self.episode.ladder if self.episode is not None else self.config.role_for(self._state),
-                              now)
-        if unsure is not None:
-            return unsure, None
+        if not belief:                           # hmm (A19): the belief tracker decided already
+            unsure = self._unsure(self.episode.ladder if self.episode is not None
+                                  else self.config.role_for(self._state), now)
+            if unsure is not None:
+                return unsure, None
         if self.estimate.get("pending") == "focused":
             return "they seem to be getting back to work", None
         return None
@@ -468,7 +496,9 @@ class EscalationEngine:
             nudges_session=len(self.nudges), nudges_last_hour=self._last_hour(now),
             since_last_nudge=ago(self.nudges[-1].t if self.nudges else None),
             since_break=ago(self.last_break_t), since_calibration=ago(self.calibrated_at),
-            session_seconds=now - self.session_start, history=tuple(self.nudges))
+            session_seconds=now - self.session_start, history=tuple(self.nudges),
+            start_level=ep.start_level if ep.level is None else None,
+            start_reason=ep.start_reason if ep.level is None else "")
 
     def _evidence_text(self) -> str:
         """{evidence} in a spoken line. The HMM gives a short `say` ("" when it has no clear
@@ -509,6 +539,184 @@ class EscalationEngine:
         if ladder == "bedtime" and level == cfg.wind_down_offer_level:
             self._start_wind_down(now)
         self._wait(f"played {ladder} level {level}; waiting for a reaction")
+
+    # -- hmm: decisions on the whole belief (A19) ---------------------------------------------
+
+    def _belief_mode(self) -> bool:
+        b = self.config.belief
+        return self.belief is not None and b is not None and b.decisions == "belief" and is_belief(self.estimate)
+
+    def _belief_step(self, now: float) -> None:
+        """Instead of onset timers and the confidence gate: start, wait, hold, switch or reset
+        on the belief tracker's evidence (belief.py). The flows (break, wind-down, goodnight),
+        the guards, the policy's level and tone, and the outcomes are the same as before."""
+        b = self.belief
+        assert b is not None and self.config.belief is not None
+        cfg = self.config.belief
+        role = self.config.role_for(self._state)
+        if role == "paused":
+            self._absent(now)
+            return
+        if self._state == "unknown" or role == "none":
+            self._wait("state unknown: doing nothing")
+            return
+        unsure = b.unsure()
+        ep = self.episode
+        if ep is not None:
+            if b.reset_ready(now):
+                self._decide("reset", now, ladder=ep.ladder,
+                             reason=f"focused {b.probs.get('focused', 0.0):.0%} for {cfg.reset_seconds:.0f} s",
+                             text="Back to focused: the ladder resets")
+                self._event("escalation", now, what="episode_reset", ladder=ep.ladder, level=ep.level,
+                            reason="back to focused")
+                worked = ep.any_success
+                b.clear(ep.ladder, "ambiguous")
+                self.episode = None
+                self._nod(now, worked)
+                self._set_role("study_buddy", now)
+                self._wait("focused: never interrupted")
+                return
+            other = "bedtime" if ep.ladder == "refocus" else "refocus"
+            if b.ready(other) and unsure is None:
+                self._switch(ep, other, now)
+                ep = self.episode
+                assert ep is not None
+            elif ep.ambiguous and ep.level is not None:
+                if b.ready(ep.ladder) and unsure is None:
+                    ep.ambiguous = False                 # clearly distracted now: the normal ladder from here
+                else:
+                    self._hold(ep, now, "one gentle nudge given; waiting until it is clear whether "
+                                        f"distracted or drowsy ({belief_text(b.probs)})")
+                    return
+            if ep.last_outcome == "success" and self.open is None:
+                # The last nudge worked (shown focused), but the belief is not clearly focused yet:
+                # no climbing on a success. A new start becomes a fresh ladder from its first level.
+                if b.ready(ep.ladder) and unsure is None:
+                    self._decide("reset", now, ladder=ep.ladder, reason="a new start after the last nudge worked",
+                                 text="New episode: the last nudge worked")
+                    self._event("escalation", now, what="episode_reset", ladder=ep.ladder, level=ep.level,
+                                reason="new episode after a success")
+                    self.episode = None
+                    self._belief_step(now)
+                else:
+                    self._hold(ep, now, f"the last nudge worked; waiting for clear focus ({belief_text(b.probs)})")
+                return
+            if not ep.ambiguous and not b.keeps(ep.ladder):
+                if b.focused_since is not None:
+                    self._hold(ep, now, f"focused again? ({belief_text(b.probs)}); the ladder resets after "
+                                        f"{cfg.reset_seconds:.0f} s")
+                elif b.focus_returning() and b.p(ep.ladder) >= cfg.keep:
+                    self._hold(ep, now, f"focus coming back ({belief_text(b.probs)})")
+                elif b.p(other) >= cfg.floor:
+                    self._hold(ep, now, f"the belief is moving to {FAMILY_NAME[other]} ({belief_text(b.probs)}); "
+                                        f"switching when there is enough evidence ({b.progress(other):.0%})")
+                else:
+                    self._hold(ep, now, f"less sure now: {FAMILY_NAME[ep.ladder]} {b.p(ep.ladder):.0%} "
+                                        f"(goes on from {cfg.keep:.0%})")
+                return
+            if self.decision is not None and self.decision["decision"] == "hold":
+                self._decide("resume", now, ladder=ep.ladder, reason=f"{FAMILY_NAME[ep.ladder]} "
+                             f"{b.p(ep.ladder):.0%} again", text="Going on with the ladder")
+            self._maybe_nudge(ep, now, ep.started, belief=True)
+            return
+
+        ready = [x for x in LADDERS if b.ready(x)]
+        if ready:
+            ladder = max(ready, key=b.p)
+            if unsure is not None:
+                self._decide("wait", now, ladder=ladder, reason=unsure, text=f"Waiting: {unsure}")
+                self._wait(f"Waiting: {unsure}")
+                return
+            built = b.built_for(ladder, now)
+            name = "very drowsy" if ladder == "bedtime" and b.fast_very_drowsy() else FAMILY_NAME[ladder]
+            self.episode = Episode(ladder, now - built, start_level=self.config.ladders[ladder].start_level,
+                                   start_reason=f"{name} {b.p(ladder):.0%}: enough evidence after {built:.0f} s")
+            b.clear("ambiguous")
+            self._set_role(ladder, now)
+            self._maybe_nudge(self.episode, now, now - built, belief=True)
+            return
+        if b.ambiguous_ready():
+            worked = now - max(self.session_start, self.last_break_t or self.session_start)
+            if worked >= cfg.long_work:
+                level = self.config.break_offer_level
+                why = (f"distracted or drowsy ({belief_text(b.probs)}) after {worked / 60:.0f} minutes "
+                       "of work: offering a break")
+            else:
+                level = self.config.ladders["refocus"].start_level
+                why = f"distracted or drowsy ({belief_text(b.probs)}): one gentle nudge"
+            self.episode = Episode("refocus", now, ambiguous=True, start_level=level, start_reason=why)
+            b.clear("ambiguous")
+            self._set_role("refocus", now)
+            self._maybe_nudge(self.episode, now, now, belief=True)
+            return
+        self._set_role("study_buddy", now)
+        building = b.building() or (["ambiguous"] if b.ambiguous() else [])
+        considered = building or b.considered()
+        if considered and unsure is not None:
+            self._decide("wait", now, ladder=considered[0], reason=unsure, text=f"Waiting: {unsure}")
+            self._wait(f"Waiting: {unsure}")
+            return
+        if self.decision is not None and self.decision["decision"] in ("wait", "hold"):
+            self._decide("resume", now, reason="the belief is clear again", text="Watching")
+        if building:
+            x = building[0]
+            p = b.p(x) if x in LADDERS else b.p("refocus") + b.p("bedtime")
+            self._wait(f"Watching: {FAMILY_NAME[x]} {p:.0%}; evidence {b.progress(x):.0%} of what a first "
+                       "nudge needs")
+        else:
+            self._wait("focused: never interrupted")
+
+    def _hold(self, ep: Episode, now: float, reason: str) -> None:
+        """A running ladder does not climb (an open nudge's reaction window runs on)."""
+        self._decide("hold", now, ladder=ep.ladder, reason=reason, text=f"Holding: {reason}")
+        if self.open is not None and self.open.window is not None:
+            left = self.open.window - self.open.elapsed(now)
+            self._wait(f"Holding ({reason}); waiting for a reaction to level {self.open.level}, until",
+                       now + max(0.0, left))
+        else:
+            self._wait(f"Holding: {reason}")
+
+    def _switch(self, ep: Episode, ladder: str, now: float) -> None:
+        """The belief moved to the other ladder mid-way (e.g. distracted -> drowsy): close the
+        open nudge, play the role switch (if designed), and carry the level over: one step
+        below the old level, at least the new ladder's start, at most switch.max_level."""
+        assert self.belief is not None and self.config.belief is not None
+        cfg, lad = self.config.belief, self.config.ladders[ladder]
+        old = ep.level
+        start = None
+        if old is not None:
+            start = max(lad.start_level, min(old - cfg.switch_step_back, cfg.switch_max_level, lad.top))
+        if self.open is not None:
+            self._close("censored", now, f"the belief moved to {FAMILY_NAME[ladder]}")
+        reason = f"{FAMILY_NAME[ladder]} now ({belief_text(self.belief.probs)})"
+        if start is not None:
+            reason += f"; {ladder} starts at level {start} (was {ep.ladder} level {old})"
+        self._decide("switch", now, ladder=ladder, force=True, reason=reason, text=f"Switching to {ladder}: {reason}",
+                     from_ladder=ep.ladder, from_level=old, start_level=start)
+        self._event("escalation", now, what="episode_reset", ladder=ep.ladder, level=old,
+                    reason=f"switched to {ladder}")
+        self.episode = Episode(ladder, now, start_level=start,
+                               start_reason=f"switched from {ep.ladder} level {old}" if start is not None else "")
+        self.belief.clear("ambiguous")
+        self._set_role(ladder, now)
+
+    def _decide(self, kind: str, now: float, ladder: Optional[str] = None, reason: str = "", text: str = "",
+                force: bool = False, **extra: Any) -> None:
+        """Log a policy_decision (act, wait, hold, resume, switch, reset) with the belief, confidence,
+        uncertainty and top evidence -- once per change, every act."""
+        if (not force and self.decision is not None
+                and (self.decision["decision"], self.decision.get("ladder")) == (kind, ladder)):
+            self.decision["text"] = text
+            return
+        assert self.belief is not None and self.config.belief is not None
+        est = self.estimate
+        fields: Dict[str, Any] = {
+            "decision": kind, "ladder": ladder, "reason": reason, "state": self._state,
+            "probs": est.get("probs"), "confidence": est.get("confidence"), "uncertainty": est.get("uncertainty"),
+            "evidence": list(est.get("evidence") or [])[:self.config.belief.evidence_top],
+            "evidence_progress": self.belief.view(), **extra}
+        self._event("policy_decision", now, **fields)
+        self.decision = dict(fields, text=text, t=now)
 
     # -- outcomes -------------------------------------------------------------------------
 

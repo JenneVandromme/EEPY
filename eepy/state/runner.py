@@ -322,11 +322,15 @@ class StatePublisher:
         self.client.close()
 
 
+EVIDENCE_TOP = 3        # the top signs sent along, for the escalation's decisions (A19) and A20
+EVIDENCE_KEYS = ("feature", "text", "supports", "against", "strength", "impact")
+
+
 def panel_view(estimate: StateEstimate) -> Dict[str, Any]:
     """What the panel shows: small, JSON-ready. The HMM adds its belief, confidence and
     `say` (the short text the robot may speak as {evidence}; "" when there is none).
-    The reasons next to the belief bar are `reason` (the per-step evidence list stays in
-    the logs, for A20)."""
+    The reasons next to the belief bar are `reason`; `evidence` holds the step's top 3 signs
+    (the full list stays in the logs), which the escalation attaches to its decisions (A19)."""
     view = {"state": estimate.state, "reason": estimate.reason_text, "pending": estimate.pending,
             "calibrated": estimate.calibrated, "since": round(estimate.since, 3),
             "t": round(estimate.t, 3), "estimator": estimate.estimator,
@@ -334,5 +338,6 @@ def panel_view(estimate: StateEstimate) -> Dict[str, Any]:
     if estimate.confidence is not None:
         view.update(probs={s: round(estimate.scores.get(s, 0.0), 3) for s in STATES[:4]},
                     most_likely=estimate.most_likely, confidence=round(estimate.confidence, 3),
-                    uncertainty=estimate.uncertainty, updated=estimate.updated, say=estimate.say or "")
+                    uncertainty=estimate.uncertainty, updated=estimate.updated, say=estimate.say or "",
+                    evidence=[{k: e.get(k) for k in EVIDENCE_KEYS} for e in estimate.evidence[:EVIDENCE_TOP]])
     return view

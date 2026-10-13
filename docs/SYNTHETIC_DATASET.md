@@ -7,7 +7,7 @@ versions** on others, in seconds.
 
 Contents: [Quick start](#quick-start) · [What is in it](#what-is-in-it) ·
 [Reading the scores](#reading-the-scores) · [Comparing versions](#comparing-versions-the-workflow) ·
-[Training](#training) · [Results](#results) · [Limits](#limits) ·
+[Training](#training) · [Results](#results) · [Comparing nudges](#comparing-nudges-rules-vs-hmm) · [Limits](#limits) ·
 [For developers](#for-developers)
 
 ## Quick start
@@ -145,6 +145,29 @@ What it showed, and what was done (docs/A16_HMM_DECISIONS.md, Parts H and I):
 - **The rules over-call very drowsy** (their drowsy recall is 10 %: they say very drowsy).
 - The **trained** numbers win on most rows but never say very drowsy and fit the simulator:
   not adopted. Use them as a direction, not as the answer.
+
+## Comparing nudges: rules vs hmm
+
+The scores above judge the *state*. What the participant notices is the *nudges*. `--nudges`
+runs the real escalation ([config/escalation.yaml](../config/escalation.yaml)) over every user, in
+virtual time, three ways: the rules, the HMM with A16's confidence gate, and the HMM with A19's
+belief decisions ([A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md)):
+
+```bash
+python -m eepy.state.dataset eval --nudges                      # test split
+python -m eepy.state.dataset eval --nudges --split test_hard --tolerance 15
+python -m eepy.state.dataset eval --nudges --escalation my_escalation.yaml
+```
+
+| Row | Meaning |
+|---|---|
+| false nudges / hour of work | a nudge while the user was really working |
+| … not within 10 s of a change | the same, without the ones just after someone refocused (or just before they stopped): `--tolerance` |
+| missed distracted ≥ 45 / 60 / 90 s, drowsy ≥ 90 / 120 / 180 s | episodes of at least that length without a nudge of the matching ladder: where each version starts missing real episodes |
+| first nudge (median) | from the start of an episode to its first matching nudge |
+
+Episodes the escalation cannot catch by design are left out: those in the first 3 minutes (the
+settling-in guard) and after a goodnight. Results: [A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md#results).
 
 ## Limits
 

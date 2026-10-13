@@ -1005,7 +1005,8 @@ def test_panel_view_has_the_belief_only_for_the_hmm():
         e = est.update(f)
     view = panel_view(e)
     assert set(view["probs"]) == set(HIDDEN) and view["confidence"] > 0.5 and view["most_likely"] == "focused"
-    assert "say" in view and "updated" in view and len(json.dumps(view)) < 1024
+    assert "say" in view and "updated" in view and len(view["evidence"]) <= 3
+    assert len(json.dumps(view)) < 2048          # once a second over the relay; ~1.1 kB with the top 3 signs (A19)
     rules = make_estimator("rules")
     r = None
     for f in simulate([("work", 30)], seed=1):
