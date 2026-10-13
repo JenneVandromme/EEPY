@@ -55,11 +55,13 @@ class Harness:
     def t(self) -> float:
         return self.clock.now
 
-    def run(self, state: str, seconds: float, pending: Optional[str] = None) -> "Harness":
+    def run(self, state: str, seconds: float, pending: Optional[str] = None,
+            **extra: Any) -> "Harness":
+        """extra: more estimate fields, e.g. the HMM's confidence=0.8, say="..."."""
         end = self.clock.now + seconds
         while self.clock.now < end:
             self.engine.on_state({"state": state, "reason": f"{state} (test)", "pending": pending,
-                                  "calibrated": self.calibrated}, self.clock.now)
+                                  "calibrated": self.calibrated, **extra}, self.clock.now)
             self.clock.now += 1.0
         return self
 
@@ -112,6 +114,11 @@ def broken(change):
     (lambda r: r["wind_down"].update(reminder_before=2000), "reminder_before must be shorter"),
     (lambda r: r["break"].update(offer_level=7), "is not a refocus level"),
     (lambda r: r.update(escalation={}), "unknown setting(s) ['escalation']"),
+    (lambda r: r["confidence"]["act"].update(refocus=70),
+     "confidence.act.refocus must be a number between 0 and 1 (like 0.7), not 70."),
+    (lambda r: r["confidence"]["act"].update(paused=0.7),
+     'confidence.act: "paused" is not a ladder; use refocus or bedtime.'),
+    (lambda r: r["confidence"].update(direct=0), "confidence.direct must be a number between 0 and 1"),
 ])
 def test_mistakes_in_the_config_are_explained(change, words):
     with pytest.raises(EscalationConfigError) as error:
@@ -471,3 +478,70 @@ def test_simulate_over_a_recorded_session(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "1 replies from the panel" in out
     assert "NUDGE  #1 refocus level 1" in out and "DISMISSED" in out
+
+
+# --- the HMM's confidence (A16) ---------------------------------------------------------------------
+
+
+def test_rules_estimates_ignore_the_confidence_section():
+    """The rules give no confidence: the thresholds change nothing in the rules mode."""
+    raw = copy.deepcopy(RAW)
+    raw["guards"]["after_calibration"] = 0
+    raw["confidence"] = {"act": {"refocus": 0.99, "bedtime": 0.99}, "direct": 0.99}
+    strict = Harness(raw).run("focused", 10).run("distracted", 200)
+    normal = Harness().run("focused", 10).run("distracted", 200)
+    assert strict.nudges() == normal.nudges() == [(30.0, "refocus", 1), (60.0, "refocus", 2),
+                                                  (90.0, "refocus", 3), (135.0, "refocus", 4)]
+    assert [d["tone"] for d in strict.of("nudge_decision")] == [d["tone"] for d in normal.of("nudge_decision")]
+
+
+def test_low_confidence_starts_no_episode_and_no_role():
+    h = Harness().run("focused", 10, confidence=0.95).run("distracted", 40, confidence=0.62)
+    assert h.nudges() == [] and h.engine.episode is None
+    assert [r["to"] for r in h.of("role_changed")] == ["study_buddy"]
+    assert h.engine.status(h.t)["next"] == "not sure enough yet: distracted 62% (acts at 70%)"
+    h.run("distracted", 5, confidence=0.75)
+    assert [r["to"] for r in h.of("role_changed")] == ["study_buddy", "refocus"]
+    assert h.nudges() and h.nudges()[0][1:] == ("refocus", 1)
+    assert h.of("nudge_decision")[0]["context"]["confidence"] == 0.75
+    assert h.engine.status(h.t)["act_confidence"] == {"act": {"refocus": 0.7, "bedtime": 0.7}, "direct": 0.85}
+
+
+def test_low_confidence_holds_later_nudges():
+    h = Harness().run("focused", 10, confidence=0.95).run("distracted", 35, confidence=0.9)
+    assert len(h.nudges()) == 1                          # level 1 at 30 s
+    h.run("distracted", 60, confidence=0.6)              # level 2 would be due at 60 s
+    assert len(h.nudges()) == 1
+    assert h.engine.status(h.t)["next"].startswith("not sure enough yet")
+    h.run("distracted", 3, confidence=0.8)
+    assert len(h.nudges()) == 2 and h.nudges()[-1][2] == 2
+
+
+def test_direct_tone_needs_confidence():
+    policy = FixedEscalation(parse(RAW))
+    very = {"state": "very_drowsy", "calibrated": True, "estimator": "hmm"}
+    unsure = policy.decide(context(estimate=dict(very, confidence=0.8), ladder="bedtime", role="bedtime"))
+    sure = policy.decide(context(estimate=dict(very, confidence=0.9), ladder="bedtime", role="bedtime"))
+    assert (unsure.tone, sure.tone) == ("hedged", "direct")
+    summary = context(estimate=dict(very, confidence=0.9, uncertainty=0.2, most_likely="very_drowsy")).summary()
+    assert summary["estimator"] == "hmm" and summary["confidence"] == 0.9 and summary["most_likely"] == "very_drowsy"
+
+
+def test_the_spoken_evidence_is_the_hmms_short_text_or_nothing():
+    spoken: List[str] = []
+    h = Harness()
+    play = h.actuator.play_level
+
+    def recording(ladder, level, intensity, tone, ctx):
+        spoken.append(ctx["evidence"])
+        return play(ladder, level, intensity, tone, ctx)
+
+    h.actuator.play_level = recording
+    h.run("focused", 10, confidence=0.95, say="").run("drowsy", 31, confidence=0.9,
+                                                      say="eyes closed 18% of the last minute")
+    h.run("drowsy", 60, confidence=0.9, say="")          # the HMM holds without a clear reason
+    assert spoken[:2] == ["eyes closed 18% of the last minute", ""]
+    rules = Harness()
+    rules.actuator.play_level = lambda ladder, level, intensity, tone, ctx: spoken.append(ctx["evidence"]) or "x"
+    rules.run("focused", 10).run("distracted", 31)
+    assert spoken[-1] == "distracted (test)"             # the rules: their reason, as before

@@ -1,7 +1,8 @@
 # The escalation (A14): what EEPY DOES about the participant's state.
 #
-# The state comes from config/state_rules.yaml (A13): focused, distracted,
-# drowsy, very_drowsy, absent, unknown. This file says when EEPY nudges, how
+# The state comes from config/state_rules.yaml (A13, rules mode) or the HMM
+# (config/state_hmm.yaml, A16, hmm mode): focused, distracted, drowsy,
+# very_drowsy, absent, unknown. This file says when EEPY nudges, how
 # it climbs the ladders in behaviors/refocus.yaml and behaviors/bedtime.yaml,
 # and when it stops.
 #
@@ -99,3 +100,12 @@ false_alarm_seconds: 5
 
 # How often the panel checks the timers (seconds).
 tick_seconds: 0.5
+
+# How sure the state estimate must be before EEPY acts on it. HMM mode only: the
+# rules give no confidence, so this does nothing in the rules mode. The numbers are
+# P(the shown state), e.g. 0.7 = 70 % sure (see docs/A16_HMM_DECISIONS.md, A4).
+confidence:
+  act:
+    refocus: 0.7     # start the refocus episode / play a refocus nudge only from 70 %
+    bedtime: 0.7
+  direct: 0.85       # the firmer "direct" tone also needs 85 %

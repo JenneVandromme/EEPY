@@ -41,7 +41,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Union
 from .clock import NAME as CLOCK_NAME
 from .clock import monotonic
 from .schema import SCHEMA_VERSION, SchemaError, check_event
-from .session import CURRENT_FILE, DATA_DIR, pid_alive
+from .session import CURRENT_FILE, DATA_DIR, PRIOR_FILE, pid_alive
 from .writer import Clock, LineWriter, clean, write_json_atomic
 
 POLL_SECONDS = 0.5   # how often to look at CURRENT for a new or ended session
@@ -94,6 +94,43 @@ def current_session(data_dir: Path = DATA_DIR) -> Optional[Dict[str, Any]]:
     except (OSError, ValueError):
         info["participant"] = None
     return info
+
+
+def current_session_mode(data_dir: Path = DATA_DIR) -> Optional[str]:
+    """The mode (wizard, rules, hmm, ...) of the session running now, or None."""
+    info = current_session(data_dir)
+    if info is None:
+        return None
+    return session_mode(Path(info["folder"]))
+
+
+def session_mode(folder: Path) -> Optional[str]:
+    try:
+        mode = json.loads((Path(folder) / "meta.json").read_text(encoding="utf-8")).get("mode")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return mode if isinstance(mode, str) else None
+
+
+def read_prior(folder: Path) -> Optional[Dict[str, Any]]:
+    """A session folder's prior.json (HMM, A16): the dict; {"_error": why} when it cannot be
+    used; None when there is none."""
+    path = Path(folder) / PRIOR_FILE
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"_error": f"cannot read {PRIOR_FILE}: {exc}"}
+    if not isinstance(data, dict):
+        return {"_error": f"{PRIOR_FILE} is not a JSON object"}
+    return data
+
+
+def current_session_prior(data_dir: Path = DATA_DIR) -> Optional[Dict[str, Any]]:
+    """The running session's prior.json (see read_prior), or None."""
+    info = current_session(data_dir)
+    return read_prior(Path(info["folder"])) if info is not None else None
 
 
 class FeatureStream:

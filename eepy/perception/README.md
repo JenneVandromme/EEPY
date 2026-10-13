@@ -3,7 +3,7 @@
 Turns camera frames into numbers that describe tiredness and attention: how
 open the eyes are, blinks, yawns, nodding off, where the head points, and
 whether someone is at the desk at all. These numbers are recorded during a
-session and, later, feed the HMM.
+session and feed the state estimators (the rules and the HMM).
 
 It uses **MediaPipe Face Landmarker**: a small model that finds 478 points
 on the face (*landmarks*), 52 expression scores (*blendshapes*) and the
@@ -297,9 +297,13 @@ It records into the session the panel is running: per-frame values go to
 session it runs but records nothing. Every 5 s it prints the frame rate,
 processing time, the user state, and whether it's recording.
 
-It also decides the participant's **state** once a second, from the rules in
-`config/state_rules.yaml`. It records it (`state.csv`, `state_changed`) and
-sends it to the panel's status bar. See [../state/README.md](../state/README.md).
+It also decides the participant's **state** once a second: with the rules
+(`config/state_rules.yaml`), or in hmm sessions with the HMM
+(`config/state_hmm.yaml`). By default it follows the session's mode
+(`--estimator auto`); `--estimator rules` or `--estimator hmm` fixes one, and
+`--hmm-params FILE` tries other HMM numbers. It records the state (`state.csv`,
+`state_changed`, `state_model`) and sends it to the panel's status bar. See
+[../state/README.md](../state/README.md).
 
 ## For developers
 

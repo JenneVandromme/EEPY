@@ -86,14 +86,14 @@ rules:
   - id: microsleep
     state: very_drowsy
     when: blink_max_ms_60s >= 1500
-    needs: [face_present_ratio_10s >= 0.5]
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20]   # eyes seen (forward) 20 s+ (A16)
     # A closure of 1.5 s or more is a microsleep, not a blink.
     says: "eyes closed for {value:.0f} ms at once (microsleep)"
 
   - id: eyes_closed_now
     state: very_drowsy
     when: eyes_closed_now_s >= 1.5
-    needs: [face_present_ratio_10s >= 0.5]
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_10s >= 3]    # eyes judged in the last 10 s (A16)
     # The same, while it is happening (a blink event only exists once the eyes reopen).
     says: "eyes closed for {value:.1f} s right now"
 

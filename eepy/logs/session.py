@@ -10,6 +10,7 @@ Everything lands in data/sessions/<date>_<participant>_<mode>/:
 
     meta.json      who, when, which mode, which code, a snapshot index, notes
     events.jsonl   one JSON object per line, one line per event
+    prior.json     only with a session prior (HMM, A16): what was asked for
     snapshot/      exact copies of the behaviour and config files in use
 
 log.event() validates on the spot -- an unknown type or a missing field raises
@@ -41,6 +42,7 @@ from .writer import Clock, LineWriter, clean, write_json_atomic
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data" / "sessions"
 CURRENT_FILE = "CURRENT"
+PRIOR_FILE = "prior.json"
 DEFAULT_PARTICIPANT_PATTERN = r"^P[0-9]{2,3}$"
 
 # What gets copied into snapshot/ at the start of every session: everything a
@@ -221,8 +223,10 @@ class SessionLog:
     # ------------------------------------------------------------------ sessions
 
     def start(self, participant: str, mode: str, backend: Optional[str] = None,
-              notes: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
-        """Open a session folder and start logging into it."""
+              notes: Optional[str] = None, prior: Optional[Dict[str, Any]] = None,
+              **extra: Any) -> Dict[str, Any]:
+        """Open a session folder and start logging into it. `prior`: a per-session prior
+        for the HMM (written to prior.json before the vision process can see the session)."""
         participant = (participant or "").strip()
         if not re.match(self.participant_pattern, participant):
             raise SessionError(
@@ -256,6 +260,9 @@ class SessionLog:
                 **clean(extra, "extra"),
             }
             write_json_atomic(folder / "meta.json", self._meta)
+            if prior is not None:
+                # Before CURRENT: the vision process only finds the session through CURRENT.
+                write_json_atomic(folder / PRIOR_FILE, prior)
             self._writer = LineWriter(folder / "events.jsonl", self.flush_seconds)
             self.folder, self.session = folder, folder.name
             self.participant, self.mode, self.started_mono = participant, mode, t

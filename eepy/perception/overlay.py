@@ -17,6 +17,11 @@ RED = (60, 60, 230)
 GREEN, YELLOW, CYAN, WHITE, BLACK, GREY = (80, 220, 80), (0, 220, 255), (255, 220, 0), \
     (255, 255, 255), (0, 0, 0), (170, 170, 170)
 FLASH_SECONDS = 0.9
+STATE_COLOURS = {"focused": GREEN, "distracted": YELLOW, "drowsy": YELLOW,
+                 "very_drowsy": RED, "absent": GREY, "unknown": GREY}
+BELIEF_ORDER = ("focused", "distracted", "drowsy", "very_drowsy")
+BELIEF_COLOURS = {"focused": (80, 200, 80), "distracted": (0, 200, 255), "drowsy": (0, 140, 255),
+                  "very_drowsy": (60, 60, 230)}          # BGR
 FLASH_COLOURS = {"blink": CYAN, "yawn": YELLOW, "nod": (255, 120, 255),
                  "looked_away": (60, 60, 255), "back_on_work": GREEN}
 
@@ -32,9 +37,11 @@ def _fmt(value: Optional[float], spec: str = ".2f") -> str:
 
 
 class FaceOverlay:
-    def __init__(self, aus: Any = None, gaze: Any = None, baseline: Any = None, state: Any = None) -> None:
+    def __init__(self, aus: Any = None, gaze: Any = None, baseline: Any = None, state: Any = None,
+                 rules: Any = None) -> None:
         self.baseline = baseline          # the BaselineProvider (A12), to show what is in use
-        self.state = state                # a StateTracker (A13): .latest is the newest estimate
+        self.state = state                # a StateTracker (A13/A16): .latest is the newest estimate
+        self.rules = rules                # a second tracker with the rules, shown below the HMM (self-test)
         self.aus = aus                    # the ActionUnitExtractor, if there is one
         self.gaze = gaze                  # the GazeExtractor, if there is one
         self.show_aus = True
@@ -114,6 +121,7 @@ class FaceOverlay:
                           + ("   (fps too low for blinks)" if w.get("blink_confidence_10s") == "low" else ""),
                           WHITE))
         y = height - 14 - 24 * (len(lines) - 1)
+        self._draw_belief(cv2, image, 12, y - 34)
         for line, color in lines:
             _text(cv2, image, line, 12, y, color)
             y += 24
@@ -200,18 +208,47 @@ class FaceOverlay:
               f"{extra}   (G)", x0, y0 - 10, YELLOW if extra else GREY, 0.45)
 
     def _state_lines(self) -> list:
-        """The user's state (A13) and why: what the Wizard panel shows too."""
+        """The user's state and why: what the Wizard panel shows too. HMM: the state with how
+        sure it is, the reason in grey; then (self-test) the rules' state."""
         latest = getattr(self.state, "latest", None)
         if latest is None:
             return []
-        colour = {"focused": GREEN, "distracted": YELLOW, "drowsy": YELLOW,
-                  "very_drowsy": RED, "absent": GREY, "unknown": GREY}.get(latest.state, WHITE)
+        colour = STATE_COLOURS.get(latest.state, WHITE)
         pending = f"  (-> {latest.pending.replace('_', ' ')}?)" if latest.pending else ""
-        lines = [(f"STATE {latest.state.replace('_', ' ').upper()}{pending}   {latest.reason_text}", colour)]
-        points = latest.values.get("drowsy_points")
-        if points:
-            lines.append((f"drowsy points {points:.1f} (1.0 = drowsy, 2.0 = very drowsy)", GREY))
+        if latest.confidence is None:
+            lines = [(f"STATE {latest.state.replace('_', ' ').upper()}{pending}   {latest.reason_text}", colour)]
+            points = latest.values.get("drowsy_points")
+            if points:
+                lines.append((f"drowsy points {points:.1f} (1.0 = drowsy, 2.0 = very drowsy)", GREY))
+        else:
+            sure = f" {latest.confidence:.0%}" if latest.state not in ("absent", "unknown") else ""
+            lines = [(f"HMM  {latest.state.replace('_', ' ').upper()}{sure}{pending}", colour),
+                     (latest.reason_text, GREY)]
+        rules = getattr(self.rules, "latest", None)
+        if rules is not None:
+            lines.append((f"RULES {rules.state.replace('_', ' ').upper()}   {rules.reason_text}",
+                          STATE_COLOURS.get(rules.state, WHITE)))
         return lines
+
+    def _draw_belief(self, cv2: Any, image: Any, x: int, y: int, width: int = 300, height: int = 12) -> None:
+        """The HMM's belief as a stacked bar (focused, distracted, drowsy, very drowsy); dimmed
+        while it is only drifting (absent, unknown)."""
+        latest = getattr(self.state, "latest", None)
+        if latest is None or latest.confidence is None:
+            return
+        left = x
+        for i, state in enumerate(BELIEF_ORDER):
+            p = latest.scores.get(state, 0.0)
+            w = round(width * p) if i < len(BELIEF_ORDER) - 1 else x + width - left
+            if w <= 0:
+                continue
+            colour = BELIEF_COLOURS[state]
+            if not latest.updated:
+                colour = tuple(int(c * 0.4) for c in colour)
+            cv2.rectangle(image, (left, y), (left + w - 1, y + height), colour, -1)
+            if w >= 40:
+                _text(cv2, image, f"{p:.0%}", left + 3, y + height - 1, WHITE, 0.35)
+            left += w
 
     def _calibration_lines(self) -> list:
         """Whose baseline is in use (A12), and its key values -- or that there is none."""

@@ -29,10 +29,16 @@ RECORDS. Per result: a row in the session's aus.csv (t_mono = the SOURCE
 frame's time). About once a second: au_window (per AU: mean probability and
 share of time active, over the same 10 s / 60 s windows as A9; the achieved
 rate; the cross-checks). On changes: au_status (device, profile, on/off, why).
+
+EYE UNITS (A16). AU43 (eyes closed) in au_window only counts results computed on
+frames where A9 judged the eyes (looking roughly forward): looking down at notes
+made AU43 read "eyes closed", the same artefact the eye gating fixed for PERCLOS.
+results_eyes_<w> counts those results. aus.csv keeps every result.
 """
 
 from __future__ import annotations
 
+import bisect
 import logging
 import threading
 import time
@@ -54,6 +60,8 @@ log = logging.getLogger("eepy.perception.aus")
 
 RATE_WINDOW = 5.0     # seconds over which the achieved rate is measured
 MAX_WEIGHT = 0.5      # seconds one result can stand for in the windows (as in A9)
+EYE_UNITS = ("AU43",)  # read from the eye region: windows use judged-eye frames only (A16)
+JUDGED_WITHIN = 0.2   # seconds: a result counts as judged when a judged frame is this close
 
 
 @dataclass(frozen=True)
@@ -161,9 +169,10 @@ class ActionUnitExtractor(Extractor):
                                   "infer_ms": self.infer_ms()}
         with self._lock:
             results = [r for r in self._results if not self._is_stale(r, r.done)]
+        judged_times = [ct for ct, _ in self._closure]       # time-ordered: appended as frames come
         for seconds in sorted(set(self.config.windows)):
             suffix = f"_{int(seconds)}s"
-            fields.update({k + suffix: v for k, v in self._window(results, now, seconds).items()})
+            fields.update({k + suffix: v for k, v in self._window(results, now, seconds, judged_times).items()})
         return [("au_window", fields)]
 
     def close(self) -> None:
@@ -307,15 +316,22 @@ class ActionUnitExtractor(Extractor):
 
     # --- windows and cross-checks -----------------------------------------------------------
 
-    def _window(self, results: List[AUResult], now: float, seconds: float) -> Dict[str, Any]:
+    def _window(self, results: List[AUResult], now: float, seconds: float,
+                judged_times: Optional[List[float]] = None) -> Dict[str, Any]:
         inside = [r for r in results if r.t >= now - seconds]
         out: Dict[str, Any] = {"results": len(inside)}
         weights = [min(b.t - a.t, MAX_WEIGHT) for a, b in zip(inside, inside[1:])] + \
                   ([min(now - inside[-1].t, MAX_WEIGHT)] if inside else [])
-        total = sum(weights)
+        if judged_times is None:
+            judged_times = [ct for ct, _ in self._closure]
+        judged = [_near(judged_times, r.t) for r in inside]
+        out["results_eyes"] = sum(judged)
         threshold = self.au.active_threshold
         for unit in self.units:
-            pairs = [(r.values[unit], w) for r, w in zip(inside, weights) if unit in r.values]
+            # Eye units: only results on judged-eye frames, with the same per-result weights.
+            use = judged if unit in EYE_UNITS else [True] * len(inside)
+            pairs = [(r.values[unit], w) for r, w, ok in zip(inside, weights, use) if ok and unit in r.values]
+            total = sum(w for w, ok in zip(weights, use) if ok)
             if not pairs or total <= 0:
                 out[f"{unit}_mean"] = out[f"{unit}_active"] = None
                 continue
@@ -364,6 +380,13 @@ class ActionUnitExtractor(Extractor):
 
     def _in_yawn(self, t: float) -> bool:
         return any(start <= t <= end for start, end in self._yawns)
+
+
+def _near(times: List[float], t: float, within: float = JUDGED_WITHIN) -> bool:
+    """Is there a time in the sorted list within `within` seconds of t? (bisect: O(log n);
+    a plain list, as bisect's key= needs Python 3.10)."""
+    i = bisect.bisect_left(times, t - within)
+    return i < len(times) and times[i] <= t + within
 
 
 def _kappa(both: int, a_only: int, b_only: int, neither: int) -> Optional[float]:

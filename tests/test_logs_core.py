@@ -75,8 +75,10 @@ def test_extra_fields_are_allowed(log, data):
 
 
 def test_reserved_types_for_later_tasks_exist():
-    for name in ("hmm_belief", "bandit_decision", "bandit_reward", "reply_category", "llm_output"):
+    for name in ("bandit_decision", "bandit_reward", "reply_category", "llm_output"):
         assert EVENT_TYPES[name].reserved, name
+    assert "hmm_belief" not in EVENT_TYPES            # A16: replaced by state_model + state.csv
+    assert not EVENT_TYPES["state_model"].reserved
 
 
 # --- privacy -------------------------------------------------------------------------

@@ -447,7 +447,7 @@ EEPY/
 ├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
 ├── eepy/perception/       # face features: blinks, yawns, nods, PERCLOS — what they mean: eepy/perception/README.md
 ├── eepy/state/            # the user's state (focused, drowsy, …) from those features — eepy/state/README.md
-├── eepy/interaction/      # the escalation: what the robot does about that state (rules mode) — eepy/interaction/README.md
+├── eepy/interaction/      # the escalation: what the robot does about that state (rules and hmm modes) — eepy/interaction/README.md
 ├── config/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
 │   ├── state_rules.yaml   # the threshold rules: features -> focused / distracted / drowsy / ... (eepy/state/README.md)
@@ -493,7 +493,7 @@ head can physically reach a pose and how fast it moves. Details in
 | check the camera | [eepy/camera/README.md](eepy/camera/README.md) |
 | understand the face values (blinks, PERCLOS, …), or work on perception | [eepy/perception/README.md](eepy/perception/README.md) |
 | understand the user states and their reasons, or change a threshold | [eepy/state/README.md](eepy/state/README.md) |
-| understand when the robot nudges on its own (rules mode), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
+| understand when the robot nudges on its own (rules and hmm modes), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
@@ -541,8 +541,12 @@ network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
 
 Every session is saved in `data/sessions/`, under the **mode** — the
 experimental condition — set in `config/eepy.yaml` (or `--mode wizard|rules|hmm|hmm_bandit`).
-In the **rules** mode the robot nudges on its own (the user state plus the
-escalation ladders); the panel's **Pause autonomy** hands control back to you.
+In the **rules** and **hmm** modes the robot nudges on its own (the user state plus
+the escalation ladders; in the hmm mode the state is the HMM's belief, and the robot
+only acts when it is at least 70 % sure); the panel's **Pause autonomy** hands
+control back to you. The vision program (`python -m eepy.perception`) follows the
+session's mode by itself (`--estimator auto`). How the HMM works and how to read
+its belief: [eepy/state/README.md](eepy/state/README.md#the-hmm-a-belief-instead-of-a-verdict).
 When it nudges and why, and how to try the timings without a camera:
 [eepy/interaction/README.md](eepy/interaction/README.md).
 To look at the data:

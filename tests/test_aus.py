@@ -440,6 +440,44 @@ def test_au43_is_cross_checked_against_the_eye_features():
     assert window["au43_eyes_kappa_10s"] > 0.9
 
 
+def test_eye_units_use_only_judged_frames():
+    """AU43 counts only results on frames where the eyes were judged (looking forward, A16):
+    looking down made AU43 read "eyes closed". Other units use every result."""
+    au = make(start=False)
+    au.status = "running"
+    rows = []
+    for i in range(100):
+        t = i / 10
+        looking_down = 5.0 <= t < 10.0          # eyes not judged: A9 gives no eye_closure
+        if not looking_down:
+            au.notice(t, {"eye_closure": 0.05}, [])
+        rows.append((t, {"AU04": 0.8 if looking_down else 0.2, "AU26": 0.0,
+                         "AU43": 0.9 if looking_down else 0.1}))
+    results(au, rows)
+    window = dict(au.summary(10.0))["au_window"]
+    assert window["results_eyes_10s"] == 52                   # 0.0-4.9 s, plus 5.0 and 5.1 s (within 0.2 s)
+    assert window["AU43_active_10s"] == pytest.approx(0.04, abs=0.02)   # only those two border results
+    assert window["AU43_mean_10s"] == pytest.approx((50 * 0.1 + 2 * 0.9) / 52, abs=0.002)
+    assert window["AU04_active_10s"] == pytest.approx(0.5, abs=0.02)     # unchanged: all results
+    assert window["results_10s"] == 100
+
+
+def test_judged_frame_distance_is_inclusive():
+    from eepy.perception.aus.extractor import _near
+
+    assert _near([1.0, 2.0], 2.2) and _near([1.0, 2.0], 1.85)
+    assert not _near([1.0, 2.0], 2.21) and not _near([1.0, 2.0], 1.75) and not _near([], 1.0)
+
+
+def test_no_judged_frames_means_no_eye_units():
+    au = make(start=False)
+    au.status = "running"
+    results(au, [(i / 10, {"AU04": 0.5, "AU26": 0.0, "AU43": 0.9}) for i in range(50)])
+    window = dict(au.summary(5.0))["au_window"]
+    assert window["results_eyes_10s"] == 0 and window["AU43_active_10s"] is None
+    assert window["AU04_mean_10s"] == pytest.approx(0.5)
+
+
 def test_jaw_drop_is_cross_checked_against_yawns():
     au = make(start=False)
     au.status = "running"

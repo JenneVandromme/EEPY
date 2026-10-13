@@ -70,6 +70,35 @@ What you do in this mode:
 
 When and why the robot nudges: [eepy/interaction/README.md](../eepy/interaction/README.md).
 
+**The hmm mode** (`--mode hmm`) works the same, but the state comes from the HMM
+(A16): a belief instead of a verdict. The state pill shows how sure it is
+(*drowsy · 82 %*), and a small **bar** next to it shows the whole belief: green
+focused, amber distracted, orange drowsy, red very drowsy (faded: on hold, while
+nobody is there or the camera gives no usable data). Hover for the numbers and the
+reasons. The robot only acts when the HMM is at least **70 %** sure; the autonomy
+line then says *not sure enough yet*. How to read it:
+[eepy/state/README.md](../eepy/state/README.md#the-hmm-a-belief-instead-of-a-verdict).
+
+- The vision program follows the session's mode by itself. If the panel says
+  *Mode "hmm" acts on the hmm estimate, but the vision program sends the rules
+  one*, restart the vision program (`python -m eepy.perception`); its terminal says
+  why the HMM did not start. Autonomy waits until then.
+- **A starting belief per session** (switched off by default): start the panel
+  with `--session-prior my_prior.json`. It is copied into each session as
+  `prior.json`; a broken file is reported here and the HMM starts as usual.
+
+**macOS / Linux:**
+```bash
+source .venv-robot/bin/activate
+python -m eepy.wizard --backend real --mode hmm
+```
+
+**Windows (PowerShell):**
+```powershell
+.venv-robot\Scripts\Activate.ps1
+python -m eepy.wizard --backend real --mode hmm
+```
+
 Markers pressed with **no session running are not saved** — the panel warns
 you in orange. Start the session first.
 

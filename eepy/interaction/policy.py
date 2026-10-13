@@ -30,7 +30,7 @@ class NudgeRecord:
 @dataclass(frozen=True)
 class NudgeContext:
     now: float
-    estimate: Dict[str, Any]          # the state estimate (A13): state, reason, pending, calibrated
+    estimate: Dict[str, Any]          # the state estimate: state, reason, pending, calibrated (+ HMM: confidence ...)
     state_seconds: float              # how long the state's role has lasted
     role: str                         # study_buddy | refocus | bedtime | paused | none
     ladder: Optional[str]             # the ladder of this episode
@@ -53,12 +53,26 @@ class NudgeContext:
     def calibrated(self) -> bool:
         return bool(self.estimate.get("calibrated"))
 
+    @property
+    def confidence(self) -> Optional[float]:
+        """HMM: P(the reported state's family); None for the rules."""
+        value = self.estimate.get("confidence")
+        return None if value is None else float(value)
+
+    @property
+    def estimator(self) -> str:
+        return str(self.estimate.get("estimator") or "rules")
+
     def summary(self) -> Dict[str, Any]:
         """For the nudge_decision event: what the policy saw (no history)."""
         out = {k: v for k, v in asdict(self).items() if k not in ("history", "estimate", "now")}
         out["state"] = self.state
         out["calibrated"] = self.calibrated
         out["reason_state"] = self.estimate.get("reason")
+        out["estimator"] = self.estimator
+        for key in ("confidence", "uncertainty", "most_likely"):
+            if self.estimate.get(key) is not None:
+                out[key] = self.estimate[key]
         for key in ("state_seconds", "since_last_nudge", "since_break", "since_calibration",
                     "session_seconds"):
             if out.get(key) is not None:
@@ -118,6 +132,8 @@ class FixedEscalation:
                 level = max(level, ladder.start_level_very_drowsy)
             why = f"no reaction to level {context.level}"
         repeat = context.level is not None and context.last_outcome == "no_reaction"
-        tone = "direct" if context.calibrated and (very or repeat) else "hedged"
+        conf = context.confidence
+        sure = conf is None or conf >= self.config.direct_confidence     # the rules: no confidence
+        tone = "direct" if context.calibrated and (very or repeat) and sure else "hedged"
         return Action("play", context.ladder, level, ladder.intensity.get(level, 1.0), tone,
                       reason=f"{context.ladder} level {level}: {why}")

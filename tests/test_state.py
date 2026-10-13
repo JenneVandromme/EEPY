@@ -162,6 +162,19 @@ def test_eye_rules_need_20_s_of_eyes_seen_looking_forward():
     assert any(x.startswith("long_blinks: needs") for x in skipped)
 
 
+def test_microsleep_rules_need_judged_eyes():
+    """A16 fix: a long 'closure' while the eyes were not judged (looking down) is not a microsleep."""
+    est = estimator()
+    raw, _, skipped, _ = est.evaluate(feats(face={"blink_max_ms_60s": 4000.0, "eyes_measured_s_60s": 5.0}))
+    assert raw != "very_drowsy"
+    assert any(s.startswith("microsleep: needs eyes_measured_s_60s >= 20") for s in skipped)
+    raw, fired, _, _ = estimator().evaluate(feats(face={"blink_max_ms_60s": 4000.0, "eyes_measured_s_60s": 30.0}))
+    assert raw == "very_drowsy" and fired["very_drowsy"][0].rule == "microsleep"
+    raw, _, skipped, _ = estimator().evaluate(feats(face={"eyes_closed_now_s": 3.0, "eyes_measured_s_10s": 0.0}))
+    assert raw != "very_drowsy"
+    assert any(s.startswith("eyes_closed_now: needs eyes_measured_s_10s >= 3") for s in skipped)
+
+
 def test_an_empty_desk_is_absent_not_drowsy():
     """The 60 s window still holds the PERCLOS from before the person left: the
     drowsiness rules need the face visible, so it is absent (and listed as skipped)."""
@@ -497,7 +510,7 @@ def test_the_estimator_is_chosen_by_name_and_mode():
     from eepy.state.estimate import for_mode
 
     assert make_estimator("rules").name == "rules"
-    assert for_mode("hmm") == "rules"             # until A16 registers the HMM
+    assert for_mode("hmm") == "hmm"
     with pytest.raises(ValueError, match="No state estimator called"):
         make_estimator("crystal_ball")
 

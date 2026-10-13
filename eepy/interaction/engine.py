@@ -176,6 +176,8 @@ class EscalationEngine:
                 else max(0.0, round(self.next_at - now, 1)),
                 "nudges": len(self.nudges), "nudges_last_hour": self._last_hour(now),
                 "last_outcome": self.last_outcome,
+                "act_confidence": {"act": dict(self.config.act_confidence),
+                                   "direct": self.config.direct_confidence},
                 "open": None if self.open is None else
                 {"decision_id": self.open.decision_id, "ladder": self.open.ladder, "level": self.open.level},
             }
@@ -363,6 +365,10 @@ class EscalationEngine:
             if now - since < onset:
                 self._wait(f"{self._state.replace('_', ' ')}: first nudge if it lasts, in", since + onset)
                 return
+            unsure = self._unsure(role)
+            if unsure is not None:             # no episode, no role switch until the estimate is sure
+                self._wait(unsure)
+                return
             self.episode = ep = Episode(role, now)
             self._set_role(role, now)
         self._maybe_nudge(ep, now, since)
@@ -411,8 +417,20 @@ class EscalationEngine:
             return f"{cfg.max_per_hour} nudges in the last hour: waiting until", self._hour[0] + 3600
         if self.actuator.busy():
             return "the robot is still moving", None
+        unsure = self._unsure(self.episode.ladder if self.episode is not None else self.config.role_for(self._state))
+        if unsure is not None:
+            return unsure, None
         if self.estimate.get("pending") == "focused":
             return "they seem to be getting back to work", None
+        return None
+
+    def _unsure(self, ladder: str) -> Optional[str]:
+        """Why not to act yet: the estimate is less sure than config/escalation.yaml's
+        confidence.act for this ladder (HMM only: the rules give no confidence)."""
+        conf = self.estimate.get("confidence")
+        need = self.config.act_confidence.get(ladder)
+        if conf is not None and need is not None and conf < need:
+            return f"not sure enough yet: {self._state.replace('_', ' ')} {conf:.0%} (acts at {need:.0%})"
         return None
 
     def _last_hour(self, now: float) -> int:
@@ -432,6 +450,12 @@ class EscalationEngine:
             since_break=ago(self.last_break_t), since_calibration=ago(self.calibrated_at),
             session_seconds=now - self.session_start, history=tuple(self.nudges))
 
+    def _evidence_text(self) -> str:
+        """{evidence} in a spoken line. The HMM gives a short `say` ("" when it has no clear
+        reason -- never its long sentence); the rules give their reason."""
+        say = self.estimate.get("say")
+        return say if say is not None else (self.estimate.get("reason") or "")
+
     def _play(self, action: Action, context: NudgeContext, now: float, count: bool = True,
               policy_name: Optional[str] = None, window: Optional[float] = -1.0) -> None:
         cfg = self.config
@@ -450,7 +474,7 @@ class EscalationEngine:
                     reaction_window=reaction, context=context.summary())
         self.actuator.play_level(ladder, level, action.intensity, action.tone,
                                  {"minutes": max(1, int(round(minutes / 60))),
-                                  "evidence": self.estimate.get("reason") or ""})
+                                  "evidence": self._evidence_text()})
         self.open = OpenNudge(decision_id, ladder, level, now, reaction)
         if self._state in ("absent", "unknown"):
             self.open.freeze_start = now

@@ -9,8 +9,8 @@
 # overrides it for one run.
 #
 #   wizard       a human operator drives the robot through the panel
-#   rules        rule-based escalation (A14)              -- not built yet
-#   hmm          HMM-driven decisions                     -- not built yet
+#   rules        the threshold rules (A13) + the escalation (A14): the robot nudges on its own
+#   hmm          the HMM (A16) + the same escalation; acts only when >= 70 % sure
 #   hmm_bandit   HMM plus a bandit choosing the action    -- not built yet
 #
 # In a mode that is not built yet, the panel still works by hand, shows the

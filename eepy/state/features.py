@@ -11,6 +11,8 @@ a few worked out here:
     face_present_ratio_<w>   share of the window with a face (1 - face_absent_ratio)
     gaze_off_ratio_<w>       share of the FACE-PRESENT time the gaze was off the work:
                              looking away while at the desk, not having left it
+    blink_count_<w>          blinks seen in the window (blink rate x judged seconds)
+    face_seen_s_<w>          seconds with a face in the window (coverage x face present)
     au_status, au_rate       the action units' state and rate (au_window's status/rate)
     <state>_points           points added up by the rules (e.g. drowsy_points)
 
@@ -57,8 +59,12 @@ PER_WINDOW = {
     "away_episodes": "number of looks away",
     "away_mean_s": "mean length of a look away (s)",
     "away_longest_s": "longest look away (s)",
+    # worked out in assemble() (used by the HMM, A16)
+    "blink_count": "blinks seen while the eyes were judged",
+    "face_seen_s": "seconds with a face in view",
     # au_window (eepy/perception/aus/extractor.py)
     "au_results": "action-unit results in the window",
+    "au_results_eyes": "action-unit results while the eyes were judged (looking forward)",
 }
 UNSUFFIXED = {
     "eyes_closed_now_s": "how long the eyes have been closed right now (s)",
@@ -123,6 +129,12 @@ def assemble(t: float, face: Optional[Mapping[str, Any]] = None,
         if off is not None and none is not None:
             seen = 1.0 - none
             out[f"gaze_off_ratio{suffix}"] = round(max(0.0, off - none) / seen, 4) if seen > 0.05 else None
+        rate, judged = out.get(f"blink_rate{suffix}"), out.get(f"eyes_measured_s{suffix}")
+        if face and rate is not None and judged is not None:
+            out[f"blink_count{suffix}"] = round(float(rate) * float(judged) / 60.0, 1)
+        coverage, present = out.get(f"coverage_s{suffix}"), out.get(f"face_present_ratio{suffix}")
+        if face and coverage is not None and present is not None:
+            out[f"face_seen_s{suffix}"] = round(float(coverage) * float(present), 1)
     return out
 
 

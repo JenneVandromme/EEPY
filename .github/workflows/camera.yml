@@ -19,8 +19,10 @@ on:
       - "tests/test_gaze.py"
       - "tests/test_calibration.py"
       - "tests/test_state.py"
+      - "tests/test_hmm.py"
       - "config/eepy.yaml"
       - "config/state_rules.yaml"
+      - "config/state_hmm.yaml"
       - "requirements-vision.txt"
       - "requirements-aus.txt"
       - ".github/workflows/camera.yml"
@@ -36,8 +38,10 @@ on:
       - "tests/test_gaze.py"
       - "tests/test_calibration.py"
       - "tests/test_state.py"
+      - "tests/test_hmm.py"
       - "config/eepy.yaml"
       - "config/state_rules.yaml"
+      - "config/state_hmm.yaml"
       - "requirements-vision.txt"
       - "requirements-aus.txt"
       - ".github/workflows/camera.yml"
@@ -78,8 +82,8 @@ jobs:
 
       # Without requirements-aus.txt: the designers' laptops. The AU tests here
       # prove that everything runs with action units switched off.
-      - name: Camera, face-feature and user-state tests (action units NOT installed)
-        run: python -m pytest tests/test_camera.py tests/test_perception.py tests/test_aus.py tests/test_gaze.py tests/test_calibration.py tests/test_state.py -q
+      - name: Camera, face-feature and user-state tests, rules and HMM (action units NOT installed)
+        run: python -m pytest tests/test_camera.py tests/test_perception.py tests/test_aus.py tests/test_gaze.py tests/test_calibration.py tests/test_state.py tests/test_hmm.py -q
 
   # The optional action units, for real: Py-Feat and its model on the CPU (the
   # runners have no GPU, so CUDA and Apple's MPS are checked with bench_aus on

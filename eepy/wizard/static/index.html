@@ -16,11 +16,13 @@
     --bg: #f4f2ee; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dedad3;
     --accent: #2f5bd3; --ok: #1f8a4c; --bad: #c62828; --warn: #b26a00; --key: #ecebe7;
     --refocus: #2f5bd3; --bedtime: #6a3fb5; --basics: #1f8a4c; --lines: #8a5a1f; --markers: #b0306b;
+    /* the HMM's belief bar (A16): focused, distracted, drowsy, very drowsy */
+    --b-focused: var(--ok); --b-distracted: var(--warn); --b-drowsy: #d9771e; --b-very: var(--bad);
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #17171a; --panel: #212125; --ink: #ececef; --muted: #a0a0a8; --line: #34343a;
             --key: #2e2e34; --accent: #6e92ff; --refocus: #6e92ff; --bedtime: #a985f0;
-            --basics: #4cc785; --lines: #d9a35a; --markers: #ec6fa8; }
+            --basics: #4cc785; --lines: #d9a35a; --markers: #ec6fa8; --b-drowsy: #e8913e; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -38,6 +40,12 @@
   .pill.rec { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.amber { background: var(--warn); color: #fff; font-weight: 600; }
   .ustate-why { font-size: 12px; max-width: 34em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .belief { display: inline-flex; width: 120px; height: 10px; border-radius: 5px; overflow: hidden;
+            background: var(--key); border: 1px solid var(--line); }
+  .belief > i { display: block; height: 100%; flex: 0 0 0; }
+  .belief .b0 { background: var(--b-focused); } .belief .b1 { background: var(--b-distracted); }
+  .belief .b2 { background: var(--b-drowsy); } .belief .b3 { background: var(--b-very); }
+  .belief.stale { opacity: .35; }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
   .calbar { display: inline-block; width: 160px; height: 10px; border: 1px solid var(--muted); border-radius: 5px; overflow: hidden; }
   .calbar > span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
@@ -125,6 +133,7 @@
     <span class="pill">idle: <b id="idle">—</b></span>
     <span class="pill" id="camera" hidden><span class="dot"></span><span>camera</span></span>
     <span class="pill" id="ustate" hidden><span class="dot"></span><span>state: <b></b></span></span>
+    <span class="belief" id="ubelief" hidden><i class="b0"></i><i class="b1"></i><i class="b2"></i><i class="b3"></i></span>
     <span class="muted ustate-why" id="ustate-why"></span>
     <span class="spacer"></span>
     <button class="small" id="reload" tabindex="-1">Reload files</button>
@@ -317,35 +326,58 @@ function renderStatus(s) {
   } else e.hidden = true;
 
   renderCamera(s.camera);
-  renderUserState(s.user_state);
+  renderUserState(s.user_state, s.autonomy, s.session);
   renderSession(s.session);
   renderCalibration(s.calibration, s.session);
   renderAutonomy(s.autonomy, s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
 }
 
-// The participant's state (A13), estimated by the vision process from the camera:
-// focused, distracted, drowsy, very drowsy, absent, unknown -- with the main reason.
-// What each means: eepy/state/README.md.
+// The participant's state, estimated by the vision process from the camera: by the
+// rules (A13) or the HMM (A16) -- focused, distracted, drowsy, very drowsy, absent,
+// unknown -- with the main reason. The HMM also sends its belief: the bar after the
+// pill (greyed while it only drifts: absent or unknown). eepy/state/README.md.
 const STATE_LOOK = { focused: ["", "dot ok"], distracted: [" amber", "dot"], drowsy: [" amber", "dot"],
                      very_drowsy: [" bad", "dot"], absent: ["", "dot"], unknown: ["", "dot"] };
-function renderUserState(u) {
-  const pill = $("ustate"), why = $("ustate-why");
+const BELIEF = ["focused", "distracted", "drowsy", "very_drowsy"];
+const FAMILY = { focused: "focus", distracted: "distraction", drowsy: "drowsiness", very_drowsy: "drowsiness" };
+const pct = (p) => `${Math.round(p * 100)} %`;
+function renderUserState(u, auto, session) {
+  const pill = $("ustate"), why = $("ustate-why"), bar = $("ubelief");
   pill.hidden = !u; why.textContent = "";
+  bar.hidden = !(u && u.probs && u.fresh);
   if (!u) return;
   const name = u.fresh ? u.state : "unknown";
+  const hmm = u.confidence !== undefined && u.confidence !== null;
+  const shown = hmm && u.fresh && name !== "absent" && name !== "unknown";
   const [cls, dot] = STATE_LOOK[name] || ["", "dot"];
   pill.className = "pill" + cls;
   pill.querySelector(".dot").className = dot;
   let text = name.replace("_", " ");
+  if (shown) text += ` · ${pct(u.confidence)}`;
   if (u.fresh && u.pending) text += ` → ${u.pending.replace("_", " ")}?`;
   if (u.fresh && !u.calibrated) text += " · uncalibrated";
   pill.querySelector("b").textContent = text;
   why.textContent = u.fresh ? u.reason : "no word from the vision program for a few seconds";
-  pill.title = `Estimated from the camera by the ${u.estimator} (eepy/state/README.md).\n`
-             + (u.fresh ? `Why: ${u.reason}` : "The vision program (python -m eepy.perception) is not sending.")
-             + (u.pending ? `\nMay change to: ${u.pending.replace("_", " ")} (waiting to be sure)` : "")
-             + (u.calibrated ? "" : "\nNot calibrated: default values, less reliable.");
+  let tip = `Estimated from the camera by the ${u.estimator} (eepy/state/README.md).\n`;
+  if (hmm && u.probs) {
+    const act = auto && auto.act_confidence && auto.act_confidence.act
+      ? auto.act_confidence.act[name === "distracted" ? "refocus" : "bedtime"] : null;
+    tip += "Belief (HMM): " + BELIEF.map((s) => `${s.replace("_", " ")} ${pct(u.probs[s])}`).join(" · ") + "\n"
+         + `Most likely: ${u.most_likely.replace("_", " ")}.`
+         + (shown && name !== "focused" ? ` ${pct(u.confidence)} sure it is ${FAMILY[name]}`
+            + (act ? ` (EEPY acts from ${pct(act)}).` : ".") : "") + "\n";
+    const segs = bar.querySelectorAll("i");
+    BELIEF.forEach((s, i) => { segs[i].style.flexBasis = `${(u.probs[s] * 100).toFixed(1)}%`; });
+    bar.classList.toggle("stale", !u.updated);
+    bar.title = tip.trim();
+  }
+  tip += (u.fresh ? `Why: ${u.reason.split("; ").join(" / ")}` : "The vision program (python -m eepy.perception) is not sending.")
+       + (u.pending ? `\nMay change to: ${u.pending.replace("_", " ")} (waiting to be sure)` : "")
+       + (u.calibrated ? "" : "\nNot calibrated: default values, less reliable.");
+  if (u.expected_estimator && u.estimator !== u.expected_estimator && !(session && session.active))
+    tip += `\nThe vision program runs the ${u.estimator} until a session starts.`;
+  pill.title = tip;
 }
 
 // The camera pill: what the vision process gets from this panel (eepy/camera/relay.py).

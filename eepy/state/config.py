@@ -14,7 +14,7 @@ import difflib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
 from .estimate import STATES
 from .features import WINDOWS, catalog, known
@@ -166,19 +166,7 @@ def parse(raw: Any, where: str = "config/state_rules.yaml", windows: Sequence[fl
     point_names = {f"{s}_points" for s in points_needed}
 
     def condition(text: Any, label: str) -> Condition:
-        match = CONDITION.match(str(text)) if isinstance(text, str) else None
-        if match is None:
-            raise fail(f'{label}: "{text}" is not a condition like "perclos_60s >= 0.12" '
-                       f"(compare with one of {' '.join(OPERATORS)}).")
-        feature, op, value = match.group(1), match.group(2), _value(match.group(3))
-        if not known(feature, names, windows):
-            close = difflib.get_close_matches(feature, list(names), n=1)
-            hint = f' (did you mean "{close[0]}"?)' if close else ""
-            raise fail(f'{label}: unknown feature "{feature}"{hint}. The features are listed '
-                       "in eepy/state/README.md.")
-        if isinstance(value, str) and op not in ("==", "!="):
-            raise fail(f'{label}: "{text}" compares with a word; use a number, or == / != for words.')
-        return Condition(feature, op, value, str(text).strip())
+        return parse_condition(text, label, names, windows, fail)
 
     def rule(item: Any, n: int, allowed: set, state: Optional[str]) -> Rule:
         if not isinstance(item, dict):
@@ -242,6 +230,25 @@ def parse(raw: Any, where: str = "config/state_rules.yaml", windows: Sequence[fl
             raise fail(f"points_needed has {state}, but no {state} rule gives points.")
     return RulesConfig(priority, points_needed, enter, leave, float(gap), unknown, rules,
                        path=where, windows=tuple(int(w) for w in windows))
+
+
+def parse_condition(text: Any, label: str, names: Dict[str, str], windows: Sequence[float],
+                    fail: Callable[[str], Exception]) -> Condition:
+    """One condition like "perclos_60s >= 0.12", checked against the feature names.
+    Shared by the rules and the HMM parameters (same syntax, same messages)."""
+    match = CONDITION.match(str(text)) if isinstance(text, str) else None
+    if match is None:
+        raise fail(f'{label}: "{text}" is not a condition like "perclos_60s >= 0.12" '
+                   f"(compare with one of {' '.join(OPERATORS)}).")
+    feature, op, value = match.group(1), match.group(2), _value(match.group(3))
+    if not known(feature, names, windows):
+        close = difflib.get_close_matches(feature, list(names), n=1)
+        hint = f' (did you mean "{close[0]}"?)' if close else ""
+        raise fail(f'{label}: unknown feature "{feature}"{hint}. The features are listed '
+                   "in eepy/state/README.md.")
+    if isinstance(value, str) and op not in ("==", "!="):
+        raise fail(f'{label}: "{text}" compares with a word; use a number, or == / != for words.')
+    return Condition(feature, op, value, str(text).strip())
 
 
 def _numbers(section: Any, label: str, allowed: Sequence[str], fail: Any) -> Dict[str, float]:

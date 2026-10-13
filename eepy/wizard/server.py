@@ -57,6 +57,9 @@ from eepy.logs import log as central_log
 from eepy.logs.check import clear_stale_pointer, stale_pointer
 from eepy.logs.clock import monotonic as shared_clock
 from eepy.logs.schema import IMPLEMENTED_MODES
+
+# The modes where the robot nudges on its own, and the state estimator each acts on.
+AUTONOMY_MODES = {"rules": "rules", "hmm": "hmm"}
 from eepy.logs.session import SessionError
 
 from .config import CONFIG_PATH, ConfigError, Panel, PanelConfig, build_panel, load_config
@@ -104,6 +107,7 @@ class Wizard:
         speaker_factory: Callable[[], Any] | None = None,
         camera_relay: tuple[int, float] | None = None,
         calibration_store: Any = None,
+        session_prior: Path | None = None,
     ) -> None:
         self.backend_factory = backend_factory
         self.backend_name = backend_name
@@ -116,6 +120,10 @@ class Wizard:
         self.speaker_factory = speaker_factory
         self.mode = mode
         self.mode_implemented = mode in IMPLEMENTED_MODES
+        # --session-prior FILE.json (HMM, A16): read at each session start, written to prior.json.
+        self.session_prior_path = Path(session_prior) if session_prior is not None else None
+        self._session_started_at = -1e9
+        self._estimator_warned = False
         # The central logger, unless a test passes its own.
         self.sessions = session_log if session_log is not None else central_log
         self.clock = self.sessions.clock
@@ -165,11 +173,11 @@ class Wizard:
             self._error(f'Mode "{mode}" has no controller yet, so nothing decides on its own: '
                         "the robot only does what you press. Sessions are still recorded "
                         f'as mode "{mode}".')
-        # The rules mode (A14): the robot nudges on its own, from the state the vision
-        # process sends. eepy/interaction/README.md.
+        # The rules and hmm modes (A14, A16): the robot nudges on its own, from the state
+        # the vision process sends. eepy/interaction/README.md.
         self.autonomy: Any = None
         self._autonomy_thread: threading.Thread | None = None
-        if mode == "rules":
+        if mode in AUTONOMY_MODES:
             self._start_autonomy()
 
         # The camera relay: the robot's camera and head pose, for the vision
@@ -416,14 +424,17 @@ class Wizard:
         return self._note("note", "wizard", text=text)
 
     def start_session(self, participant: str, notes: str | None = None) -> dict:
+        prior = self._read_session_prior()
         try:
             record = self.sessions.start(
                 participant, mode=self.mode, backend=self.backend_name, notes=notes,
                 intensity_default=self.config.default_intensity,
                 behaviors=sorted(self.library.behaviors),
-                markers=[m.id for m in self.config.markers])
+                markers=[m.id for m in self.config.markers], prior=prior)
         except SessionError as exc:
             raise WizardError(str(exc)) from None
+        self._session_started_at = shared_clock()
+        self._estimator_warned = False
         self._push(record)
         if not self.mode_implemented:
             self._note("mode_not_implemented", "system", mode=self.mode)
@@ -597,12 +608,43 @@ class Wizard:
             except SessionError:
                 pass
 
+    def _read_session_prior(self) -> dict | None:
+        """The --session-prior file, read at each session start. A problem is shown and
+        recorded as {"_error": ...}, so the fall-back to the hand-set values is visible."""
+        if self.session_prior_path is None:
+            return None
+        try:
+            data = json.loads(self.session_prior_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("it is not a JSON object ({...})")
+            return data
+        except (OSError, ValueError) as exc:
+            problem = f"{self.session_prior_path}: {exc}"
+            self._error(f"The session prior cannot be used, so the HMM starts from its hand-set values:\n{problem}")
+            return {"_error": problem}
+
     def _state_report(self, estimate: dict) -> None:
-        """The vision process's newest state estimate (about once a second)."""
+        """The vision process's newest state estimate (about once a second). In a session of
+        the rules or hmm mode, only an estimate from the matching estimator reaches the
+        escalation; a mismatch (after a 3-s grace at the session start, while the vision
+        program switches) is reported once per session, and autonomy waits."""
         self.user_state = estimate
         self._user_state_seen = time.monotonic()
-        if self.autonomy is not None:
-            self.autonomy.on_state(estimate, shared_clock())
+        if self.autonomy is None:
+            return
+        expected = AUTONOMY_MODES.get(self.mode)
+        sent = estimate.get("estimator") or "rules"          # older vision programs: always the rules
+        if expected is not None and self.sessions.active and sent != expected:
+            if shared_clock() - self._session_started_at < 3.0:
+                return
+            if not self._estimator_warned:
+                self._error(f'Mode "{self.mode}" acts on the {expected} estimate, but the vision program '
+                            f'sends the {sent} one. Restart it (python -m eepy.perception) '
+                            "or check its --estimator option (see the vision terminal for why the HMM did "
+                            "not start). Autonomy waits until then.")
+                self._estimator_warned = True
+            return                     # not fed: the engine goes stale -> unknown -> nothing happens
+        self.autonomy.on_state(estimate, shared_clock())
 
     # ------------------------------------------------------------- autonomy (A14)
 
@@ -620,7 +662,7 @@ class Wizard:
             config = load_escalation()
             check_library(config, self.library)
         except EscalationConfigError as exc:
-            self._error(f"The rules mode cannot nudge: the escalation config has a problem.\n{exc}")
+            self._error(f"The {self.mode} mode cannot nudge: the escalation config has a problem.\n{exc}")
             return
         actuator = PlayerActuator(lambda: self.player, on_error=self._error, library=lambda: self.library)
         self.autonomy = EscalationEngine(
@@ -644,7 +686,8 @@ class Wizard:
 
     def set_autonomy_paused(self, paused: bool, via: str = "click") -> dict:
         if self.autonomy is None:
-            raise WizardError("Autonomy only runs in the rules mode (start the panel with --mode rules).")
+            raise WizardError("Autonomy only runs in the rules and hmm modes (start the panel with "
+                              "--mode rules or --mode hmm).")
         self._note("wizard_command", "wizard", action="autonomy_pause" if paused else "autonomy_resume", via=via)
         self.autonomy.set_paused(paused, shared_clock())
         return self.autonomy.status(shared_clock())
@@ -656,7 +699,11 @@ class Wizard:
         """The state for the status bar; `fresh` False when the vision process went quiet."""
         if self.user_state is None:
             return None
-        return dict(self.user_state, fresh=time.monotonic() - self._user_state_seen < 3.0)
+        out = dict(self.user_state, fresh=time.monotonic() - self._user_state_seen < 3.0)
+        expected = AUTONOMY_MODES.get(self.mode)
+        if expected is not None:
+            out["expected_estimator"] = expected
+        return out
 
     def calibration_status(self) -> dict:
         return dict(self.calibration, vision_connected=time.monotonic() - self._vision_seen < 3.0)

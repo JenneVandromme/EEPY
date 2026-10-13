@@ -26,8 +26,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--no-aus", action="store_true", help="no action units, even if installed")
     parser.add_argument("--user", help="whose calibration (default: each session's participant)")
     parser.add_argument("--setup", help="camera-setup label of the gaze calibration (e.g. lab)")
-    parser.add_argument("--estimator", default="rules",
-                        help="user-state estimator (A13: rules; the HMM comes in A16)")
+    parser.add_argument("--estimator", choices=("auto", "rules", "hmm"), default="auto",
+                        help="user-state estimator: auto (default) follows the session's mode -- the HMM "
+                             "in hmm sessions, the rules otherwise; or always rules / always hmm")
+    parser.add_argument("--hmm-params", help="the HMM's parameter file (default: config/state_hmm.yaml)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
 
@@ -35,6 +37,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     from eepy.logs.features import FeatureStream, ProcessEventLog
 
     from eepy.state.config import RulesConfigError
+    from eepy.state.hmm_params import HMMConfigError
 
     from .aus import ActionUnitExtractor
     from .aus import load_config as load_au_config
@@ -49,8 +52,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         # keep_full: the calibration's face check shows the blue box in the whole picture.
         camera = open_camera(args.camera, events=events, keep_full=True,
                              **({"index": args.index} if args.index is not None else {}))
-        tracker = _state_tracker(args.estimator, config.windows)   # checks state_rules.yaml first
-    except (CameraError, CameraConfigError, RulesConfigError, ValueError) as exc:   # also a wrong --profile
+        tracker, hmm_params = _state_tracker(args.estimator, args.hmm_params)   # checks both YAML files first
+    except (CameraError, CameraConfigError, RulesConfigError, HMMConfigError, ValueError) as exc:  # also --profile
         print(f"\n  {exc}", file=sys.stderr)
         return 2
     extractors = default_extractors(config)
@@ -84,12 +87,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     pipeline.subscribe(publisher)
     # The user's state (A13): from each window summary, logged and sent to the panel.
     from eepy.logs.clock import monotonic
-    from eepy.state.runner import StateFromPipeline, StatePublisher, StateRecorder
+    from eepy.state.runner import SessionEstimators, StateFromPipeline, StatePublisher, StateRecorder, \
+        describe_estimator
 
     state_stream = StateRecorder.make_stream()
     state_publisher = StatePublisher(camera.config.relay_port)
-    tracker.listeners += [StateRecorder(events, state_stream), state_publisher]
-    pipeline.subscribe(StateFromPipeline(tracker, config.windows, session=lambda: features.session))
+    tracker.listeners += [StateRecorder(events, state_stream, describe=lambda: describe_estimator(tracker.estimator)),
+                          state_publisher]
+    choose = SessionEstimators(tracker, fixed=None if args.estimator == "auto" else args.estimator,
+                               hmm_params=hmm_params)
+    pipeline.subscribe(StateFromPipeline(tracker, config.windows, session=lambda: features.session,
+                                         on_session=choose))
     pipeline.start()
     # The Wizard panel's "Calibrate" step runs here (this process has the camera).
     from .calibration.remote import CommandHandler
@@ -122,10 +130,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"AUs {aus.status} {aus.achieved_rate():.0f}/s"
             zone = (latest.values.get("gaze_zone") if latest else None) or "-"
             calib = "" if gaze.zones.calibrated and baseline.current().calibrated else " (uncalibrated)"
-            state = tracker.latest.state if tracker.latest else "-"
             print(f"  {stats['fps'] or 0:4.1f} fps   {stats['process_ms'] or 0:5.1f} ms/frame   "
-                  f"{face:8}  gaze {zone}{calib:15} {au_text:18} state {state:12} {camera.status}   "
-                  f"{recording}")
+                  f"{face:8}  gaze {zone}{calib:15} {au_text:18} state {_state_text(tracker):22} "
+                  f"{camera.status}   {recording}")
     except KeyboardInterrupt:
         pass
     finally:
@@ -139,14 +146,28 @@ def main(argv: Optional[List[str]] = None) -> int:
     return 0
 
 
-def _state_tracker(name: str, windows: Any) -> Any:
-    """The user-state estimator (A13), with its gap setting from state_rules.yaml."""
+def _state_tracker(name: str, hmm_params_path: Optional[str]) -> Any:
+    """The user-state tracker. Both parameter files are checked at start-up (a mistake stops
+    here with a message). auto starts with the rules (no session yet); the session's mode
+    decides from then on. If the HMM cannot load (numpy missing), auto keeps the rules."""
+    from eepy.state.config import load as load_rules
     from eepy.state.estimate import make_estimator
+    from eepy.state.hmm_params import load as load_hmm
     from eepy.state.runner import StateTracker
 
-    estimator = make_estimator(name)
-    gap = getattr(getattr(estimator, "config", None), "gap_seconds", 3.0)
-    return StateTracker(estimator, gap_seconds=gap)
+    load_rules()
+    hmm_params = load_hmm(hmm_params_path)
+    estimator = make_estimator("hmm", params=hmm_params) if name == "hmm" else make_estimator("rules")
+    return StateTracker(estimator), hmm_params
+
+
+def _state_text(tracker: Any) -> str:
+    """For the status line: "drowsy 82% (hmm)" or "focused (rules)"."""
+    latest = tracker.latest
+    if latest is None:
+        return "-"
+    sure = f" {latest.confidence:.0%}" if latest.confidence is not None else ""
+    return f"{latest.state}{sure} ({latest.estimator})"
 
 
 if __name__ == "__main__":

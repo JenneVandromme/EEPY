@@ -34,7 +34,7 @@ SOURCES: FrozenSet[str] = frozenset({
 # The experimental conditions. "wizard": the operator only; "rules": the state rules
 # (A13) and the fixed escalation (A14) act on their own. The HMM modes come later.
 MODES: Tuple[str, ...] = ("wizard", "rules", "hmm", "hmm_bandit")
-IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard", "rules"})   # rules: A13 + A14
+IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard", "rules", "hmm"})   # rules: A13 + A14; hmm: A16 + A14
 
 
 @dataclass(frozen=True)
@@ -143,11 +143,18 @@ EVENT_TYPES: Dict[str, EventType] = {
                            "active over 10 s / 60 s, the achieved rate, and cross-checks with "
                            "the eye and yawn features."),
 
-    # --- the user's state (eepy/state/): rules now, the HMM later ------------------------
+    # --- the user's state (eepy/state/): the rules (A13) or the HMM (A16) ------------------
     "state_changed": EventType("model", ("to", "estimator"),
                                "The estimated user state changed (focused, distracted, drowsy, "
                                "very_drowsy, absent, unknown): from, to, the reason, the rules "
-                               "that fired with their values. Every second's state is in state.csv."),
+                               "that fired with their values. The HMM adds probs, most_likely, "
+                               "confidence, uncertainty, pending, updated and hmm_evidence (its "
+                               "top signs). Every second's state is in state.csv."),
+    "state_model": EventType("model", ("estimator",),
+                             "Which state estimator runs in this session, logged at its first "
+                             "estimate in the session: the estimator, its parameter file, version, "
+                             "params_source (hand_set/fitted), sha256, the enabled features, and the "
+                             "applied session prior. The belief itself is in state.csv (p_<state>)."),
 
     # --- autonomy (eepy/interaction/, A14): what EEPY decided, and what came of it ---------
     "nudge_decision": EventType("autonomy", ("decision_id", "policy", "ladder", "level"),
@@ -168,9 +175,6 @@ EVENT_TYPES: Dict[str, EventType] = {
                             "autonomy_paused/resumed."),
 
     # --- reserved for later tasks: defined now so the format is settled ---------------
-    "hmm_belief": EventType("model", ("probs", "most_likely"),
-                            "The HMM's belief over hidden states, e.g. "
-                            "{'focused': .7, 'distracted': .2, 'tired': .1}.", reserved=True),
     "bandit_decision": EventType("model", ("arm", "policy"),
                                  "The bandit chose an action. Log 'propensity' too: "
                                  "the probability it had of choosing it, needed for "

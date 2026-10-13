@@ -21,7 +21,7 @@ STATES = ("focused", "distracted", "drowsy", "very_drowsy", "absent", "unknown")
 ROLES = ("study_buddy", "refocus", "bedtime", "paused", "none")
 LADDER_ROLES = ("refocus", "bedtime")
 TOP_KEYS = {"roles", "role_switch", "onset", "ladders", "focused", "guards", "absent", "break",
-            "wind_down", "false_alarm_seconds", "tick_seconds"}
+            "wind_down", "false_alarm_seconds", "tick_seconds", "confidence"}
 
 
 class EscalationConfigError(ValueError):
@@ -76,6 +76,9 @@ class EscalationConfig:
     goodnight_level: int
     false_alarm_seconds: float = 5.0
     tick_seconds: float = 0.5
+    # How sure the state estimate must be (HMM only; the rules give no confidence).
+    act_confidence: Dict[str, float] = field(default_factory=dict)    # ladder -> minimum P to act
+    direct_confidence: float = 0.85                                    # minimum P for the direct tone
     path: str = "config/escalation.yaml"
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -224,6 +227,25 @@ def parse(raw: Any, where: str = "config/escalation.yaml") -> EscalationConfig:
     wind = section("wind_down")
     known(wind, "wind_down", {"offer_level", "seconds", "snoozes", "snooze_seconds", "reminder_line",
                               "reminder_before", "goodnight_level"})
+    conf = raw.get("confidence") or {}
+    if not isinstance(conf, dict):
+        raise fail("confidence must have `act` (per ladder) and/or `direct`.")
+    known(conf, "confidence", {"act", "direct"})
+
+    def probability(value: Any, label: str) -> float:
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 < value <= 1:
+            raise fail(f"{label} must be a number between 0 and 1 (like 0.7), not {value!r}.")
+        return float(value)
+
+    act_raw = conf.get("act") or {}
+    if not isinstance(act_raw, dict):
+        raise fail("confidence.act must give a number per ladder, like {refocus: 0.7, bedtime: 0.7}.")
+    act_confidence: Dict[str, float] = {}
+    for ladder_name, value in act_raw.items():
+        if ladder_name not in LADDER_ROLES:
+            raise fail(f'confidence.act: "{ladder_name}" is not a ladder; use {" or ".join(LADDER_ROLES)}.')
+        act_confidence[ladder_name] = probability(value, f"confidence.act.{ladder_name}")
+    direct_confidence = probability(conf.get("direct", 0.85), "confidence.direct")
     nod_flag = focused.get("nod_only_after_success", True)
     if not isinstance(nod_flag, bool):
         raise fail(f"focused.nod_only_after_success must be true or false, not {nod_flag!r}.")
@@ -253,6 +275,7 @@ def parse(raw: Any, where: str = "config/escalation.yaml") -> EscalationConfig:
         goodnight_level=whole(wind.get("goodnight_level"), "wind_down.goodnight_level", low=1),
         false_alarm_seconds=seconds(raw.get("false_alarm_seconds", 5), "false_alarm_seconds"),
         tick_seconds=seconds(raw.get("tick_seconds", 0.5), "tick_seconds", positive=True),
+        act_confidence=act_confidence, direct_confidence=direct_confidence,
         path=where, raw=raw)
     if "refocus" in ladders and config.break_offer_level not in ladders["refocus"].reaction:
         raise fail(f"break.offer_level {config.break_offer_level} is not a refocus level "

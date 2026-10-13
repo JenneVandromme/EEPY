@@ -62,16 +62,16 @@ All event types live in `schema.py`, in these groups plus reserved ones:
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
 | Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries), `au_status`, `au_window` (optional action units), `calibration` (A12, see [eepy/perception/calibration/README.md](../perception/calibration/README.md)), `looked_away`, `back_on_work`, `gaze_window`, `gaze_status` (gaze, see [eepy/perception/gaze/README.md](../perception/gaze/README.md)) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
-| Autonomy | `nudge_decision`, `nudge_outcome` (one per decision: success / no_reaction / dismissed / snoozed / interrupted_focus / censored), `role_changed`, `escalation` — the rules mode (A14); see [eepy/interaction/README.md](../interaction/README.md) |
-| Model | `state_changed` (the user's state: from, to, reason, evidence; every second's state is in `state.csv`) — written by the vision process; see [eepy/state/README.md](../state/README.md) |
+| Autonomy | `nudge_decision`, `nudge_outcome` (one per decision: success / no_reaction / dismissed / snoozed / interrupted_focus / censored), `role_changed`, `escalation` — the rules and hmm modes (A14, A16); see [eepy/interaction/README.md](../interaction/README.md) |
+| Model | `state_changed` (the user's state: from, to, reason, evidence; the HMM adds its probabilities; every second's state is in `state.csv`), `state_model` (which estimator and parameter file ran, and the session prior; once per session) — written by the vision process; see [eepy/state/README.md](../state/README.md) |
 | Camera | `camera_started`, `camera_error`, `camera_reconnected`, `camera_stats` — statistics only, never pixels; written by the vision process to `events.vision.jsonl` (see [eepy/camera/README.md](../camera/README.md)) |
-| **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |
+| **Reserved** | `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` (the reserved `hmm_belief` became `state_model` + the `p_<state>` columns of `state.csv` in A16) |
 
 Every line in `events.jsonl` carries `v` (schema version), `seq` (1, 2, 3 …),
 `t_mono`, `t_wall`, `type` and `source`, plus the type's own fields. Extra
 fields are always allowed, so the data can grow without a schema change; bump
 `SCHEMA_VERSION` only when an existing field changes meaning. The reserved
-types are defined now, so the HMM and bandit tasks inherit a settled format
+types are defined now, so the bandit and LLM tasks inherit a settled format
 instead of inventing one under deadline pressure.
 
 ## The main decisions, and why

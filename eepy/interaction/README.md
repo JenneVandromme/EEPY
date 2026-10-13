@@ -1,8 +1,9 @@
 # When EEPY nudges, and why
 
-In the **rules** mode, EEPY acts on its own. The camera tells it how the
-participant is doing ([the user state](../state/README.md): focused, distracted,
-drowsy…). This part decides what the robot **does** about it. It climbs the
+In the **rules** and **hmm** modes, EEPY acts on its own. The camera tells it how
+the participant is doing ([the user state](../state/README.md): focused,
+distracted, drowsy…; from the threshold rules in the rules mode, from the HMM in
+the hmm mode). This part decides what the robot **does** about it. It climbs the
 ladders in [`behaviors/refocus.yaml`](../../behaviors/refocus.yaml) and
 [`behaviors/bedtime.yaml`](../../behaviors/bedtime.yaml): start barely
 noticeable, and only get clearer when the gentle version didn't work.
@@ -64,6 +65,33 @@ drowsy ─30 s─▶ level 1 ─60 s─▶ level 2 ─60 s─▶ level 3 ("Getti
 - **While the robot is still moving,** or while the participant seems to be
   getting back to work.
 - **When the operator pressed Pause autonomy.**
+- **In the hmm mode, while the HMM is not sure enough** (below 70 %, see
+  *How sure is sure enough* below).
+
+## How sure is sure enough (hmm mode)
+
+The HMM says how sure it is of the state, e.g. *distracted · 82 %*. In
+[`config/escalation.yaml`](../../config/escalation.yaml), under `confidence:`:
+
+```yaml
+confidence:
+  act:
+    refocus: 0.7     # start the refocus episode / play a refocus nudge only from 70 %
+    bedtime: 0.7
+  direct: 0.85       # the firmer "direct" tone also needs 85 %
+```
+
+- **Below `act`,** nothing starts: no role switch, no nudge, and a running ladder
+  does not climb. The autonomy line says *not sure enough yet: distracted 62 %
+  (acts at 70 %)*.
+- **The direct tone** (for very drowsy, or after a nudge without reaction, when
+  calibrated) also needs `direct`; otherwise the nudge is hedged.
+- **The rules mode** gives no percentage, so this section changes nothing there.
+- Spoken lines with `{evidence}` get the HMM's short reason (e.g. *eyes closed 18%
+  of the last minute*), or nothing when it has no clear one.
+
+The percentages are decision scores, not exact chances (A18 checks them). Higher
+thresholds mean fewer false alarms but later nudges.
 
 ## The special moments
 
@@ -92,12 +120,16 @@ counts as "went to bed": the nudges worked.
 
 ## In the Wizard panel
 
-Start the panel in the rules mode, with the vision program next to it:
+Start the panel in the rules (or hmm) mode, with the vision program next to it:
 
 ```bash
-python -m eepy.wizard --backend real --mode rules   # (.venv-robot)
+python -m eepy.wizard --backend real --mode rules   # (.venv-robot); or --mode hmm
 python -m eepy.perception                           # (.venv-vision), the camera and the state
 ```
+
+The vision program follows the session's mode by itself. If the panel says it
+sends the wrong estimate (rules in an hmm session), restart it: autonomy waits
+until the right one arrives.
 
 Under the session bar, an **autonomy** line shows:
 - the **role** (study buddy, refocus, bedtime, paused);
@@ -112,7 +144,7 @@ You stay in charge:
   whenever something goes wrong.
 - **The participant's answers:** the marker buttons **user accepted**, **user
   snoozed** and **user dismissed** (keys `.`, `/` and `m`). They're recorded as
-  observations, like every marker, and in the rules mode they also steer the
+  observations, like every marker, and in the rules and hmm modes they also steer the
   robot (see the special moments above). Later, speech will do this (A28).
 - **Anything you play yourself** is still recorded as yours (`source=wizard`),
   never as the robot's. The robot then waits at least 20 s before its own
@@ -209,7 +241,8 @@ Every nudge gives **two events**, linked by `decision_id`:
 - the `reason` and the `reaction_window`;
 - the `context` it decided on: the state and how long it lasted, calibrated,
   previous outcome, nudges this session and this hour, time since the last
-  nudge, break and calibration.
+  nudge, break and calibration; the `estimator`, and for the HMM its
+  `confidence`, `uncertainty` and `most_likely` state.
 
 **`nudge_outcome`**, exactly once per decision. It holds the outcome below,
 `seconds` (the time to the outcome), the state at that moment, and the `detail`.
@@ -256,13 +289,17 @@ The robot's own behaviours carry `source=auto` and the operator's
   and `SimActuator` (virtual time, real behaviour lengths).
 - **`config.py`:** loads and checks `config/escalation.yaml`. `check_library()`
   checks it against `behaviors/`.
-- **The panel** (`eepy/wizard/server.py`, rules mode only):
+- **The panel** (`eepy/wizard/server.py`, rules and hmm modes):
   - `_start_autonomy()` builds the engine and a tick thread;
-  - the vision process's `STATE` relay messages go to `on_state()`;
+  - the vision process's `STATE` relay messages go to `on_state()`, only when they
+    come from the mode's estimator (after a 3-s grace at the session start; a
+    mismatch is reported once per session and the engine is not fed);
   - the reply markers go to `reply()`;
   - `POST /api/autonomy {"paused": true}` pauses it.
 - **Tests:**
   - `tests/test_escalation.py`: onset, step-up, reset and nod, cooldown,
     guards, absent, break, wind-down, goodnight, pause, every outcome, the
     config checks, the scenarios and simulating over a recorded session;
-  - `tests/test_wizard.py`: the rules mode in the panel.
+  - `tests/test_wizard.py`: the rules and hmm modes in the panel, the estimator guard.
+- **The confidence gate** (`engine._unsure`): before the episode and role switch,
+  and in `_guard` for later nudges; the policy's tone checks `direct_confidence`.

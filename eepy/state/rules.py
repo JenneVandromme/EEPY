@@ -13,6 +13,8 @@ the estimate) -- they neither fire nor count against. See eepy/state/README.md.
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import Rule, RulesConfig, fill, load
@@ -29,6 +31,23 @@ class RulesEstimator:
     def __init__(self, config: Optional[RulesConfig] = None) -> None:
         self.config = config or load()
         self.reset()
+
+    @property
+    def gap_seconds(self) -> float:
+        return self.config.gap_seconds
+
+    def describe(self) -> Dict[str, Any]:
+        """For the state_model event."""
+        from .config import REPO_ROOT
+
+        path = Path(self.config.path)
+        full = path if path.is_absolute() else REPO_ROOT / path
+        try:
+            digest: Optional[str] = hashlib.sha256(full.read_bytes()).hexdigest()
+        except OSError:
+            digest = None
+        return {"estimator": self.name, "params": self.config.path, "sha256": digest,
+                "gap_seconds": self.config.gap_seconds}
 
     def reset(self) -> None:
         self.state = "unknown"

@@ -89,14 +89,34 @@ no_face), `gaze_on_work`, `gaze_confidence`, `gaze_mode` and `away_s`; the event
 default work area. See [eepy/perception/gaze/README.md](../eepy/perception/gaze/README.md).
 
 **User state**: `state.csv` has one row a second: `state` (focused / distracted / drowsy /
-very_drowsy / absent / unknown), `pending` (a state waiting out its dwell time), `calibrated`,
-the `rules` that fired, the `reason` as shown in the panel, and `p_<state>` scores (one-hot for
-the rules; probabilities once the HMM exists). `events.vision.jsonl` has a `state_changed`
-event at every change: `from`, `to`, the reason, the evidence (feature, value, threshold) and
-what was skipped. Re-run the states with other thresholds, and compare them with the operator's
-markers: `python -m eepy.state.replay <session>`. See [eepy/state/README.md](../eepy/state/README.md).
+very_drowsy / absent / unknown), `pending` (a state waiting out its dwell time, or for the HMM
+the state becoming more likely), `calibrated`, the `rules` that fired, the `reason` as shown in
+the panel, `p_<state>` scores, and `estimator` (`rules` or `hmm`; empty in sessions from before
+A16 = rules). For the rules the scores are one-hot. For the HMM (hmm mode, from A16) they are its
+probabilities over focused / distracted / drowsy / very_drowsy (`p_absent` and `p_unknown` are
+always 0: those are flags, shown in `state`), and the row also has `most_likely` (the most likely
+of the four), `confidence` (P of the shown state), `uncertainty` (0 certain, 1 uniform),
+`updated` (0 while absent / unknown: the belief only drifted), `n_features` (signs used) and
+`evidence` (the strongest signs, e.g. `perclos->sleepy +0.12`).
 
-**Autonomy** (rules mode): every nudge the robot chose is a `nudge_decision` (ladder, level,
+`events.vision.jsonl` has a `state_changed` event at every change: `from`, `to`, the reason, the
+evidence (feature, value, threshold) and what was skipped; the HMM adds `probs`, `most_likely`,
+`confidence`, `uncertainty`, `pending`, `updated` and `hmm_evidence` (its top signs). A
+`state_model` event, once per session, says which estimator ran with which parameter file
+(`params`, `version`, `params_source` hand_set / fitted, `sha256`), and the session prior applied
+(`prior`). A `prior.json` in the session folder (only with the panel's `--session-prior`) is the
+starting belief that was asked for.
+
+Rules sessions from before and after A16 differ slightly: the `microsleep` and `eyes_closed_now`
+rules now need the eyes judged (the snapshotted `state_rules.yaml` shows which). In `au_window`,
+`AU43_*` only counts moments of looking forward from A16 on (`results_eyes_*` counts them);
+older sessions include looking down.
+
+Re-run the states with other thresholds or HMM numbers, and compare them with the operator's
+markers: `python -m eepy.state.replay <session> [--estimator rules|hmm|both]`. See
+[eepy/state/README.md](../eepy/state/README.md).
+
+**Autonomy** (rules and hmm modes): every nudge the robot chose is a `nudge_decision` (ladder, level,
 behaviour, tone, reason, `propensity`, and the `context` it decided on), followed by exactly one
 `nudge_outcome` with the same `decision_id`: `success`, `no_reaction`, `dismissed`, `snoozed`,
 `interrupted_focus` (a false alarm) or `censored` (no fair verdict), with `seconds` and a `detail`.

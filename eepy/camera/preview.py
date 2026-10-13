@@ -93,7 +93,7 @@ def _draw(cv2: Any, frame: Any, fps: float, camera: Any) -> Any:
 
 
 def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True,
-                   user: Optional[str] = None) -> Any:
+                   user: Optional[str] = None, estimator: str = "hmm", hmm_params: Optional[str] = None) -> Any:
     """(FacePipeline, FaceOverlay), or (None, None) where MediaPipe is missing.
     Action units are added when installed (and the profile allows)."""
     try:
@@ -122,18 +122,27 @@ def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True,
 
     baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
     pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline)
-    # The user's state (A13), live, with its reason. Shown only: nothing is recorded.
+    # The user's state (A13 rules / A16 HMM), live, with its reason. Shown only: nothing is recorded.
     from eepy.state.config import RulesConfigError
     from eepy.state.estimate import make_estimator
+    from eepy.state.hmm_params import HMMConfigError
     from eepy.state.runner import StateFromPipeline, StateTracker
 
-    try:
-        estimator = make_estimator("rules")
-        tracker = StateTracker(estimator, gap_seconds=estimator.config.gap_seconds)
+    tracker = None
+    if estimator == "hmm":
+        try:
+            from eepy.state.hmm_params import load as load_hmm
+
+            tracker = StateTracker(make_estimator("hmm", params=load_hmm(hmm_params)))
+        except (HMMConfigError, ValueError) as exc:
+            print(f"  (The HMM cannot run, showing the rules instead: {exc})")
+    if tracker is None:
+        try:
+            tracker = StateTracker(make_estimator("rules"))
+        except RulesConfigError as exc:
+            print(f"  (No user state: {exc})")
+    if tracker is not None:
         pipeline.subscribe(StateFromPipeline(tracker, config.windows))
-    except RulesConfigError as exc:
-        print(f"  (No user state: {exc})")
-        tracker = None
     return pipeline, FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=tracker)
 
 
@@ -148,6 +157,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--profile", help="machine profile for action units (default: EEPY_PROFILE, else laptop)")
     parser.add_argument("--user", help="whose gaze calibration to use (default: the running session's "
                                        "participant, else 'default')")
+    parser.add_argument("--estimator", choices=("hmm", "rules"), default="hmm",
+                        help="which user-state estimator to show (default: hmm)")
+    parser.add_argument("--hmm-params", help="the HMM's parameter file (default: config/state_hmm.yaml)")
     parser.add_argument("--seconds", type=float, default=0,
                         help="stop by itself after this many seconds (default: run until Q)")
     args = parser.parse_args(argv)
@@ -177,7 +189,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         pipeline, overlay = (None, None) if args.no_face else \
-            _face_pipeline(camera, args.profile, aus=not args.no_aus, user=args.user)
+            _face_pipeline(camera, args.profile, aus=not args.no_aus, user=args.user,
+                           estimator=args.estimator, hmm_params=args.hmm_params)
     except CameraConfigError as exc:      # e.g. an unknown --profile
         print(f"\n  {exc}", file=sys.stderr)
         return 2

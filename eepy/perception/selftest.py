@@ -244,8 +244,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--user", help="whose gaze calibration (default: 'default')")
     parser.add_argument("--fast", action="store_true", help="2-second steps (checks that it runs)")
     parser.add_argument("--states", action="store_true",
-                        help="instead: the user-state scenario (A13, ~3 minutes): work, phone, "
-                             "act sleepy, leave")
+                        help="instead: the user-state scenario (~3 minutes): work, phone, act sleepy, "
+                             "leave -- the rules (A13) and the HMM (A16) side by side")
+    parser.add_argument("--hmm-params", help="with --states: the HMM's parameter file "
+                                             "(default: config/state_hmm.yaml)")
     args = parser.parse_args(argv)
 
     import logging
@@ -296,7 +298,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
     pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline)
     if args.states:
-        return _state_scenario(cv2, pipeline, camera, config, au, gaze, baseline, args.fast)
+        return _state_scenario(cv2, pipeline, camera, config, au, gaze, baseline, args.fast, args.hmm_params)
     pipeline.start()
     overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline)
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
@@ -384,22 +386,34 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def _state_scenario(cv2: Any, pipeline: Any, camera: Any, config: Any, au: Any, gaze: Any,
-                    baseline: Any, fast: bool) -> int:
-    """A13: the scripted scenario -- work, phone, back, act sleepy, leave -- with the
-    rules running live. Reports the state in each part and how long switches took."""
+                    baseline: Any, fast: bool, hmm_params: Optional[str] = None) -> int:
+    """The scripted scenario -- work, phone, back, act sleepy, leave -- with the rules (A13)
+    and the HMM (A16) running live on the same pictures. Reports the state in each part and
+    how long switches took, for both."""
     from eepy.logs.clock import monotonic
     from eepy.state.estimate import make_estimator
+    from eepy.state.hmm_params import HMMConfigError
     from eepy.state.runner import StateFromPipeline, StateTracker
-    from eepy.state.scenario import SCENARIO, judge, report
+    from eepy.state.scenario import SCENARIO, judge, report, report_both
 
     from .overlay import FaceOverlay
 
-    estimator = make_estimator("rules")
     estimates: List[Any] = []
-    tracker = StateTracker(estimator, gap_seconds=estimator.config.gap_seconds, listeners=[estimates.append])
+    tracker = StateTracker(make_estimator("rules"), listeners=[estimates.append])
     pipeline.subscribe(StateFromPipeline(tracker, config.windows))
+    hmm_estimates: List[Any] = []
+    hmm_tracker = None
+    try:
+        from eepy.state.hmm_params import load as load_hmm
+
+        hmm_tracker = StateTracker(make_estimator("hmm", params=load_hmm(hmm_params)),
+                                   listeners=[hmm_estimates.append])
+        pipeline.subscribe(StateFromPipeline(hmm_tracker, config.windows))
+    except (HMMConfigError, ValueError) as exc:
+        print(f"\n  The HMM cannot run, so this tests the rules only: {exc}")
     pipeline.start()
-    overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=tracker)
+    overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=hmm_tracker or tracker,
+                          rules=tracker if hmm_tracker is not None else None)
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     print(f"\n  User-state scenario on the {camera.describe()} (about 3 minutes). "
           "Follow the instructions in the window.")
@@ -422,6 +436,8 @@ def _state_scenario(cv2: Any, pipeline: Any, camera: Any, config: Any, au: Any, 
                     print(f"\n  {pipeline.error}", file=sys.stderr)
                     return 1
                 tracker.idle(now)
+                if hmm_tracker is not None:
+                    hmm_tracker.idle(now)
                 newest = pipeline.wait_for_result(newer_than=result, timeout=0.1)
                 if newest is not None:
                     result = newest
@@ -443,6 +459,12 @@ def _state_scenario(cv2: Any, pipeline: Any, camera: Any, config: Any, au: Any, 
         cv2.waitKey(1)
     for line in report(judge(timed, estimates), estimates, started):
         print(line)
+    if hmm_tracker is not None:
+        for line in report(judge(timed, hmm_estimates), hmm_estimates, started, title="User state (A16 HMM)"):
+            print(line)
+        for line in report_both(judge(timed, estimates), judge(timed, hmm_estimates), estimates,
+                                hmm_estimates, started):
+            print(line)
     print()
     return 0
 

@@ -61,10 +61,10 @@ class FlakyBackend(DryRunBackend):
 def make(files):
     made = []
 
-    def _make(factory=DryRunBackend, spoken=None, mode="wizard", speaker_factory=None):
+    def _make(factory=DryRunBackend, spoken=None, mode="wizard", speaker_factory=None, session_prior=None):
         wizard = Wizard(factory, backend_name="dry", behaviors_dir=files["behaviors"],
                         sounds_dir=files["sounds"], config_path=files["config"],
-                        speaker_factory=speaker_factory,
+                        speaker_factory=speaker_factory, session_prior=session_prior,
                         mode=mode, session_log=SessionLog(data_dir=files["data"],
                                                           repo_root=REPO),
                         speech_callback=(lambda l, t: spoken.append((l, t))) if spoken is not None else None)
@@ -457,15 +457,15 @@ def test_the_mode_is_shown_and_recorded(make, files):
 
 
 def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files):
-    _, client = make(mode="hmm")              # (rules is built since A14; the HMM is not yet)
+    _, client = make(mode="hmm_bandit")       # (rules since A14, hmm since A16; the bandit is not yet)
     status = client.get("/api/state").json()["status"]
-    assert status["mode"] == "hmm" and not status["mode_implemented"]
+    assert status["mode"] == "hmm_bandit" and not status["mode_implemented"]
     assert "no controller" in status["last_error"]["message"]
     client.post("/api/session/start", json={"participant": "P21"})
     assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"]
     client.post("/api/session/end")
-    assert session_folder(files).name.endswith("_P21_hmm")
-    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "hmm" for r in lines(files))
+    assert session_folder(files).name.endswith("_P21_hmm_bandit")
+    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "hmm_bandit" for r in lines(files))
 
 
 def test_session_metadata_is_complete(make, files):
@@ -814,3 +814,68 @@ def test_wizard_mode_has_no_autonomy(make):
     assert r["ok"] and r["autonomy"] is None                    # just a marker
     assert client.post("/api/autonomy", json={"paused": True}).status_code >= 400
     wizard.end_session()
+
+
+# --- the HMM mode (A16) ---------------------------------------------------------------------------
+
+HMM_DISTRACTED = {"state": "distracted", "reason": "looking away now (looking away for 30 s) suggests distraction",
+                  "pending": None, "calibrated": True, "estimator": "hmm", "confidence": 0.9,
+                  "say": "looking away for 30 s"}
+
+
+def test_hmm_mode_runs_autonomy(make, quick_escalation):
+    wizard, client = make(mode="hmm")
+    assert wizard.mode_implemented and wizard.autonomy is not None
+    wizard.start_session("P40")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10                          # past the grace
+    wizard._state_report(dict(HMM_DISTRACTED, confidence=0.5))
+    assert _recent(wizard, "nudge_decision") == []            # not sure enough yet
+    assert wizard.status()["autonomy"]["next"].startswith("not sure enough yet")
+    wizard._state_report(HMM_DISTRACTED)
+    decision = _recent(wizard, "nudge_decision")
+    assert decision and (decision[0]["ladder"], decision[0]["level"]) == ("refocus", 1)
+    assert decision[0]["context"]["confidence"] == 0.9 and decision[0]["context"]["estimator"] == "hmm"
+    wizard.end_session()
+
+
+def test_estimator_guard(make, quick_escalation):
+    wizard, _ = make(mode="hmm")
+    rules = dict(HMM_DISTRACTED, estimator="rules")
+    for key in ("confidence", "say"):
+        rules.pop(key)
+    wizard._state_report(rules)                               # outside a session: no error
+    assert wizard.last_error is None
+    assert wizard.state_status()["expected_estimator"] == "hmm"
+    wizard.start_session("P41")
+    wizard.calibration_command("skip", reason="test")
+    wizard._state_report(rules)                               # within the 3-s grace: quiet, not fed
+    assert wizard.last_error is None and _recent(wizard, "nudge_decision") == []
+    wizard._session_started_at -= 10
+    wizard._state_report(rules)
+    wizard._state_report(rules)
+    message = wizard.last_error["message"]
+    assert 'Mode "hmm" acts on the hmm estimate, but the vision program sends the rules one' in message
+    assert _recent(wizard, "nudge_decision") == []            # not fed
+    wizard.last_error = None
+    wizard._state_report(rules)
+    assert wizard.last_error is None                          # once per session
+    wizard._state_report(HMM_DISTRACTED)                      # the matching estimator: fed
+    assert len(_recent(wizard, "nudge_decision")) == 1
+    wizard.end_session()
+
+
+def test_session_prior_is_written_before_the_vision_program_can_see_the_session(make, files, tmp_path):
+    prior = tmp_path / "prior.json"
+    prior.write_text(json.dumps({"source": "kss", "inputs": {"kss": 7}, "drowsiness_multiplier": 2.0}))
+    wizard, client = make(mode="hmm", session_prior=prior)
+    client.post("/api/session/start", json={"participant": "P42"})
+    folder = session_folder(files)
+    assert json.loads((folder / "prior.json").read_text())["source"] == "kss"
+    client.post("/api/session/end")
+    prior.write_text("{not json")
+    client.post("/api/session/start", json={"participant": "P43"})
+    newest = sorted(p for p in files["data"].iterdir() if p.is_dir())[-1]
+    assert "_error" in json.loads((newest / "prior.json").read_text())
+    assert "session prior cannot be used" in wizard.last_error["message"]
+    client.post("/api/session/end")
