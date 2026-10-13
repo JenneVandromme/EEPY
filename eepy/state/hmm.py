@@ -371,11 +371,14 @@ class HMMEstimator:
             else:
                 strength = 0.0
                 text = f"{o.spec.label} ({o.show}) says nothing about the state"
+            push = w * (big - big.mean())         # per full window, by family, centred (dt-free)
             items.append({"feature": o.spec.id, "input": o.spec.input, "value": o.value,
                           "supports": FAMILIES[supports] if supports is not None else None,
                           "against": FAMILIES[against] if against is not None else None,
                           "impact": round(impact, 3), "strength": round(strength, 3), "weight": round(w, 3),
-                          "quiet": o.quiet, "text": text})
+                          "quiet": o.quiet, "text": text, "label": o.spec.label, "show": o.show,
+                          "group": o.spec.group, "push": [round(float(v), 3) for v in push],
+                          "step": [round(float(v - g.mean()), 4) for v in g]})
         items.sort(key=lambda d: -d["impact"])
         return items
 

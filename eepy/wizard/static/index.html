@@ -46,6 +46,12 @@
   .belief .b0 { background: var(--b-focused); } .belief .b1 { background: var(--b-distracted); }
   .belief .b2 { background: var(--b-drowsy); } .belief .b3 { background: var(--b-very); }
   .belief.stale { opacity: .35; }
+  /* the HMM's decision chain in the autonomy row (hmm mode): belief -> gate -> robot */
+  .chain { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .chain .step { padding: 2px 8px; border-radius: 999px; background: var(--key); }
+  .chain .step.yes { outline: 1.5px solid var(--ok); } .chain .step.no { outline: 1.5px solid var(--warn); }
+  .chain .lit { animation: chainlit 1.2s ease-out; }
+  @keyframes chainlit { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
   .calbar { display: inline-block; width: 160px; height: 10px; border: 1px solid var(--muted); border-radius: 5px; overflow: hidden; }
   .calbar > span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
@@ -464,6 +470,7 @@ function renderAutonomy(a, se) {
   if (!row.dataset.built) {
     row.dataset.built = "1";
     row.innerHTML = `<span class="pill" id="auto-pill"><span class="dot"></span><span id="auto-text"></span></span>
+      <span class="chain" id="auto-chain" hidden></span>
       <span class="muted" id="auto-next"></span><span class="spacer"></span>
       <button class="small" id="auto-pause" tabindex="-1"></button>`;
     $("auto-pause").onclick = () => { $("auto-pause").blur();
@@ -494,6 +501,34 @@ function renderAutonomy(a, se) {
   const btn = $("auto-pause");
   btn.textContent = a.paused ? "Resume autonomy" : "Pause autonomy";
   btn.hidden = !a.active && !a.paused;
+  renderChain(state.status.user_state, a);
+}
+
+// hmm mode: the decision as a chain -- belief -> sure enough? -> what the robot does. The
+// full, replayable view of the same chain: python -m eepy.state.explain (docs/EXPLANATION_VIEWER.md).
+let lastChain = "";
+function renderChain(u, a) {
+  const box = $("auto-chain");
+  const hmm = u && u.fresh && u.confidence !== undefined && u.confidence !== null;
+  box.hidden = !hmm || !a.active;
+  if (box.hidden) return;
+  const ladder = u.state === "distracted" ? "refocus" : (u.state === "drowsy" || u.state === "very_drowsy") ? "bedtime" : null;
+  const need = ladder && a.act_confidence && a.act_confidence.act ? a.act_confidence.act[ladder] : null;
+  const pctx = (p) => `${Math.round(p * 100)} %`;
+  let gate = "nothing to act on", cls = "";
+  if (ladder && need != null) {
+    const ok = u.confidence >= need;
+    gate = ok ? `✓ sure enough (acts from ${pctx(need)})` : `✗ not sure enough (acts from ${pctx(need)})`;
+    cls = ok ? "yes" : "no";
+  } else if (u.state === "absent" || u.state === "unknown") gate = "on hold";
+  const robot = a.paused ? "paused by you" : a.ladder && a.level != null ? `${a.ladder} level ${a.level}`
+              : ladder && cls === "yes" ? "first nudge when due" : "quiet";
+  const key = `${u.state}|${cls}|${robot}`;
+  const lit = key !== lastChain && lastChain !== "";
+  lastChain = key;
+  box.innerHTML = `<span class="step" title="the HMM's belief: the shown state and how sure it is">${u.state.replace("_", " ")} ${pctx(u.confidence)}</span>→`
+    + `<span class="step ${cls} ${lit ? "lit" : ""}" title="config/escalation.yaml, confidence.act">${gate}</span>→`
+    + `<span class="step" title="what the robot does about it">${robot}</span>`;
 }
 
 function renderSession(se) {

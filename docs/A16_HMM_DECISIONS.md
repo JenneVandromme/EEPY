@@ -20,6 +20,7 @@ simulator: simulated sessions, not real faces). Part F lists what implementing t
 - [Part D — Limits that apply to the whole model](#part-d--limits-that-apply-to-the-whole-model)
 - [Part E — Future improvements, collected](#part-e--future-improvements-collected)
 - [Part F — What implementing taught us](#part-f--what-implementing-taught-us)
+- [Part G — Explainability: the viewer](#part-g--explainability-the-viewer)
 
 ---
 
@@ -479,3 +480,27 @@ Limits found:
   (the HMM calls less of it distracted: 25 % vs 50 %). On P99_rules_4 they agree 81 %.
 - **Not checked live** (no camera was used for A16): the switch times on a real face, the AU43
   limitation on real frames, the panel bar and overlay, and Windows/Ubuntu (CI only).
+
+---
+
+## Part G — Explainability: the viewer
+
+**Choice.** An offline **explanation viewer** (`python -m eepy.state.explain`): one page per
+session that shows the real decision pipeline (signs → belief → shown state → confidence gate
+→ robot) for every second, with a timeline to scrub or play in slow motion. Plus a one-line
+**decision chain** in the panel's autonomy row (hmm mode). Full guide:
+[EXPLANATION_VIEWER.md](EXPLANATION_VIEWER.md).
+
+**Why.** Explainability is a core goal of the project and a main reason for the HMM. A
+"decision graph" with nodes lighting up was considered, but the HMM does not take one path:
+every sign nudges all four probabilities at once, so lighting single nodes would explain
+something that does not happen. The viewer is graded where the model is graded and discrete
+where it is discrete (the 60/40 band, the 70 % gate, the nudge). It shows only numbers the
+model actually used. The audiences: mainly analysis afterwards and the thesis, a little the
+operator, hence offline first and small live.
+
+**Limits.** A rules-mode session shows what the HMM *would* have said. Gate waits are logged
+only from this change on. The demo's robot needs `.venv-robot`. No designer has used it yet.
+
+**Future.** A live version, "what if" sliders, exports for A18, showing information gain
+(A20+), and the rules drawn as the decision tree they are.

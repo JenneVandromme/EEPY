@@ -302,6 +302,15 @@ moment late. The other markers (replied, dismissed) aren't about the state and
 are left out. Use this to tune the thresholds (A17) and later to compare the
 HMM with the rules on the same sessions (A18).
 
+## Seeing why: the explanation viewer
+
+`python -m eepy.state.explain latest --open` (or `--demo`, without a recording) writes a
+page that shows, for every second of a session, the whole decision: the signs and how
+much each pushed, the belief, the shown state, whether EEPY was sure enough to act, and
+what the robot did. Scrub through the timeline or play it in slow motion. In the hmm mode
+the panel shows the same chain in one line. Guide:
+[docs/EXPLANATION_VIEWER.md](../../docs/EXPLANATION_VIEWER.md).
+
 ## Self-test: the states with a real person (about 3 minutes)
 
 ```bash

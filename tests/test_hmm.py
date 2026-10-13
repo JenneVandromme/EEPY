@@ -31,6 +31,7 @@ from eepy.state.estimate import for_mode, make_estimator
 from eepy.state.features import assemble, empty
 from eepy.state.hmm import HMMEstimator
 from eepy.state.hmm_params import DEFAULT_PATH, HIDDEN, HMMConfigError, dump, load, loads, parse
+from eepy.state.synthetic import SCENARIO, closures, simulate
 
 REPO = Path(__file__).resolve().parents[1]
 RAW = yaml.safe_load(DEFAULT_PATH.read_text(encoding="utf-8"))
@@ -44,110 +45,6 @@ def params_with(change: Callable[[Dict[str, Any]], Any]) -> Any:
     return parse(raw)
 
 
-# --- a feature simulator ---------------------------------------------------------------------------
-# Per second: is a face there, are the eyes judged (looking forward), how closed are they, blinks
-# (ms), yawn, nod, looking away, the jaw-drop action unit. Windows of 10 and 60 s like the vision
-# process, then the real assemble().
-
-
-def _second(kind: str, i: int, rng: random.Random) -> Dict[str, Any]:
-    d: Dict[str, Any] = dict(present=True, judged=True, closed=0.0, blinks=[], yawn=False, nod=False, away=False)
-    if kind == "work":
-        d["judged"] = rng.random() < 0.8
-        if d["judged"] and rng.random() < 0.25:
-            ms = rng.gauss(160, 30)
-            d["blinks"].append(ms)
-            d["closed"] = ms / 1000 * 0.6
-        if i % 15 in (7, 8):                      # a short glance away every 15 s
-            d["away"], d["judged"] = True, False
-    elif kind == "phone":
-        d.update(judged=False, away=True)
-    elif kind == "sleepy":
-        if rng.random() < 0.3:
-            ms = rng.uniform(700, 1300)
-            d["blinks"].append(ms)
-            d["closed"] = min(1.0, ms / 1000)
-        elif rng.random() < 0.2:
-            ms = rng.gauss(250, 50)
-            d["blinks"].append(ms)
-            d["closed"] = ms / 1000 * 0.6
-    elif kind == "leave":
-        d.update(present=False, judged=False, away=True)
-    return d
-
-
-def simulate(phases: List[Tuple[str, int]], seed: int = 1, rate: float = 1.0,
-             extra: Optional[Dict[int, Dict[str, Any]]] = None, aus: bool = False, t0: float = 1000.0,
-             calibrated: bool = True) -> List[Dict[str, Any]]:
-    """Features for the phases (kind, seconds), sampled `rate` times a second. `extra` overrides
-    single seconds (index from 0), e.g. {70: {"yawn": True}}."""
-    rng = random.Random(seed)
-    secs = [_second(kind, i, rng) for kind, n in phases for i in range(n)]
-    au_rng = random.Random(seed + 1000)          # its own stream: the same behaviour with or without AUs
-    for s in secs:
-        s["au26"] = s["present"] and au_rng.random() < 0.017
-    for k, v in (extra or {}).items():
-        secs[k].update(v)
-    for k, s in enumerate(secs):                 # a yawn drops the jaw for ~5 s
-        if s["yawn"]:
-            for j in range(k, min(k + 5, len(secs))):
-                secs[j]["au26"] = secs[j]["present"]
-    out: List[Dict[str, Any]] = []
-    step, t, away_since = 1.0 / rate, 1.0, None
-    while t <= len(secs) + 1e-9:
-        i = int(t + 1e-9) - 1
-        face: Dict[str, Any] = {}
-        gaze: Dict[str, Any] = {}
-        au: Dict[str, Any] = {"status": "running", "rate": 10.0}
-        for w in (10, 60):
-            win = secs[max(0, i - w + 1): i + 1]
-            n = len(win)
-            present = [s for s in win if s["present"]]
-            judged = [s for s in present if s["judged"]]
-            blinks = [b for s in judged for b in s["blinks"]]
-            sfx = f"_{w}s"
-            face["perclos" + sfx] = round(sum(s["closed"] for s in judged) / len(judged), 4) if judged else None
-            face["eyes_measured_s" + sfx] = float(len(judged))
-            face["blink_rate" + sfx] = round(len(blinks) / (len(judged) / 60), 1) if len(judged) >= 0.1 * w else None
-            face["blink_mean_ms" + sfx] = round(sum(blinks) / len(blinks), 1) if blinks else None
-            face["blink_max_ms" + sfx] = round(max(blinks), 1) if blinks else None
-            if calibrated:
-                face["blink_mean_ms_rel" + sfx] = round(sum(blinks) / len(blinks) / 160, 3) if blinks else None
-            face["long_blinks" + sfx] = sum(1 for b in blinks if b > 500)
-            face["yawns" + sfx] = sum(1 for s in win if s["yawn"])
-            face["nods" + sfx] = sum(1 for s in win if s["nod"])
-            face["face_absent_ratio" + sfx] = round(1 - len(present) / n, 4)
-            face["fps" + sfx] = 15.0
-            face["blink_confidence" + sfx] = "ok"
-            face["coverage_s" + sfx] = float(n)
-            off = sum(1 for s in win if s["away"] or not s["present"])
-            gaze["off_work_ratio" + sfx] = round(off / n, 3)
-            gaze["no_face_ratio" + sfx] = round(1 - len(present) / n, 3)
-            au["results" + sfx] = 10 * len(present)
-            au["results_eyes" + sfx] = 10 * len(judged)
-            au["AU26_active" + sfx] = round(sum(s["au26"] for s in present) / len(present), 4) if present else None
-            au["AU43_active" + sfx] = (round(sum(min(1.0, 0.07 + s["closed"]) for s in judged) / len(judged), 4)
-                                       if judged else None)
-        cur = secs[i]
-        if cur["away"] or not cur["present"]:
-            away_since = i if away_since is None else away_since
-            gaze["away_current_s"] = float(i - away_since + 1)
-        else:
-            away_since = None
-            gaze["away_current_s"] = 0.0
-        closed_now, j = 0.0, i
-        while j >= 0 and secs[j]["judged"] and secs[j]["closed"] >= 0.99:
-            closed_now += 1
-            j -= 1
-        face["eyes_closed_now_s"] = closed_now
-        face["baseline_calibrated"] = calibrated
-        gaze["calibrated"] = True
-        out.append(assemble(round(t0 + t, 6), face, gaze, au if aus else None))
-        t += step
-    return out
-
-
-SCENARIO = [("work", 40), ("phone", 20), ("work", 20), ("sleepy", 45), ("leave", 30)]
 
 
 def run(features: List[Dict[str, Any]], est: Optional[HMMEstimator] = None) -> List[Any]:
@@ -170,15 +67,6 @@ def first_at(estimates: List[Any], states: Tuple[str, ...], after: float, t0: fl
 
 def p_sleepy(e: Any) -> float:
     return e.scores["drowsy"] + e.scores["very_drowsy"]
-
-
-def closures(start: int, end: int) -> Dict[int, Dict[str, Any]]:
-    """2-s eye closures every 8 s."""
-    ex: Dict[int, Dict[str, Any]] = {}
-    for k in range(start, end, 8):
-        ex[k] = {"closed": 1.0, "judged": True, "blinks": [2000.0], "away": False}
-        ex[k + 1] = {"closed": 1.0, "judged": True, "away": False}
-    return ex
 
 
 # A calm, calibrated, alert person (as test_state.py's FACE/GAZE).
@@ -1180,3 +1068,72 @@ def test_prior_is_logged_per_session_and_replayed(tmp_path, capsys):
     assert max(abs(a.scores[s] - b.scores[s]) for a, b in zip(replayed, live1) for s in HIDDEN) <= 1e-12
     default = replay_run(session_features(first), HMMEstimator(ENABLED))
     assert max(abs(a.scores[s] - b.scores[s]) for a, b in zip(default, live1) for s in HIDDEN) > 1e-6
+
+
+# --- the explanation viewer (eepy/state/explain.py) ---------------------------------------------------
+
+import re  # noqa: E402
+
+from eepy.state import explain  # noqa: E402
+
+
+def _embedded(page: str) -> Dict[str, Any]:
+    import json
+
+    blob = page.split("const DATA = ", 1)[1].split(";\nconst S = DATA.steps", 1)[0]
+    return json.loads(blob.replace("<\\/", "</"))
+
+
+def test_explain_demo_is_a_self_contained_page():
+    data = explain.demo(PARAMS)
+    assert len(data["steps"]) == sum(n for _, n in explain.DEMO)
+    step = data["steps"][120]
+    assert set(step) >= {"t", "p", "s", "ml", "c", "u", "up", "r", "ev", "sk", "rules"}
+    assert abs(sum(step["p"]) - 1) < 1e-3
+    for item in step["ev"]:                          # [feature, supported family, push(3), step(3), text, no-news]
+        assert 0 <= item[0] < len(data["features"]) and item[1] in (-1, 0, 1, 2)
+        assert len(item[2]) == 3 and len(item[3]) == 3 and isinstance(item[4], str)
+    assert [p["text"] for p in data["meta"]["parts"]] == explain.DEMO_PARTS
+    robot = any(e["kind"] == "nudge" for e in data["events"])
+    assert robot or any("No robot actions" in n for n in data["meta"]["notes"])   # .venv-vision: no library
+    page = explain.render(data)
+    assert not re.search(r"""(src|href)\s*=\s*["']?https?:""", page)            # nothing from the internet
+    assert "/*__DATA__*/" not in page and "__TITLE__" not in page
+    assert _embedded(page)["steps"][120] == step
+
+
+def test_explain_a_recorded_session(tmp_path, capsys):
+    folder, live, _ = _record_live_session(tmp_path, seconds=110)
+    data = explain.from_session(folder, PARAMS)
+    assert [s["s"] for s in data["steps"]] == [e.state for e in live]
+    assert data["meta"]["mode"] == "hmm" and data["meta"]["notes"] == []
+    assert data["meta"]["thresholds"]["act"] == {"refocus": 0.7, "bedtime": 0.7}
+    assert all(s["rules"] for s in data["steps"])                                 # the rules alongside
+    out = tmp_path / "page.html"
+    assert explain.main([folder.name, "--data", str(tmp_path), "--out", str(out)]) == 0
+    assert out.exists() and "Written:" in capsys.readouterr().out
+    assert explain.main(["--data", str(tmp_path)]) == 2
+    assert "Give a session" in capsys.readouterr().err
+
+
+def test_explain_reads_the_robots_decisions(tmp_path):
+    import json
+
+    lines = [
+        {"type": "annotation", "t_mono": 105.0, "marker": "phone_picked_up"},
+        {"type": "escalation", "t_mono": 110.0, "what": "waiting_for_confidence", "ladder": "refocus",
+         "state": "distracted", "confidence": 0.62, "needed": 0.7},
+        {"type": "escalation", "t_mono": 114.0, "what": "confidence_wait_ended", "ladder": "refocus",
+         "reason": "sure enough"},
+        {"type": "role_changed", "t_mono": 114.0, "to": "refocus"},
+        {"type": "nudge_decision", "t_mono": 114.0, "decision_id": 1, "ladder": "refocus", "level": 1,
+         "tone": "hedged", "behavior": "refocus_joint_attention", "context": {"confidence": 0.75}},
+        {"type": "nudge_outcome", "t_mono": 140.0, "decision_id": 1, "outcome": "success"},
+        {"type": "note", "t_mono": 150.0, "text": "free text stays out"},
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(r) for r in lines))
+    events = explain._events(tmp_path, 100.0)
+    assert [e["kind"] for e in events] == ["marker", "gate_wait", "gate_end", "role", "nudge", "outcome"]
+    assert events[1]["text"] == "held back: distracted 62% < 70%" and events[1]["t"] == 10.0
+    assert events[4]["confidence"] == 0.75 and events[5]["outcome"] == "success"
+    assert explain._thresholds(tmp_path)["source"] == "today"                     # no snapshot: today's file

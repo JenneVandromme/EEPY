@@ -79,6 +79,11 @@ reasons. The robot only acts when the HMM is at least **70 %** sure; the autonom
 line then says *not sure enough yet*. How to read it:
 [eepy/state/README.md](../eepy/state/README.md#the-hmm-a-belief-instead-of-a-verdict).
 
+- The autonomy row adds the **decision chain**: *drowsy 82 % → ✓ sure enough (acts from
+  70 %) → bedtime level 1*: the state, whether EEPY is sure enough to act, and what the
+  robot does. After the session, `python -m eepy.state.explain latest --open` shows the
+  whole session this way, second by second
+  ([docs/EXPLANATION_VIEWER.md](EXPLANATION_VIEWER.md)).
 - The vision program follows the session's mode by itself. If the panel says
   *Mode "hmm" acts on the hmm estimate, but the vision program sends the rules
   one*, restart the vision program (`python -m eepy.perception`); its terminal says

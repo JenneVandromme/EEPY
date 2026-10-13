@@ -114,14 +114,17 @@ older sessions include looking down.
 
 Re-run the states with other thresholds or HMM numbers, and compare them with the operator's
 markers: `python -m eepy.state.replay <session> [--estimator rules|hmm|both]`. See
-[eepy/state/README.md](../eepy/state/README.md).
+[eepy/state/README.md](../eepy/state/README.md). To *see* every second of the HMM's decision
+(signs, belief, gate, robot) on a page: `python -m eepy.state.explain <session>`, written to
+`data/explain/` ([docs/EXPLANATION_VIEWER.md](EXPLANATION_VIEWER.md)).
 
 **Autonomy** (rules and hmm modes): every nudge the robot chose is a `nudge_decision` (ladder, level,
 behaviour, tone, reason, `propensity`, and the `context` it decided on), followed by exactly one
 `nudge_outcome` with the same `decision_id`: `success`, `no_reaction`, `dismissed`, `snoozed`,
 `interrupted_focus` (a false alarm) or `censored` (no fair verdict), with `seconds` and a `detail`.
-`role_changed` and `escalation` events (breaks, the wind-down, goodnight, pauses, replies) fill in
-the rest. The robot's own behaviours have `source` `auto`, the operator's `wizard`. The markers
+`role_changed` and `escalation` events (breaks, the wind-down, goodnight, pauses, replies; in the
+hmm mode also `waiting_for_confidence` / `confidence_wait_ended` when the confidence gate holds a
+ladder back, with the confidence and the threshold) fill in the rest. The robot's own behaviours have `source` `auto`, the operator's `wizard`. The markers
 `user_accepted` / `user_snoozed` / `user_dismissed` are the participant's answers. See
 [eepy/interaction/README.md](../eepy/interaction/README.md#what-is-recorded-for-the-analysis-and-the-bandit).
 

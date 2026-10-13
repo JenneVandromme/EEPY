@@ -216,6 +216,7 @@ class EscalationEngine:
         self.reminder_said = False
         self.last_outcome: Optional[str] = None
         self.next_text = "waiting for the session"
+        self._waiting_for: Optional[str] = None     # ladder held back by the confidence gate (logged once)
         self.next_at: Optional[float] = None
         self._decisions = 0
 
@@ -242,6 +243,8 @@ class EscalationEngine:
         new_role = self.config.role_for(state)
         if new_role != old_role:
             self.role_state_since = now
+            if self._waiting_for is not None and self._waiting_for != new_role:
+                self._end_wait(now, f"the state changed to {state}")
         # Freeze an open reaction window while there is nobody / no data to judge.
         if self.open is not None:
             frozen_now = state in ("absent", "unknown")
@@ -365,7 +368,7 @@ class EscalationEngine:
             if now - since < onset:
                 self._wait(f"{self._state.replace('_', ' ')}: first nudge if it lasts, in", since + onset)
                 return
-            unsure = self._unsure(role)
+            unsure = self._unsure(role, now)
             if unsure is not None:             # no episode, no role switch until the estimate is sure
                 self._wait(unsure)
                 return
@@ -417,21 +420,38 @@ class EscalationEngine:
             return f"{cfg.max_per_hour} nudges in the last hour: waiting until", self._hour[0] + 3600
         if self.actuator.busy():
             return "the robot is still moving", None
-        unsure = self._unsure(self.episode.ladder if self.episode is not None else self.config.role_for(self._state))
+        unsure = self._unsure(self.episode.ladder if self.episode is not None else self.config.role_for(self._state),
+                              now)
         if unsure is not None:
             return unsure, None
         if self.estimate.get("pending") == "focused":
             return "they seem to be getting back to work", None
         return None
 
-    def _unsure(self, ladder: str) -> Optional[str]:
+    def _unsure(self, ladder: str, now: Optional[float] = None) -> Optional[str]:
         """Why not to act yet: the estimate is less sure than config/escalation.yaml's
-        confidence.act for this ladder (HMM only: the rules give no confidence)."""
+        confidence.act for this ladder (HMM only: the rules give no confidence). The start
+        and end of each such wait are logged (escalation waiting_for_confidence /
+        confidence_wait_ended), so a replay can show the gate."""
         conf = self.estimate.get("confidence")
         need = self.config.act_confidence.get(ladder)
-        if conf is not None and need is not None and conf < need:
+        unsure = conf is not None and need is not None and conf < need
+        if now is not None:
+            if unsure and self._waiting_for != ladder:
+                self._waiting_for = ladder
+                self._event("escalation", now, what="waiting_for_confidence", ladder=ladder, state=self._state,
+                            confidence=round(float(conf), 3), needed=need)
+            elif not unsure and self._waiting_for == ladder:
+                self._end_wait(now, "sure enough")
+        if unsure:
             return f"not sure enough yet: {self._state.replace('_', ' ')} {conf:.0%} (acts at {need:.0%})"
         return None
+
+    def _end_wait(self, now: float, reason: str) -> None:
+        conf = self.estimate.get("confidence")
+        self._event("escalation", now, what="confidence_wait_ended", ladder=self._waiting_for, state=self._state,
+                    confidence=None if conf is None else round(float(conf), 3), reason=reason)
+        self._waiting_for = None
 
     def _last_hour(self, now: float) -> int:
         while self._hour and now - self._hour[0] >= 3600:

@@ -172,7 +172,8 @@ EVENT_TYPES: Dict[str, EventType] = {
                             "Everything else the escalation did: cooldown_started, episode_reset, "
                             "approving_nod, break_started/ended, welcome_back, wind_down_started/"
                             "snoozed/reminder/cancelled, goodnight, went_to_bed, reply, "
-                            "autonomy_paused/resumed."),
+                            "autonomy_paused/resumed, waiting_for_confidence/confidence_wait_ended "
+                            "(hmm mode: the confidence gate held a ladder back / stopped holding it)."),
 
     # --- reserved for later tasks: defined now so the format is settled ---------------
     "bandit_decision": EventType("model", ("arm", "policy"),

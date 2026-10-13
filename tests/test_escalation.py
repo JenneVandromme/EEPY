@@ -500,11 +500,23 @@ def test_low_confidence_starts_no_episode_and_no_role():
     assert h.nudges() == [] and h.engine.episode is None
     assert [r["to"] for r in h.of("role_changed")] == ["study_buddy"]
     assert h.engine.status(h.t)["next"] == "not sure enough yet: distracted 62% (acts at 70%)"
+    waits = h.what("waiting_for_confidence")                   # logged once, not every tick
+    assert len(waits) == 1 and waits[0]["ladder"] == "refocus" and waits[0]["confidence"] == 0.62
+    assert waits[0]["needed"] == 0.7
     h.run("distracted", 5, confidence=0.75)
+    ended = h.what("confidence_wait_ended")
+    assert len(ended) == 1 and ended[0]["reason"] == "sure enough"
     assert [r["to"] for r in h.of("role_changed")] == ["study_buddy", "refocus"]
     assert h.nudges() and h.nudges()[0][1:] == ("refocus", 1)
     assert h.of("nudge_decision")[0]["context"]["confidence"] == 0.75
     assert h.engine.status(h.t)["act_confidence"] == {"act": {"refocus": 0.7, "bedtime": 0.7}, "direct": 0.85}
+
+
+def test_a_confidence_wait_ends_when_the_state_changes():
+    h = Harness().run("focused", 10, confidence=0.95).run("distracted", 40, confidence=0.6)
+    h.run("focused", 5, confidence=0.9)
+    ended = h.what("confidence_wait_ended")
+    assert len(ended) == 1 and ended[0]["reason"] == "the state changed to focused"
 
 
 def test_low_confidence_holds_later_nudges():

@@ -87,6 +87,9 @@ confidence:
 - **The direct tone** (for very drowsy, or after a nudge without reaction, when
   calibrated) also needs `direct`; otherwise the nudge is hedged.
 - **The rules mode** gives no percentage, so this section changes nothing there.
+- Each time the gate starts holding a ladder back, and when it stops, an `escalation`
+  event is logged (`waiting_for_confidence`, `confidence_wait_ended` with the reason), so
+  the [explanation viewer](../../docs/EXPLANATION_VIEWER.md) can show it afterwards.
 - Spoken lines with `{evidence}` get the HMM's short reason (e.g. *eyes closed 18%
   of the last minute*), or nothing when it has no clear one.
 
@@ -263,7 +266,8 @@ punish a nudge whose result can't be credited to it.
 - `role_changed`;
 - `escalation`, with `what`: cooldown_started, episode_reset, approving_nod,
   break_started/ended, welcome_back, wind_down_started/snoozed/reminder/cancelled,
-  goodnight, went_to_bed, reply, autonomy_paused/resumed.
+  goodnight, went_to_bed, reply, autonomy_paused/resumed, waiting_for_confidence /
+  confidence_wait_ended (hmm mode: the confidence gate).
 
 The robot's own behaviours carry `source=auto` and the operator's
 `source=wizard`. See the [DATA_GUIDE](../../docs/DATA_GUIDE.md).
