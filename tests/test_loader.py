@@ -144,9 +144,11 @@ def test_breathing_returns_to_where_it_started(behaviors_dir):
     """The real breathe_in/breathe_out pair must form a closed cycle."""
     library = load_library()
     steps = library.resolve(library.behaviors["study_buddy_idle"])
-    # Four breathing half-cycles, then a glance and a reset.
+    # Breathe in, breathe out -- and nothing else: no glance down at the notes,
+    # which took the face out of the robot camera's picture.
+    assert len(steps) == 2
     assert steps[1].head_z == pytest.approx(0.0, abs=1e-9)
-    assert steps[3].head_z == pytest.approx(0.0, abs=1e-9)
+    assert steps[1].head_pitch == pytest.approx(0.0, abs=1e-9)
 
 
 def test_intensity_scales_angles_toward_neutral(write_behaviors, behaviors_dir):
