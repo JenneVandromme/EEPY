@@ -558,6 +558,7 @@ head can physically reach a pose and how fast it moves. Details in
 | how EEPY explains each nudge ("your eyes were closed 34 % of the last minute"), and how faithful that is | [docs/A20_EXPLANATIONS.md](docs/A20_EXPLANATIONS.md) |
 | write explanation lines (the evidence types and their placeholders) | [docs/EXPLANATION_CATALOG.md](docs/EXPLANATION_CATALOG.md) |
 | how each nudge becomes a training example for the bandit (rewards), and build the table | [docs/A22_REWARDS.md](docs/A22_REWARDS.md) |
+| what the robot (and later the bandit) may do in each state, and why | [docs/A23_ALLOWED_ACTIONS.md](docs/A23_ALLOWED_ACTIONS.md) |
 | open problems we parked (e.g. keeping the face in the robot camera's view) | [docs/TODO.md](docs/TODO.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |

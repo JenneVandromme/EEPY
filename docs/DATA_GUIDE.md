@@ -142,6 +142,10 @@ their `context` too ([docs/A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md)). T
 `user_accepted` / `user_snoozed` / `user_dismissed` are the participant's answers. See
 [eepy/interaction/README.md](../eepy/interaction/README.md#what-is-recorded-for-the-analysis-and-the-bandit).
 
+**The allowed set** (A23): each `nudge_decision` also has `allowed` (every action the policy could
+choose, e.g. `refocus 2 hedged`), `most_intrusive` (the subset marked so) and `chosen_in_allowed`. An
+`escalation` event `policy_failed` or `policy_outside_allowed` means the fixed escalation stepped in.
+
 **Rewards** (A22, every mode): a successful `nudge_outcome` also says `how` (`focus`, `reply`,
 `break`, `bed`) and `back_after` (seconds until the focus began). When the operator plays a ladder
 behaviour by hand, a `wizard_nudge` holds the context at that moment. Each nudge then gets one

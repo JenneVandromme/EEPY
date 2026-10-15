@@ -962,7 +962,7 @@ class Wizard:
         from eepy.interaction.config import EscalationConfigError, check_library
         from eepy.interaction.config import load as load_escalation
         from eepy.interaction.engine import EscalationEngine
-        from eepy.interaction.policy import FixedEscalation
+        from eepy.interaction.policy import make_policy
 
         try:
             config = load_escalation()
@@ -975,7 +975,7 @@ class Wizard:
 
         ex = self.explanations
         self.autonomy = EscalationEngine(
-            config, FixedEscalation(config), actuator,
+            config, make_policy(config), actuator,
             log=lambda event_type, t, **fields: self._note(event_type, "auto", t=t, **fields),
             idle=self.panel.idle, explanations=ex.enabled,
             explainer=Explainer(ex.top_k, ex.window_min_seconds, ex.window_max_seconds))

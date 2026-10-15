@@ -21,8 +21,9 @@ STATES = ("focused", "distracted", "drowsy", "very_drowsy", "absent", "unknown")
 ROLES = ("study_buddy", "refocus", "bedtime", "paused", "none")
 LADDER_ROLES = ("refocus", "bedtime")
 TOP_KEYS = {"roles", "role_switch", "onset", "ladders", "focused", "guards", "absent", "break",
-            "wind_down", "false_alarm_seconds", "tick_seconds", "confidence", "hmm"}
+            "wind_down", "false_alarm_seconds", "tick_seconds", "confidence", "hmm", "policy", "actions"}
 DECISIONS = ("belief", "gate")
+POLICIES = ("fixed",)        # A24 adds "bandit"; "fixed" stays the default and the fallback
 
 
 class EscalationConfigError(ValueError):
@@ -76,6 +77,25 @@ class BeliefConfig:
 
 
 @dataclass(frozen=True)
+class ActionsConfig:
+    """The bandit's action space and its safety rules (A23, eepy/interaction/actions.py)."""
+
+    max_step_up: int = 2                                   # levels above the last one played
+    max_start_level: Dict[str, int] = field(default_factory=lambda: {"refocus": 2, "bedtime": 2, "very_drowsy": 3})
+    no_ignored_levels: bool = True                         # no level they ignored in this episode
+    break_after_work: float = 900.0                        # s of work before the break offer
+    goodnight_early: bool = True                           # goodnight without the wind-down ...
+    goodnight_confidence: float = 0.9                      # ... only very drowsy this sure,
+    goodnight_needs_calibration: bool = True               # ... calibrated,
+    goodnight_after_spoken: bool = True                    # ... after an ignored spoken bedtime nudge
+    spoken_from: int = 3                                   # the first spoken level (both ladders)
+    direct_needs_calibration: bool = True                  # the direct tone also needs confidence.direct
+    ambiguous_tone: str = "hedged"
+    most_intrusive_from: Dict[str, int] = field(default_factory=lambda: {"refocus": 3, "bedtime": 3})
+    intrusiveness: Dict[str, float] = field(default_factory=dict)   # B8: "ladder:level" -> rank (empty: level order)
+
+
+@dataclass(frozen=True)
 class EscalationConfig:
     roles: Dict[str, str]
     role_switch: Dict[str, str]
@@ -108,6 +128,8 @@ class EscalationConfig:
     act_confidence: Dict[str, float] = field(default_factory=dict)    # ladder -> minimum P to act
     direct_confidence: float = 0.85                                    # minimum P for the direct tone
     belief: Optional[BeliefConfig] = None                              # hmm: decisions on the full belief (A19)
+    policy: str = "fixed"                                              # who chooses WHAT to play (A23/A24)
+    actions: ActionsConfig = field(default_factory=ActionsConfig)      # what it may choose from (A23)
     path: str = "config/escalation.yaml"
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -309,7 +331,8 @@ def parse(raw: Any, where: str = "config/escalation.yaml") -> EscalationConfig:
         false_alarm_seconds=seconds(raw.get("false_alarm_seconds", 5), "false_alarm_seconds"),
         tick_seconds=seconds(raw.get("tick_seconds", 0.5), "tick_seconds", positive=True),
         act_confidence=act_confidence, direct_confidence=direct_confidence, belief=belief,
-        path=where, raw=raw)
+        policy=_policy(raw.get("policy", "fixed"), fail),
+        actions=_actions(raw.get("actions"), fail, ladders), path=where, raw=raw)
     if "refocus" in ladders and config.break_offer_level not in ladders["refocus"].reaction:
         raise fail(f"break.offer_level {config.break_offer_level} is not a refocus level "
                    f"{list(ladders['refocus'].levels)}.")
@@ -324,6 +347,90 @@ def parse(raw: Any, where: str = "config/escalation.yaml") -> EscalationConfig:
     if config.wind_down_reminder_before >= config.wind_down_seconds:
         raise fail("wind_down.reminder_before must be shorter than wind_down.seconds.")
     return config
+
+
+def _policy(value: Any, fail: Any) -> str:
+    if value not in POLICIES:
+        raise fail(f"policy must be one of {list(POLICIES)}, not {value!r} (the bandit comes with A24; "
+                   "fixed is the fixed escalation, and always the fallback).")
+    return str(value)
+
+
+def _actions(raw: Any, fail: Any, ladders: Dict[str, LadderConfig]) -> ActionsConfig:
+    """The `actions:` section (A23). Missing: the defaults."""
+    if raw is None:
+        return ActionsConfig()
+    if not isinstance(raw, dict):
+        raise fail("actions must be a list of settings (max_step_up, max_start_level, ...).")
+    allowed = {"max_step_up", "max_start_level", "no_ignored_levels", "break_after_work", "goodnight_early",
+               "spoken_from", "direct_tone", "ambiguous_tone", "most_intrusive_from", "intrusiveness"}
+    bad = set(raw) - allowed
+    if bad:
+        raise fail(f"actions: unknown key(s) {sorted(bad)}; allowed: {sorted(allowed)}.")
+    d = ActionsConfig()
+
+    def whole(value: Any, label: str, low: int) -> int:
+        if not isinstance(value, int) or isinstance(value, bool) or value < low:
+            raise fail(f"actions.{label} must be a whole number >= {low}, not {value!r}.")
+        return value
+
+    def flag(value: Any, label: str) -> bool:
+        if not isinstance(value, bool):
+            raise fail(f"actions.{label} must be true or false, not {value!r}.")
+        return value
+
+    def levels(value: Any, label: str, keys: Tuple[str, ...]) -> Dict[str, int]:
+        if not isinstance(value, dict) or set(value) - set(keys):
+            raise fail(f"actions.{label} must give a level for {', '.join(keys)}, not {value!r}.")
+        out = {}
+        for k, v in value.items():
+            ladder = "bedtime" if k == "very_drowsy" else k
+            top = ladders[ladder].top if ladder in ladders else 99
+            out[k] = whole(v, f"{label}.{k}", 1)
+            if out[k] > top:
+                raise fail(f"actions.{label}.{k} ({out[k]}) is above the {ladder} ladder's top level ({top}).")
+        return out
+
+    gn = raw.get("goodnight_early", {})
+    if not isinstance(gn, dict) or set(gn) - {"enabled", "confidence", "needs_calibration", "after_spoken"}:
+        raise fail("actions.goodnight_early needs enabled, confidence, needs_calibration, after_spoken.")
+    conf = gn.get("confidence", d.goodnight_confidence)
+    if not isinstance(conf, (int, float)) or isinstance(conf, bool) or not 0.5 <= conf <= 1:
+        raise fail(f"actions.goodnight_early.confidence must be between 0.5 and 1, not {conf!r}.")
+    dt = raw.get("direct_tone", {})
+    if not isinstance(dt, dict) or set(dt) - {"needs_calibration"}:
+        raise fail("actions.direct_tone takes needs_calibration (true/false).")
+    tone = raw.get("ambiguous_tone", d.ambiguous_tone)
+    if tone not in ("hedged", "direct"):
+        raise fail(f"actions.ambiguous_tone must be hedged or direct, not {tone!r}.")
+    seconds = raw.get("break_after_work", d.break_after_work)
+    if not isinstance(seconds, (int, float)) or isinstance(seconds, bool) or seconds < 0:
+        raise fail(f"actions.break_after_work must be a number of seconds >= 0, not {seconds!r}.")
+    ranks = raw.get("intrusiveness") or {}
+    if not isinstance(ranks, dict):
+        raise fail("actions.intrusiveness must map \"ladder:level\" to a rank, or be empty.")
+    for key, value in ranks.items():
+        ladder, _, level = str(key).partition(":")
+        if ladder not in ladders or not level.isdigit() or \
+                not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise fail(f"actions.intrusiveness: {key!r}: {value!r} -- write \"refocus:3\": 4 (a ladder, a level, "
+                       "a number; higher is more intrusive).")
+    return ActionsConfig(
+        max_step_up=whole(raw.get("max_step_up", d.max_step_up), "max_step_up", 1),
+        max_start_level=levels(raw.get("max_start_level", d.max_start_level), "max_start_level",
+                               ("refocus", "bedtime", "very_drowsy")),
+        no_ignored_levels=flag(raw.get("no_ignored_levels", d.no_ignored_levels), "no_ignored_levels"),
+        break_after_work=float(seconds),
+        goodnight_early=flag(gn.get("enabled", d.goodnight_early), "goodnight_early.enabled"),
+        goodnight_confidence=float(conf),
+        goodnight_needs_calibration=flag(gn.get("needs_calibration", True), "goodnight_early.needs_calibration"),
+        goodnight_after_spoken=flag(gn.get("after_spoken", True), "goodnight_early.after_spoken"),
+        spoken_from=whole(raw.get("spoken_from", d.spoken_from), "spoken_from", 1),
+        direct_needs_calibration=flag(dt.get("needs_calibration", True), "direct_tone.needs_calibration"),
+        ambiguous_tone=str(tone),
+        most_intrusive_from=levels(raw.get("most_intrusive_from", d.most_intrusive_from), "most_intrusive_from",
+                                   ("refocus", "bedtime")),
+        intrusiveness={str(k): float(v) for k, v in ranks.items()})
 
 
 def _belief(raw: Any, fail: Any, probability: Any, seconds: Any, whole: Any) -> Optional[BeliefConfig]:

@@ -103,6 +103,11 @@ input, select, option, textarea { color: var(--text); background: var(--bg); }
 .box input, .box select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); }
 select[multiple] option { padding: 3px 6px; }
 select:disabled { opacity: .55; }
+.dc-chip { display: inline-block; padding: 1px 7px; margin: 1px 3px 1px 0; border-radius: 999px; font-size: 12px;
+           background: var(--surface-2); color: var(--text); white-space: nowrap; }
+.dc-chip.hot { outline: 1px solid var(--warn); }
+.dc-chip.chosen { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.rw-table td.wrap { white-space: normal; }
 .rw-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
 .rw-table th, .rw-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .rw-table td.num, .rw-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -137,6 +142,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
   <button data-tab="overview" class="active">Overview</button>
   <button data-tab="panel"><span class="dot" id="tab-dot-panel"></span>Wizard panel</button>
   <button data-tab="live"><span class="dot" id="tab-dot-vision"></span>Live HMM</button>
+  <button data-tab="decisions">Decisions</button>
   <button data-tab="rewards">Rewards</button>
   <button data-tab="dev">Developer</button>
 </nav>
@@ -177,6 +183,27 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
         <button class="btn primary" data-start="vision">Start vision</button></div>
     </div>
   </section>
+
+  <section id="decisions"><div class="pad">
+    <p class="hint" style="margin-top:0">Every nudge decision with what the policy could choose from (A23). The bandit
+      will only ever pick inside the allowed set. Rules: <code>config/escalation.yaml</code> → <code>actions:</code>;
+      docs: <code>docs/A23_ALLOWED_ACTIONS.md</code>.</p>
+    <div class="box">
+      <div class="log-tools">
+        <select id="dc-kind">
+          <option value="scenario">Scripted states</option>
+          <option value="responsive">Reactive user</option>
+          <option value="synthetic">Simulated faces (real HMM)</option>
+          <option value="session">A recorded session</option>
+        </select>
+        <input id="dc-spec" style="flex:1;min-width:260px">
+        <select id="dc-session" hidden style="flex:1;min-width:260px"></select>
+        <button class="btn primary" id="dc-run">Show decisions</button>
+      </div>
+      <div class="hint" id="dc-hint"></div>
+      <div id="dc-out"></div>
+    </div>
+  </div></section>
 
   <section id="rewards"><div class="pad">
     <p class="hint" style="margin-top:0">What every nudge was worth to the bandit (A22): the outcome, priced by
@@ -519,6 +546,46 @@ $("rw-run").onclick = () => rewardsRun({ kind: $("rw-kind").value, spec: $("rw-s
   runs: Number($("rw-runs").value), start_hour: $("rw-hour").value }, $("rw-simulated"), $("rw-run"));
 document.querySelector('nav button[data-tab="rewards"]').addEventListener("click", () => { rewardsSessions(); rewardsLive(); });
 rewardsSessions(); setInterval(rewardsLive, 3000);
+
+// ---- decisions (A23) ----
+const DC_DEFAULT = { scenario: "takes_the_break", responsive: "focused 15m, distracted 6m, focused 3m, drowsy 15m",
+                     synthetic: "work 3m, phone 5m, work 2m, sleepy 8m", session: "" };
+const DC_HINT = {
+  scenario: "A built-in scenario (phone_break, takes_the_break, late_evening, flicker, belief_shift, belief_ambiguous, …) or a timeline: focused 15m, distracted 5m, drowsy 10m.",
+  responsive: "A user who may react to each nudge (made-up numbers).",
+  synthetic: "Simulated faces through the real HMM: work, phone, sleepy, leave.",
+  session: "Decisions logged before A23 have no allowed set: they show as (not logged).",
+};
+$("dc-kind").onchange = () => {
+  const k = $("dc-kind").value;
+  $("dc-spec").hidden = k === "session"; $("dc-session").hidden = k !== "session";
+  $("dc-spec").value = DC_DEFAULT[k]; $("dc-hint").textContent = DC_HINT[k];
+  if (k === "session") fetch("/api/rewards/sessions").then((r) => r.json()).then((d) => {
+    $("dc-session").innerHTML = d.sessions.map((x) => `<option value="${esc(x.name)}">${esc(x.name)} · ${x.nudges} nudge${x.nudges === 1 ? "" : "s"}</option>`).join("");
+  });
+};
+$("dc-kind").onchange();
+$("dc-run").onclick = async () => {
+  const k = $("dc-kind").value, btn = $("dc-run");
+  const body = k === "session" ? { kind: k, session: $("dc-session").value } : { kind: k, spec: $("dc-spec").value };
+  btn.disabled = true; $("dc-out").innerHTML = '<p class="hint">Running…</p>';
+  try {
+    const r = await (await fetch("/api/decisions/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+    if (!r.ok) { $("dc-out").innerHTML = `<div class="warnbox" style="margin-top:10px">${esc(r.message)}</div>`; return; }
+    const outside = r.rows.filter((x) => x.inside === false).length;
+    $("dc-out").innerHTML = `<p class="rw-sum"><b>${r.rows.length}</b> decisions · <b>${outside}</b> outside the allowed set
+        <span class="hint"> · chosen = filled, orange outline = most intrusive</span></p>
+      <table class="rw-table"><tr><th>time</th><th>state</th><th>chosen</th><th>allowed set</th><th>outcome</th></tr>` +
+      r.rows.map((x) => `<tr><td style="font-variant-numeric:tabular-nums">${Math.floor(x.t / 60)}:${String(Math.round(x.t % 60)).padStart(2, "0")}</td>
+        <td>${esc(String(x.state).replace("_", " "))}${x.confidence != null ? " " + Math.round(x.confidence * 100) + " %" : ""}</td>
+        <td>${esc(x.chosen)}${x.inside === false ? ' <b class="rw-neg">OUTSIDE</b>' : ""}</td>
+        <td class="wrap">${x.allowed ? x.allowed.map((a) => `<span class="dc-chip${a === x.chosen ? " chosen" : ""}${x.most_intrusive.includes(a) ? " hot" : ""}">${esc(a)}</span>`).join("")
+          : `<span class="hint">${x.policy === "wind_down_timer" ? "the wind-down timer, not a policy choice" : "(not logged)"}</span>`}${x.ignored && x.ignored.length ? `<div class="hint">ignored this episode: level ${x.ignored.join(", ")}</div>` : ""}</td>
+        <td class="wrap">${esc(String(x.outcome || "open").replace("_", " "))}</td></tr>`).join("") + "</table>" +
+      `<div class="hint" style="margin-top:10px">Same in a terminal: <code>${esc(r.command)}</code></div>`;
+  } catch (e) { $("dc-out").innerHTML = '<div class="warnbox">The launcher is not answering.</div>'; }
+  finally { btn.disabled = false; }
+};
 
 refresh(); pollLogs();
 setInterval(refresh, 1000);

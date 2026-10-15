@@ -58,7 +58,7 @@ def run_responsive(spec: str, seed: int = 1, persona: str = "average", start_hou
     from eepy.interaction.actuator import SimActuator
     from eepy.interaction.config import check_library, load
     from eepy.interaction.engine import EscalationEngine
-    from eepy.interaction.policy import FixedEscalation
+    from eepy.interaction.policy import make_policy
     from eepy.interaction.simulate import Line, Recorder, VirtualClock, belief_estimate, parse_spec
 
     if persona not in PERSONAS:
@@ -73,7 +73,7 @@ def run_responsive(spec: str, seed: int = 1, persona: str = "average", start_hou
     rng = random.Random(seed)
     clock = VirtualClock(0.0)
     recorder = Recorder()
-    engine = EscalationEngine(config, FixedEscalation(config), SimActuator(library, clock), recorder)
+    engine = EscalationEngine(config, make_policy(config), SimActuator(library, clock), recorder)
     engine.session_started(0.0)
 
     bounds: List[Tuple[float, float, str]] = []

@@ -36,6 +36,7 @@ class Harness:
             raw = copy.deepcopy(RAW)
             if not grace:
                 raw["guards"]["after_calibration"] = 0      # most tests: no settling-in period
+                raw["actions"]["break_after_work"] = 0      # ... and the break offer at once (A23's rule: test_actions.py)
         self.config = parse(raw)
         check_library(self.config, LIBRARY)
         self.clock = VirtualClock()
@@ -499,6 +500,7 @@ def test_rules_estimates_ignore_the_confidence_section():
     """The rules give no confidence: the thresholds change nothing in the rules mode."""
     raw = copy.deepcopy(RAW)
     raw["guards"]["after_calibration"] = 0
+    raw["actions"]["break_after_work"] = 0
     raw["confidence"] = {"act": {"refocus": 0.99, "bedtime": 0.99}, "direct": 0.99}
     strict = Harness(raw).run("focused", 10).run("distracted", 200)
     normal = Harness().run("focused", 10).run("distracted", 200)

@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .config import EscalationConfigError, check_library, load
 from .engine import REPLIES, EscalationEngine
-from .policy import FixedEscalation
+from .policy import make_policy
 
 STATES = ("focused", "distracted", "drowsy", "very_drowsy", "absent", "unknown")
 
@@ -152,7 +152,7 @@ def _flicker() -> Scenario:
 
 SCENARIOS: Dict[str, Scenario] = {
     "phone_break": parse_spec("focused 4m, distracted 2m, focused 3m", "phone_break"),
-    "takes_the_break": parse_spec("focused 4m, distracted 3m, absent 12m, focused 3m", "takes_the_break"),
+    "takes_the_break": parse_spec("focused 15m, distracted 3m, absent 12m, focused 3m", "takes_the_break"),
     "late_evening": parse_spec("focused 4m, drowsy 4m30s, accepted, drowsy 25m", "late_evening"),
     "flicker": _flicker(),
     # hmm mode (A19): beliefs instead of states
@@ -170,7 +170,7 @@ SCENARIOS: Dict[str, Scenario] = {
 SCENARIOS["phone_break"].description = (
     "a phone for 2 minutes: the wordless nudges climb until they look back; ladder reset + nod")
 SCENARIOS["takes_the_break"].description = (
-    "ignores the whole refocus ladder, then leaves right after the break offer: a break, "
+    "after 15 minutes of work (the break offer's minimum), ignores the whole refocus ladder, then leaves right after the break offer: a break, "
     "welcomed back 12 minutes later")
 SCENARIOS["late_evening"].description = (
     "drowsy: the bedtime ladder up to the wind-down offer, accepted on the panel, reminder, "
@@ -251,7 +251,7 @@ def run_scenario(scenario: Scenario, config: Any = None, library: Any = None,
     clock = VirtualClock()
     actuator = SimActuator(library, clock)
     recorder = Recorder()
-    engine = EscalationEngine(config, FixedEscalation(config), actuator, recorder)
+    engine = EscalationEngine(config, make_policy(config), actuator, recorder)
     engine.session_started(0.0)
     t = 0.0
     belief = scenario.uses_belief
@@ -293,7 +293,7 @@ def run_estimates(estimates: List[Dict[str, Any]], replies: List[Tuple[float, st
     clock = VirtualClock(estimates[0]["t"] if estimates else 0.0)
     actuator = SimActuator(library, clock)
     recorder = Recorder()
-    engine = EscalationEngine(config, FixedEscalation(config), actuator, recorder)
+    engine = EscalationEngine(config, make_policy(config), actuator, recorder)
     engine.session_started(clock.now)
     pending = sorted(replies)
     for estimate in estimates:
@@ -412,7 +412,7 @@ def _realtime(scenario: Scenario, config: Any) -> int:
         recorder(event_type, t, **fields)
         print(f"  {_clock(t - t0)}  {recorder.lines[-1].text}", flush=True)
 
-    engine = EscalationEngine(config, FixedEscalation(config), PlayerActuator(player), show)
+    engine = EscalationEngine(config, make_policy(config), PlayerActuator(player), show)
     engine.session_started(t0)
     try:
         for what, seconds in scenario.segments:

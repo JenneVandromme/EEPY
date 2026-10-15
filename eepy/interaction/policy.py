@@ -46,6 +46,11 @@ class NudgeContext:
     history: Tuple[NudgeRecord, ...] = ()
     start_level: Optional[int] = None  # hmm (A19): the first level of this episode, e.g. carried over from
     start_reason: str = ""             # the other ladder after a switch, or the ambiguous gentle option
+    # A23: what the action space needs, and the allowed set itself (eepy/interaction/actions.py)
+    ignored_levels: Tuple[int, ...] = ()   # levels with no reaction in this episode (this round)
+    ambiguous: bool = False                # A19's ambiguous episode: the gentle option only
+    blocked: Optional[str] = None          # a guard blocks every nudge now (then: wait only)
+    allowed: Tuple["Action", ...] = ()     # filled in by the engine before decide()
 
     @property
     def state(self) -> str:
@@ -67,7 +72,8 @@ class NudgeContext:
 
     def summary(self) -> Dict[str, Any]:
         """For the nudge_decision event: what the policy saw (no history)."""
-        out = {k: v for k, v in asdict(self).items() if k not in ("history", "estimate", "now")}
+        out = {k: v for k, v in asdict(self).items() if k not in ("history", "estimate", "now", "allowed", "blocked")}
+        out["ignored_levels"] = list(self.ignored_levels)
         if self.start_level is None:                  # A19 only: the rules' context stays as it was
             out.pop("start_level")
             out.pop("start_reason")
@@ -145,5 +151,25 @@ class FixedEscalation:
         conf = context.confidence
         sure = conf is None or conf >= self.config.direct_confidence     # the rules: no confidence
         tone = "direct" if context.calibrated and (very or repeat) and sure else "hedged"
+        if context.allowed:                     # A23: stay inside the allowed set
+            plays = [a for a in context.allowed if a.kind == "play"]
+            levels = sorted({a.level for a in plays if a.level is not None and a.level <= ladder.top})
+            if level not in levels:
+                higher = [lv for lv in levels if context.level is None or lv > context.level]
+                if context.level is not None and not higher:
+                    return Action.wait("top of the ladder")       # e.g. no break offer yet: L3 is the top
+                if not higher:
+                    return Action.wait("no allowed level")
+                level, why = higher[0], f"{why} (level {level}: the allowed set)"
+            if not any(a.level == level and a.tone == tone for a in plays):
+                tone = "hedged"
         return Action("play", context.ladder, level, ladder.intensity.get(level, 1.0), tone,
                       reason=f"{context.ladder} level {level}: {why}")
+
+
+def make_policy(config: EscalationConfig) -> "NudgePolicy":
+    """The policy config/escalation.yaml asks for (`policy:`). "fixed" is the default and the
+    fallback; the bandit (A24) will add its own name here."""
+    if config.policy == "fixed":
+        return FixedEscalation(config)
+    raise ValueError(f"unknown policy {config.policy!r}")

@@ -245,7 +245,7 @@ def test_the_engine_logs_the_trend_from_before_the_decision():
 # --- offline, simulation, report -------------------------------------------------------------
 
 
-def _sim_records(spec="focused 2m, distracted 3m, snoozed, distracted 4m, focused 3m"):
+def _sim_records(spec="focused 15m, distracted 3m, snoozed, distracted 4m, focused 3m"):
     pytest.importorskip("numpy")
     from eepy.behaviors import reach
 

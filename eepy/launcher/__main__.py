@@ -199,6 +199,10 @@ def _handler(launcher: Launcher):
                     message = launcher.stop_all()
                 elif path == "/api/settings":
                     message = launcher.update_settings(body)
+                elif path == "/api/decisions/run":         # A23: the decision log with the allowed sets
+                    from . import decisions
+                    self._json(decisions.run(body))
+                    return
                 elif path == "/api/rewards/run":           # A22: the reward tool, report back as JSON
                     from . import rewards
                     self._json(rewards.run(body))

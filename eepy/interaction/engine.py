@@ -25,9 +25,10 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Protocol
 from eepy.bandit.context import FocusTrend
 from eepy.explanations.build import Explainer
 
+from .actions import allowed_actions, contains, describe, label
 from .belief import FAMILY_NAME, LADDERS, BeliefTracker, belief_text, is_belief
 from .config import EscalationConfig
-from .policy import Action, NudgeContext, NudgePolicy, NudgeRecord
+from .policy import Action, FixedEscalation, NudgeContext, NudgePolicy, NudgeRecord
 
 STALE_SECONDS = 3.0          # no estimate for this long: the state is unknown
 OUTCOMES = ("success", "no_reaction", "dismissed", "snoozed", "interrupted_focus", "censored")
@@ -83,6 +84,7 @@ class Episode:
     ambiguous: bool = False                # started on an ambiguous belief: one gentle nudge, no climbing
     start_level: Optional[int] = None      # the first level (a switch carries the old level over)
     start_reason: str = ""
+    round_started: Optional[float] = None  # A23: a restart after a cooldown begins a fresh round
 
 
 class EscalationEngine:
@@ -94,6 +96,7 @@ class EscalationEngine:
         but does not speak it; None builds none."""
         self.config = config
         self.policy = policy
+        self._fallback = policy if isinstance(policy, FixedEscalation) else FixedEscalation(config)
         self.actuator = actuator
         self._log_fn = log
         self.idle = idle
@@ -430,6 +433,7 @@ class EscalationEngine:
                 self._wait("top of the ladder: pausing, then starting again in", ep.cooldown_until)
                 return
             ep.cooldown_until, ep.level, ep.restarting, ep.last_outcome = None, None, True, None
+            ep.round_started = now
         if ep.quiet_until is not None and now < ep.quiet_until:
             self._wait("they said OK: giving them time, next nudge at the earliest in", ep.quiet_until)
             return
@@ -439,7 +443,8 @@ class EscalationEngine:
             self._wait(text, until)
             return
         context = self._context(ep, now, since)
-        action = self.policy.decide(context)
+        context = replace(context, allowed=tuple(allowed_actions(context, self.config)))
+        action = self._choose(context, now)
         if action.kind != "play":
             if action.reason == "top of the ladder" or (ep.level is not None and ep.level >= ladder.top):
                 ep.cooldown_until = now + ladder.cooldown
@@ -458,6 +463,22 @@ class EscalationEngine:
                          text=f"Nudging: {action.ladder} level {action.level} ({action.tone}) -- {action.reason}",
                          decision_id=self._decisions, level=action.level, tone=action.tone,
                          intensity=action.intensity)
+
+    def _choose(self, context: NudgeContext, now: float) -> Action:
+        """The policy's choice, inside the allowed set (A23). A policy that fails, or picks something
+        outside the set, is replaced by the fixed escalation for this decision (logged)."""
+        try:
+            action = self.policy.decide(context)
+        except Exception as exc:  # noqa: BLE001 -- a learning policy must never stop the robot
+            self._event("escalation", now, what="policy_failed", policy=self.policy.name, error=str(exc)[:300])
+            action = self._fallback.decide(context)
+        if action.kind == "play" and not contains(context.allowed, action):
+            self._event("escalation", now, what="policy_outside_allowed", policy=self.policy.name,
+                        chosen=label(action), **describe(context.allowed))
+            action = self._fallback.decide(context) if self.policy is not self._fallback else action
+            if action.kind == "play" and not contains(context.allowed, action):
+                action = Action.wait("the choice was outside the allowed set")
+        return action
 
     def _guard(self, now: float, belief: bool = False) -> Optional[tuple]:
         cfg = self.config
@@ -521,7 +542,12 @@ class EscalationEngine:
             since_break=ago(self.last_break_t), since_calibration=ago(self.calibrated_at),
             session_seconds=now - self.session_start, history=tuple(self.nudges),
             start_level=ep.start_level if ep.level is None else None,
-            start_reason=ep.start_reason if ep.level is None else "")
+            start_reason=ep.start_reason if ep.level is None else "",
+            ignored_levels=tuple(sorted({r.level for r in self.nudges
+                                         if r.ladder == ep.ladder and r.outcome == "no_reaction"
+                                         and r.t >= (ep.round_started if ep.round_started is not None
+                                                     else ep.started)})),
+            ambiguous=ep.ambiguous)
 
     def _decision_context(self, context: NudgeContext, level: int, now: float) -> Dict[str, Any]:
         """The context logged with the decision (A22: the bandit's training context). Only what
@@ -581,7 +607,9 @@ class EscalationEngine:
                     ladder=ladder, level=level, behavior=behavior, tone=action.tone,
                     intensity=action.intensity, propensity=action.propensity, reason=action.reason,
                     reaction_window=reaction, context=self._decision_context(context, level, now),
-                    explanation=explanation)
+                    explanation=explanation,
+                    **(dict(describe(context.allowed), chosen_in_allowed=contains(context.allowed, action))
+                       if context.allowed else {}))
         play_context: Dict[str, Any] = {"minutes": max(1, int(round(minutes / 60))),
                                         "evidence": self._evidence_text()}
         if explanation is not None and explanation.get("spoken"):
@@ -604,6 +632,11 @@ class EscalationEngine:
             self.break_offer_t = now
         if ladder == "bedtime" and level == cfg.wind_down_offer_level:
             self._start_wind_down(now)
+        if ladder == "bedtime" and level == cfg.goodnight_level and policy_name != "wind_down_timer":
+            # A23: goodnight early (very drowsy, sure), chosen by a policy instead of the timer
+            self.flow = "goodnight"
+            self.actuator.set_idle(None)
+            self._event("escalation", now, what="goodnight", reason="early: very drowsy")
         self._wait(f"played {ladder} level {level}; waiting for a reaction")
 
     # -- hmm: decisions on the whole belief (A19) ---------------------------------------------

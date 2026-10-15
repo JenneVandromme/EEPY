@@ -153,3 +153,37 @@ hmm:
     min: 0.7               # 70 % of ladders.*.intensity at the act threshold ...
     full_at: 0.9           # ... the full value from 90 % sure
   evidence_top: 3          # the top signs attached to every decision (for the panel, the log and A20)
+
+# --- Who chooses WHAT to play, and what it may choose from (A23) -------------
+# fixed: the fixed escalation (start low, one level up after each nudge without a
+# reaction). It is the default, and the fallback when another policy fails or
+# picks something outside the allowed set. The bandit (A24) will add "bandit".
+policy: fixed
+
+# The action space: what any policy may play at a moment. The bandit only ever picks
+# inside this set, however it learns. Timing (onset, guards, cooldowns, the belief's
+# evidence) is decided before this; these rules are about WHICH nudge.
+# Docs: docs/A23_ALLOWED_ACTIONS.md. Try them: the launcher's Decisions tab.
+actions:
+  max_step_up: 2            # at most two levels above the last one: no jump from a glance to a spoken prompt
+  max_start_level:          # the first nudge of an episode is at most this level ...
+    refocus: 2              #   a wordless nudge first: we may be wrong about the distraction
+    bedtime: 2              #   tiredness builds slowly; start with a hint
+    very_drowsy: 3          #   strong evidence may start with words (A19's switch and restarts may go higher)
+  no_ignored_levels: true   # never repeat a level they already ignored this episode (a restart after a cooldown is a fresh round)
+  break_after_work: 900     # the break offer only after 15 minutes of work since the start or the last break
+  goodnight_early:          # goodnight without the wind-down timer, only when:
+    enabled: true
+    confidence: 0.9         #   very drowsy and at least 90 % sure (the HMM; the rules never qualify),
+    needs_calibration: true #   the features are relative to this person,
+    after_spoken: true      #   and a spoken bedtime nudge was already ignored this episode
+  spoken_from: 3            # levels from here say something out loud (both ladders)
+  direct_tone:
+    needs_calibration: true # the firmer tone also needs confidence.direct (85 %): never firm on a guess
+  ambiguous_tone: hedged    # distracted or drowsy, unclear which: only the gentle option (A19)
+  most_intrusive_from:      # marked "most intrusive" in the logs and the launcher
+    refocus: 3              #   spoken prompts and the break offer
+    bedtime: 3              #   spoken prompts, the wind-down offer and goodnight
+  # The designers' intrusiveness ranking (B8), when it exists: "ladder:level": rank (higher =
+  # more intrusive), e.g. "refocus:2": 1.5. Empty: the ladder level order.
+  intrusiveness: {}

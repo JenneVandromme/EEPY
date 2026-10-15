@@ -32,6 +32,7 @@ LIBRARY = load_library()
 def raw_config(**belief: Any) -> dict:
     raw = copy.deepcopy(RAW)
     raw["guards"]["after_calibration"] = 0
+    raw["actions"]["break_after_work"] = 0          # the break offer at once (A23's rule: test_actions.py)
     for key, value in belief.items():
         raw["hmm"][key] = value
     return raw

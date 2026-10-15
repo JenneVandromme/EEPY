@@ -245,7 +245,7 @@ def _demo_robot(estimates: Sequence[StateEstimate], t0: float) -> List[Dict[str,
     from eepy.interaction.actuator import SimActuator
     from eepy.interaction.config import DEFAULT_PATH, check_library, parse
     from eepy.interaction.engine import EscalationEngine
-    from eepy.interaction.policy import FixedEscalation
+    from eepy.interaction.policy import make_policy
     from eepy.interaction.simulate import VirtualClock
 
     from .runner import panel_view
@@ -261,7 +261,7 @@ def _demo_robot(estimates: Sequence[StateEstimate], t0: float) -> List[Dict[str,
     def log(event_type: str, t: float, **fields: Any) -> None:
         logged.append({"type": event_type, "t_mono": t, **fields})
 
-    engine = EscalationEngine(config, FixedEscalation(config), SimActuator(library, clock), log)
+    engine = EscalationEngine(config, make_policy(config), SimActuator(library, clock), log)
     engine.session_started(t0)
     for e in estimates:
         clock.now = e.t
