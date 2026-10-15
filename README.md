@@ -386,6 +386,49 @@ python robot/test_connection.py --robot-host 192.168.1.50
 (replace with the robot's actual IP — ask whoever set it up, or put it in
 `.env` as `REACHY_MINI_HOST` so you don't need the flag every time).
 
+### Make the robot follow your eyes (eye gaze)
+
+`robot/eye_gaze_follow.py` turns the robot's head to look into your eyes: it
+aims at the point between your eyes, copies how your head is tilted, and turns
+the body to catch up when the head stays turned for 2 seconds. Copied from
+BURTRAM, a standalone script: it is **not** part of the panel or the
+escalation yet. Don't run it together with the panel or `python -m
+eepy.perception`: they would fight over the camera and the head.
+
+It runs in **`.venv-vision`** (it needs mediapipe), and moves the robot over the
+daemon's web API instead of the robot library, which lives in the other venv.
+A window shows what the camera sees; **Q** or **Esc** in that window (or
+Ctrl+C in the terminal) stops it, and the head glides back to neutral.
+
+**With the simulator and your laptop webcam:** start the simulator (Terminal 1,
+as in "Test the robot connection" above), then:
+
+```bash
+source .venv-vision/bin/activate       # Windows: .venv-vision\Scripts\Activate.ps1
+python robot/eye_gaze_follow.py --sim --camera 0
+```
+
+The blue rectangle in the window is roughly what the robot's own camera would
+see from where its head points.
+
+**With the real robot:** its camera is read through the robot library, so that
+part runs in `.venv-robot`, in a second terminal:
+
+```bash
+# Terminal 1
+source .venv-robot/bin/activate        # Windows: .venv-robot\Scripts\Activate.ps1
+python robot/eye_gaze_camera_relay.py --robot-host 192.168.50.95
+
+# Terminal 2
+source .venv-vision/bin/activate       # Windows: .venv-vision\Scripts\Activate.ps1
+python robot/eye_gaze_follow.py --robot-host 192.168.50.95
+```
+
+If the head turns away from you instead of toward you, add `--invert-yaw`
+(left/right) or `--invert-pitch` (up/down). `--smoothing` (default 0.15) and
+`--max-head-speed` (default 150 °/s) make it calmer or quicker; `--help` lists
+everything. Every movement goes through `robot/safety_limits.py` first.
+
 ### Talk to EEPY (Gemini API)
 
 `robot/conversation.py` lets you actually talk to the robot: it listens
@@ -432,7 +475,9 @@ EEPY/
 │   ├── connection.py      # shared "how do I reach the robot?" helper (sim/USB/wireless)
 │   ├── test_connection.py # sanity check — can we connect and move the robot?
 │   ├── greetings.py       # a scripted greeting sequence
-│   └── conversation.py    # talk to the robot via Gemini (STT + reply + TTS)
+│   ├── conversation.py    # talk to the robot via Gemini (STT + reply + TTS)
+│   ├── eye_gaze_follow.py # the head follows your eyes (from BURTRAM; runs in .venv-vision, REST)
+│   └── eye_gaze_camera_relay.py  # real robot only: hands its camera frames to eye_gaze_follow.py
 ├── behaviors/             # WHAT the robot does, as editable YAML — see docs/BEHAVIORS_GUIDE.md
 │   ├── _blocks.yaml       # shared building blocks + named gaze targets
 │   ├── idle.yaml          # quiet background presence
