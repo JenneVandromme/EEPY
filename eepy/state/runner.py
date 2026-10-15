@@ -334,10 +334,19 @@ def panel_view(estimate: StateEstimate) -> Dict[str, Any]:
     view = {"state": estimate.state, "reason": estimate.reason_text, "pending": estimate.pending,
             "calibrated": estimate.calibrated, "since": round(estimate.since, 3),
             "t": round(estimate.t, 3), "estimator": estimate.estimator,
-            "rules": [r.rule for r in estimate.reasons]}
+            "rules": [r.rule for r in estimate.reasons],
+            # A20: the feature values the explanations put in words
+            "values": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in estimate.values.items()
+                       if isinstance(v, (int, float)) and not isinstance(v, bool)}}
+    if estimate.fired:      # rules: every rule that fired, per state (the explanation's items)
+        view["fired"] = {state: [{"rule": r.rule, "feature": r.feature, "value": r.value,
+                                  "threshold": r.threshold, "text": r.text} for r in reasons]
+                         for state, reasons in estimate.fired.items()}
     if estimate.confidence is not None:
         view.update(probs={s: round(estimate.scores.get(s, 0.0), 3) for s in STATES[:4]},
                     most_likely=estimate.most_likely, confidence=round(estimate.confidence, 3),
                     uncertainty=estimate.uncertainty, updated=estimate.updated, say=estimate.say or "",
                     evidence=[{k: e.get(k) for k in EVIDENCE_KEYS} for e in estimate.evidence[:EVIDENCE_TOP]])
+        if estimate.ledger is not None:
+            view["ledger"] = estimate.ledger
     return view

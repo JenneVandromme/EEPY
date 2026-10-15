@@ -109,8 +109,13 @@ class Wizard:
         camera_relay: tuple[int, float] | None = None,
         calibration_store: Any = None,
         session_prior: Path | None = None,
+        explanations: Any = None,
     ) -> None:
+        from eepy.settings import Explanations
+
         self.backend_factory = backend_factory
+        # A20: explanations after nudges (an experimental condition, recorded in meta.json)
+        self.explanations = explanations if explanations is not None else Explanations()
         self.backend_name = backend_name
         self.behaviors_dir = Path(behaviors_dir)
         self.sounds_dir = Path(sounds_dir)
@@ -441,7 +446,8 @@ class Wizard:
                 participant, mode=self.mode, backend=self.backend_name, notes=notes,
                 intensity_default=self.config.default_intensity,
                 behaviors=sorted(self.library.behaviors),
-                markers=[m.id for m in self.config.markers], prior=prior)
+                markers=[m.id for m in self.config.markers], prior=prior,
+                explanations=self.explanations.model_dump())
         except SessionError as exc:
             raise WizardError(str(exc)) from None
         self._session_started_at = shared_clock()
@@ -900,10 +906,14 @@ class Wizard:
             self._error(f"The {self.mode} mode cannot nudge: the escalation config has a problem.\n{exc}")
             return
         actuator = PlayerActuator(lambda: self.player, on_error=self._error, library=lambda: self.library)
+        from eepy.explanations.build import Explainer
+
+        ex = self.explanations
         self.autonomy = EscalationEngine(
             config, FixedEscalation(config), actuator,
             log=lambda event_type, t, **fields: self._note(event_type, "auto", t=t, **fields),
-            idle=self.panel.idle)
+            idle=self.panel.idle, explanations=ex.enabled,
+            explainer=Explainer(ex.top_k, ex.window_min_seconds, ex.window_max_seconds))
         self._autonomy_thread = threading.Thread(target=self._autonomy_loop, args=(config.tick_seconds,),
                                                  name="eepy-autonomy", daemon=True)
         self._autonomy_running = True
@@ -1230,5 +1240,5 @@ def make_wizard(backend: str | None, robot_host: str | None, settings: Any = Non
     camera = settings.camera_config
     kwargs.setdefault("camera_relay", (camera.relay_port, camera.fps))
     return Wizard(lambda: make_backend(name, robot_host=robot_host),
-                  backend_name=name, mode=settings.mode,
+                  backend_name=name, mode=settings.mode, explanations=settings.explanations,
                   speaker_factory=lambda: make_speaker(settings.speech), **kwargs)

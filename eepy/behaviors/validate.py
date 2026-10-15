@@ -621,21 +621,36 @@ class Validator:
                     )
 
     def check_lines(self) -> None:
+        from eepy.explanations.catalog import BY_ID, LINE_PREFIX
+
         path = self.directory / "lines.yaml"
         for name, line in sorted(self.library.lines.items()):
+            allowed: tuple[str, ...] = limits.ALLOWED_PLACEHOLDERS
+            if name.startswith(LINE_PREFIX):
+                # An explanation line (A20): explain_<evidence type>, with that type's placeholders.
+                kind = name[len(LINE_PREFIX):]
+                if kind not in BY_ID:
+                    match = _suggest(kind, tuple(BY_ID))
+                    self.error(path, f'line "{name}"',
+                               f'"{kind}" is not an evidence type, so this line would never be said.',
+                               f'Did you mean "{LINE_PREFIX}{match}"?' if match else
+                               "Evidence types: " + ", ".join(BY_ID) + " (docs/EXPLANATION_CATALOG.md).")
+                    continue
+                allowed = BY_ID[kind].placeholder_names
             for tone in ("hedged", "direct"):
                 for index, text in enumerate(getattr(line.variants, tone)):
                     spot = f'line "{name}", {tone} variant {index + 1}'
                     if not text.strip():
                         self.error(path, spot, "this variant is empty.")
                     for placeholder in re.findall(r"\{([^}]*)\}", text):
-                        if placeholder not in limits.ALLOWED_PLACEHOLDERS:
-                            match = _suggest(placeholder, limits.ALLOWED_PLACEHOLDERS)
+                        if placeholder not in allowed:
+                            match = _suggest(placeholder, allowed)
                             self.error(
                                 path, spot,
-                                f'"{{{placeholder}}}" is not a placeholder I know.',
+                                f'"{{{placeholder}}}" is not a placeholder I know'
+                                + (" for this evidence type." if allowed is not limits.ALLOWED_PLACEHOLDERS else "."),
                                 f'Did you mean "{{{match}}}"?' if match else
-                                f"Allowed: {', '.join('{' + p + '}' for p in limits.ALLOWED_PLACEHOLDERS)}.",
+                                f"Allowed: {', '.join('{' + p + '}' for p in allowed)}.",
                             )
 
     # -- stage 4: ladders --------------------------------------------------

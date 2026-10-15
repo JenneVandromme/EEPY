@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from eepy.explanations.catalog import type_of_feature
+
 from . import hmm_model as model
 from .config import fill
 from .estimate import Reason, StateEstimate, register
@@ -78,6 +80,8 @@ class HMMEstimator:
         self._depth = np.array([DEPTH[r] if (s == r or r != "focused") else 1 / 3
                                 for s, r in zip(self.states, self.reports)])
         self._q_base = model.generator(self.params.rates_per_hour)
+        self.epoch = 0                          # counts resets: the evidence ledger starts over at each
+        self.muted: frozenset = frozenset()     # evidence types left out (the deletion test, A20)
         self.prior: AppliedPrior = default_prior(self.params)
         self.q = self._q_base
         self.set_session_prior(prior)
@@ -111,6 +115,14 @@ class HMMEstimator:
         self.shown = "unknown"
         self.since: Optional[float] = None
         self.recent: Dict[str, np.ndarray] = {}
+        # The evidence ledger (A20): per evidence type (eepy/explanations/catalog.py), the summed
+        # weighted log-likelihood per hidden state since this reset, and the rest of every change
+        # of the belief (the drift over time and the probability floor). For any two hidden states
+        # and any two moments: change in log(b_i / b_j) = sum over types of the change in
+        # (ev_i - ev_j) + the change in (drift_i - drift_j), exactly.
+        self.epoch += 1
+        self.ledger_ev: Dict[str, np.ndarray] = {}
+        self.ledger_drift = np.zeros(len(self.states))
 
     def _hidden_initial(self) -> np.ndarray:
         """The prior's belief over the reported states, spread over the hidden states that show
@@ -222,6 +234,7 @@ class HMMEstimator:
         if self.since is None:
             self.since = t
 
+        before = self.log_b
         # 1 predict
         log_b = model.predict(self.log_b, model.transition(self.q, dt)) if dt > 0 else self.log_b
         if dt > 0 and self.recent:
@@ -245,6 +258,8 @@ class HMMEstimator:
                 # Restart evidence timing: the windows mostly cover the time before the gap.
                 self.t_last_obs = t - min(dt, 1.0)
             observations, skipped = self.extract(features)
+            if self.muted:
+                observations = [o for o in observations if type_of_feature(o.spec.id) not in self.muted]
             dt_ev = 1.0 if self.t_last_obs is None else max(0.0, t - self.t_last_obs)
             weights = model.group_weights([o.spec for o in observations], p_.groups)
             total = np.zeros(len(self.states))
@@ -253,6 +268,8 @@ class HMMEstimator:
                 w = weights[o.spec.id] * (p_.uncalibrated_weight if o.uncalibrated else 1.0)
                 c = w * min(dt_ev, o.spec.tau) / o.spec.tau * ll
                 total += c
+                kind = type_of_feature(o.spec.id)
+                self.ledger_ev[kind] = self.ledger_ev.get(kind, np.zeros(len(self.states))) + c
                 g = _family_max(c, self._groups)       # per family, used by the explanations too
                 contrib[o.spec.id] = (c, ll, w, g, _family_max(ll, self._groups))
                 self.recent[o.spec.id] = self.recent.get(o.spec.id, np.zeros(3)) + g
@@ -264,6 +281,7 @@ class HMMEstimator:
 
         # 4 normalise and report
         self.log_b = model.normalise(log_b, p_.min_prob)
+        self.ledger_drift = self.ledger_drift + (self.log_b - before - (total if updated else 0.0))
         self.t_last = t
         hidden = np.exp(self.log_b)
         probs = self.reported(hidden)                        # focused, distracted, drowsy, very_drowsy
@@ -312,7 +330,13 @@ class HMMEstimator:
             since=self.since, pending=pending if shown not in ("unknown", "absent") else None,
             estimator=self.name, values=values, most_likely=most_likely,
             confidence=round(confidence, 6), uncertainty=round(model.entropy(probs), 3),
-            evidence=evidence, updated=updated, say=say)
+            evidence=evidence, updated=updated, say=say, ledger=self.ledger())
+
+    def ledger(self) -> Dict[str, Any]:
+        """The evidence ledger, JSON-ready (sent to the panel with every estimate)."""
+        r = lambda v: [round(float(x), 6) for x in v]      # noqa: E731
+        return {"epoch": self.epoch, "states": list(self.states), "logb": r(self.log_b),
+                "drift": r(self.ledger_drift), "ev": {k: r(v) for k, v in self.ledger_ev.items()}}
 
     # --- flags ----------------------------------------------------------------------------------
 

@@ -67,6 +67,9 @@ class StateEstimate:
     evidence: List[Dict[str, Any]] = field(default_factory=list)   # this step's signs, by impact
     updated: bool = True                  # False: no new evidence this step (absent, unknown)
     say: Optional[str] = None             # the short text the robot may speak as {evidence}
+    ledger: Optional[Dict[str, Any]] = None   # the evidence ledger, for explanations (A20)
+    # rules only: every rule that fired, per state (the reasons above are only the shown state's)
+    fired: Dict[str, List[Reason]] = field(default_factory=dict)
 
     @property
     def reason_text(self) -> str:

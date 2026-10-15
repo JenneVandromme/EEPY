@@ -246,7 +246,10 @@ class BehaviorPlayer:
         self._pending_plays = 0
         self._commanded: Pose = NEUTRAL
         self._base: HeadPose | None = None      # the resting direction; None: straight ahead
-        self._last_send: float | None = None
+        self._last_send: float | None = None     # when the last pose sent was SAMPLED (or became true)
+        # The last frames sent, with the time each pose was sampled at: the motion the robot was
+        # told to make, for checks and tests (a minute at 50 Hz).
+        self.sent_frames: deque[tuple[float, Pose]] = deque(maxlen=3000)
         self._lateness: deque[float] = deque(maxlen=20000)
         self._thread: threading.Thread | None = None
         self._running = threading.Event()
@@ -781,13 +784,13 @@ class BehaviorPlayer:
             return
 
         if t >= trajectory.duration:
-            self._send(trajectory.end_pose, run, scheduled)
+            self._send(trajectory.end_pose, run, scheduled, now)
             if run is not self._active and run is not self._idle_run and run is not self._internal:
                 return  # _send abandoned it
             self._next_loop_or_finish(run)
             return
 
-        self._send(trajectory.sample(t), run, scheduled)
+        self._send(trajectory.sample(t), run, scheduled, now)
 
     def _perform_action(self, run: _Run, segment) -> None:
         log.info('"%s": handing over to the SDK for %s()', run.name, segment.action)
@@ -817,11 +820,15 @@ class BehaviorPlayer:
                       run.name, reason)
         self._end_run(run, "finished")
 
-    def _send(self, pose: Pose, run: _Run, scheduled: float) -> None:
-        now = time.monotonic()
+    def _send(self, pose: Pose, run: _Run, scheduled: float, sampled: float) -> None:
+        """Send one frame. `sampled`: the moment the pose was sampled at. Speed is judged
+        between SAMPLE times, not send times: firing cues and the checks take time, and on a
+        busy machine a stall between sampling and sending would otherwise make two poses
+        sampled a tick apart look as if they came microseconds apart (a false speed violation
+        that abandons the behaviour)."""
         problems = safety.check_pose(pose, check_reach=self.check_reach)
         if self._last_send is not None:
-            problems += safety.check_tick_speed(self._commanded, pose, now - self._last_send)
+            problems += safety.check_tick_speed(self._commanded, pose, sampled - self._last_send)
         if problems:
             # Should be impossible after the up-front check. If it happens
             # anyway, refuse the frame, abandon the behaviour, and go home.
@@ -834,8 +841,9 @@ class BehaviorPlayer:
             self._return_to_neutral()
             return
         self.backend.send(pose)
-        self._commanded, self._last_send = pose, now
-        self._lateness.append(now - scheduled)
+        self._commanded, self._last_send = pose, sampled
+        self.sent_frames.append((sampled, pose))
+        self._lateness.append(time.monotonic() - scheduled)
 
     # --- sounds and words ------------------------------------------------------
 
@@ -859,12 +867,27 @@ class BehaviorPlayer:
                        source=run.source)
         elif cue.kind == "say":
             try:
+                # A20: the explanation follows the behaviour's FIRST spoken line, in the same clip.
+                then = self._explanation_text(run.context.pop("explanation", None), run.tone)
                 self.speaker.speak_line(cue.value, run.tone, source=run.source,
-                                        behavior=run.name, **run.context)
+                                        behavior=run.name, then=then, **run.context)
             except SpeechError as exc:
                 log.error('"%s": %s', run.name, exc)
                 self._emit("speech_failed", run.name, line_id=cue.value, variant=run.tone,
                            error=str(exc), idle=run.idle, source=run.source)
+
+    def _explanation_text(self, explanation: dict | None, tone: str) -> str | None:
+        """The explanation sentence: the designers' explain_<type> line in lines.yaml when it
+        exists and can be filled, else the catalog's default sentence (eepy/explanations)."""
+        if not explanation:
+            return None
+        line = explanation.get("line")
+        if line and line in self._library.lines:
+            try:
+                return self.speaker.selector.pick(line, tone, **(explanation.get("placeholders") or {}))
+            except SpeechError as exc:
+                log.info("explanation line %s: %s -- using the default sentence", line, exc)
+        return explanation.get("sentence")
 
     def _speech_event(self, kind: str, data: dict) -> None:
         """The Speaker reports here; its events join the player's own."""

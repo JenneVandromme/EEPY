@@ -8,6 +8,7 @@
     python -m eepy.interaction.simulate belief_shift                     # hmm mode: beliefs (A19)
     python -m eepy.interaction.simulate "focused 4m, distracted@0.65 3m, distracted@0.4+drowsy@0.4 3m"
     python -m eepy.interaction.simulate --session P03 --estimator hmm
+    python -m eepy.interaction.simulate --synthetic "work 2m, sleepy 6m"   # simulated faces -> HMM (A20)
 
 The states are what the state estimator (A13) would say, once a second. Replies
 ("accepted", "snoozed", "dismissed") stand for the operator's buttons. It runs in
@@ -201,6 +202,7 @@ class VirtualClock:
 class Line:
     t: float
     text: str
+    explanation: Optional[Dict[str, Any]] = None      # a nudge's explanation (A20)
 
 
 class Recorder:
@@ -227,7 +229,7 @@ class Recorder:
         else:
             rest = ", ".join(f"{k} {v}" for k, v in fields.items() if k != "what" and v is not None)
             text = f"{fields['what'].replace('_', ' ')}" + (f" ({rest})" if rest else "")
-        self.lines.append(Line(t, text))
+        self.lines.append(Line(t, text, fields.get("explanation") if event_type == "nudge_decision" else None))
 
 
 def _clock(seconds: float) -> str:
@@ -326,10 +328,39 @@ def session_estimates(session: str, data: Optional[str] = None,
     return estimates, replies, session_start(folder) or features[0]["t"]
 
 
+def synthetic_estimates(spec: str, estimator: str = "hmm", seed: int = 1) -> Tuple[List[Dict[str, Any]], float]:
+    """Simulated face features (eepy/state/synthetic.py: work, phone, sleepy, leave) run through
+    the real estimator: the estimates carry real evidence, so the explanations (A20) are real."""
+    from eepy.state import make_estimator
+    from eepy.state.replay import run
+    from eepy.state.runner import estimator_gap, panel_view
+    from eepy.state.synthetic import simulate
+
+    phases = []
+    for part in [p.strip() for p in spec.split(",") if p.strip()]:
+        kind, _, length = part.partition(" ")
+        seconds = _seconds(length.strip())
+        if kind not in ("work", "phone", "sleepy", "leave") or seconds is None:
+            raise ValueError(f'"{part}": a synthetic phase is work, phone, sleepy or leave plus a length, '
+                             'e.g. "sleepy 5m"')
+        phases.append((kind, int(seconds)))
+    t0 = 1000.0
+    features = simulate(phases, seed=seed, aus=True, t0=t0)
+    est = make_estimator(estimator)
+    return [dict(panel_view(e)) for e in run(features, est, estimator_gap(est))], t0
+
+
 def print_run(title: str, recorder: Recorder, engine: EscalationEngine, start: float = 0.0) -> None:
     print(f"\n  {title}\n")
     for line in recorder.lines:
         print(f"  {_clock(line.t - start)}  {line.text}")
+        x = line.explanation
+        if x:
+            said = "says" if x.get("spoken") else f"would say ({x.get('not_spoken')})"
+            if x.get("sentence"):
+                print(f"  {'':5}  explanation: {said}: \"{x['sentence']}\"")
+            print(f"  {'':5}    evidence: {x.get('text') or 'none'}; {x['contrast'].get('text')}"
+                  + (f"  [sum error {x['checks']['sum_error']:+.1e}]" if x.get("checks") else ""))
     outcomes: Dict[str, int] = {}
     for kind, _, fields in recorder.events:
         if kind == "nudge_outcome":
@@ -393,10 +424,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--realtime", action="store_true", help="play live on the DryRunBackend (real time)")
     parser.add_argument("--belief", action="store_true",
                         help="run the states as HMM beliefs (95 %% sure), with the hmm: decisions (A19)")
-    parser.add_argument("--estimator", choices=("rules", "hmm"), default="rules",
-                        help="with --session: re-run the session's features with this estimator")
+    parser.add_argument("--estimator", choices=("rules", "hmm"), default=None,
+                        help="with --session (default rules) or --synthetic (default hmm): the estimator")
+    parser.add_argument("--synthetic", help='simulated faces through the real estimator, e.g. "work 2m, sleepy 6m"')
     args = parser.parse_args(argv)
-    if args.list or (not args.scenario and not args.session):
+    if args.list or (not args.scenario and not args.session and not args.synthetic):
         print("\n  Scenarios:")
         for s in SCENARIOS.values():
             spec = ", ".join(w if w in REPLIES else f"{w} {_clock(sec)}" for w, sec in s.segments)
@@ -406,8 +438,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
     try:
         config = load(Path(args.config)) if args.config else load()
+        if args.synthetic:
+            estimates, start = synthetic_estimates(args.synthetic, args.estimator or "hmm")
+            recorder, _, engine = run_estimates(estimates, [], config)
+            print_run(f"Synthetic: {args.synthetic} ({args.estimator or 'hmm'}, {len(estimates)} estimates)",
+                      recorder, engine, start)
+            return 0
         if args.session:
-            estimates, replies, start = session_estimates(args.session, args.data, args.estimator)
+            estimates, replies, start = session_estimates(args.session, args.data, args.estimator or "rules")
             recorder, _, engine = run_estimates(estimates, replies, config)
             print_run(f"Session {args.session}: {len(estimates)} seconds of states, "
                       f"{len(replies)} replies from the panel", recorder, engine, start)

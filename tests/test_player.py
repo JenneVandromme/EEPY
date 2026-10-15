@@ -604,16 +604,40 @@ def test_reload_refuses_to_lose_the_idle(harness, dirs):
 
 
 def test_every_frame_sent_obeys_every_limit(harness):
-    """Defence in depth: check the actual frames, not the plan."""
+    """Defence in depth: check the actual frames, not the plan -- at the times the poses were
+    SAMPLED. The backend's own timestamps include the time spent on cues and checks before each
+    send; on a slow CI runner one stall there made two poses sampled 20 ms apart arrive 0.1 ms
+    apart and look like 12000 deg/s."""
     from eepy.behaviors import safety
 
     h = harness()
     for name in ("long", "big_pitch", "relative_nod", "talker", "looker"):
         h.player.play(name, wait=True)
-    frames = h.backend.sent
+    frames = list(h.player.sent_frames)
+    assert [p for _, p in frames] == [p for _, p in h.backend.sent][-len(frames):]   # the same frames
     for (t0, a), (t1, b) in zip(frames, frames[1:]):
         assert not safety.check_pose(b), b
         assert not safety.check_tick_speed(a, b, t1 - t0)
+
+
+def test_a_stall_between_sampling_and_sending_is_not_a_speed_violation(harness):
+    """The CI failure, on purpose: firing a keyframe cue stalls 40 ms (a busy machine). That
+    frame was sampled before the stall, the next one right after it: judged by send times they
+    look impossibly fast and the behaviour would be abandoned; judged by sample times they are
+    the smooth curve they are."""
+    h = harness()
+    fire = h.player._fire
+
+    def slow_fire(run, cue):
+        if cue.kind == "keyframe":
+            time.sleep(0.04)
+        return fire(run, cue)
+
+    h.player._fire = slow_fire
+    for _ in range(3):
+        h.player.play("big_pitch", wait=True)
+    assert "behavior_interrupted" not in h.kinds("big_pitch")
+    assert h.kinds("big_pitch").count("behavior_finished") == 3
 
 
 # --- added for the Wizard panel -----------------------------------------------------
@@ -709,6 +733,32 @@ def test_a_behaviours_line_goes_through_the_speaker(harness):
     started = h.first("speech_started", "talker")
     assert started.data["text"] == "Hello." and started.data["source"] == "wizard"
     assert started.data["engine"] == "mock / v"
+
+
+def test_an_explanation_follows_the_first_line_in_the_same_clip(harness):
+    """A20: the explanation sentence is spoken right after the behaviour's own line."""
+    h = harness(speaker=_speaker())
+    h.player.play("talker", tone="direct", wait=True,
+                  context={"explanation": {"line": "explain_yawning", "sentence": "You've yawned twice.",
+                                           "placeholders": {"yawns_times": "twice", "minutes": "1"}}})
+    h.wait_until(lambda: "speech_finished" in h.kinds("talker"))
+    assert h.first("speech_started", "talker").data["text"] == "Hello. You've yawned twice."
+
+
+def test_an_explanation_uses_the_designers_line_when_there_is_one(dirs, harness):
+    (dirs[0] / "lines.yaml").write_text(LINES + """
+  explain_yawning:
+    description: Why, when yawning.
+    variants:
+      direct:
+        - "That was {yawns_times} yawning."
+""")
+    h = harness(speaker=_speaker())
+    h.player.play("talker", tone="direct", wait=True,
+                  context={"explanation": {"line": "explain_yawning", "sentence": "You've yawned twice.",
+                                           "placeholders": {"yawns_times": "twice", "minutes": "1"}}})
+    h.wait_until(lambda: "speech_finished" in h.kinds("talker"))
+    assert h.first("speech_started", "talker").data["text"] == "Hello. That was twice yawning."
 
 
 def test_a_sound_is_skipped_while_the_robot_speaks(harness):

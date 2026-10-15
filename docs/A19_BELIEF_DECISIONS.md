@@ -251,7 +251,8 @@ connected (no daemon answered), so nothing moved.
 
 ## Future
 
-- **A20:** turn the top evidence into a spoken explanation ("you've looked away for a while").
+- **A20 (done):** the top evidence of every decision, summed over its window, as a spoken
+  explanation: [A20_EXPLANATIONS.md](A20_EXPLANATIONS.md).
 - **A24 (bandit):** learn the start level and tone; the policy interface and `propensity` are
   ready, and the switch carry-over is a good first arm.
 - **Information gain:** a "check" behaviour (a glance) when the belief is unclear, to learn

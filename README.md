@@ -555,6 +555,8 @@ head can physically reach a pose and how fast it moves. Details in
 | train and compare HMM versions on simulated users | [docs/SYNTHETIC_DATASET.md](docs/SYNTHETIC_DATASET.md) |
 | understand when the robot nudges on its own (rules and hmm modes), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
 | why the hmm mode decides on the whole belief, and how it compares to the rules | [docs/A19_BELIEF_DECISIONS.md](docs/A19_BELIEF_DECISIONS.md) |
+| how EEPY explains each nudge ("your eyes were closed 34 % of the last minute"), and how faithful that is | [docs/A20_EXPLANATIONS.md](docs/A20_EXPLANATIONS.md) |
+| write explanation lines (the evidence types and their placeholders) | [docs/EXPLANATION_CATALOG.md](docs/EXPLANATION_CATALOG.md) |
 | open problems we parked (e.g. keeping the face in the robot camera's view) | [docs/TODO.md](docs/TODO.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |

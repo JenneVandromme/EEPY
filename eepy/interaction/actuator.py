@@ -14,6 +14,13 @@ log = logging.getLogger("eepy.interaction")
 SPEECH_SECONDS = 2.5        # the simulation's guess for a spoken line
 
 
+def _speaks(library: Any, name: str) -> bool:
+    try:
+        return any(step.say for step in library.resolve(library.behaviors[name]))
+    except Exception:  # noqa: BLE001 -- unknown behaviour: it says nothing
+        return False
+
+
 class PlayerActuator:
     """`player` is a BehaviorPlayer, or a function returning the current one (the panel
     replaces its player on Reconnect). `library` (optional) answers lookups while no
@@ -62,6 +69,10 @@ class PlayerActuator:
     def level_behavior(self, ladder: str, level: int) -> str:
         return self._lib().get_behavior(ladder, level).name
 
+    def speaks(self, name: str) -> bool:
+        """Does this behaviour say a line (so an explanation can follow it, A20)?"""
+        return _speaks(self._lib(), name)
+
     def play_level(self, ladder: str, level: int, intensity: float, tone: str,
                    context: Dict[str, Any]) -> str:
         name = self.level_behavior(ladder, level)
@@ -101,6 +112,9 @@ class SimActuator:
 
     def busy(self) -> bool:
         return self.clock() < self.busy_until
+
+    def speaks(self, name: str) -> bool:
+        return _speaks(self.library, name)
 
     def has_behavior(self, name: str) -> bool:
         return name in self.library.behaviors

@@ -22,6 +22,8 @@ from collections import deque
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Deque, Dict, List, Optional, Protocol
 
+from eepy.explanations.build import Explainer
+
 from .belief import FAMILY_NAME, LADDERS, BeliefTracker, belief_text, is_belief
 from .config import EscalationConfig
 from .policy import Action, NudgeContext, NudgePolicy, NudgeRecord
@@ -84,12 +86,18 @@ class Episode:
 
 class EscalationEngine:
     def __init__(self, config: EscalationConfig, policy: NudgePolicy, actuator: Actuator,
-                 log: Optional[Log] = None, idle: Optional[str] = "study_buddy_idle") -> None:
+                 log: Optional[Log] = None, idle: Optional[str] = "study_buddy_idle",
+                 explanations: Optional[bool] = True, explainer: Optional[Explainer] = None) -> None:
+        """explanations (A20, an experimental condition): True builds, logs AND speaks an
+        explanation after spoken nudges; False builds and logs it (what EEPY would have said)
+        but does not speak it; None builds none."""
         self.config = config
         self.policy = policy
         self.actuator = actuator
         self._log_fn = log
         self.idle = idle
+        self.explanations = explanations
+        self.explainer = (explainer or Explainer()) if explanations is not None else None
         self._lock = threading.RLock()
         self.active = False
         self.paused = False
@@ -119,6 +127,8 @@ class EscalationEngine:
         with self._lock:
             self.estimate = dict(estimate)
             self.estimate_t = now
+            if self.explainer is not None:
+                self.explainer.feed(self.estimate, now)
             if self.belief is not None:
                 self.belief.update(self.estimate, now)
             self._step(now)
@@ -203,6 +213,8 @@ class EscalationEngine:
                 if out["decisions"] == "belief":
                     out["evidence_progress"] = self.belief.view()
                     out["decision"] = self.decision
+            out["explanations"] = {True: "on", False: "off", None: "none"}[self.explanations]
+            out["explanation"] = self.explanation
             return out
 
     # --- internals ---------------------------------------------------------------------------
@@ -237,8 +249,11 @@ class EscalationEngine:
         self.next_at: Optional[float] = None
         self._decisions = 0
         self.decision: Optional[Dict[str, Any]] = None   # hmm (A19): the last policy_decision
+        self.explanation: Optional[Dict[str, Any]] = None  # A20: the last decision's explanation
         if getattr(self, "belief", None) is not None:
             self.belief.reset()
+        if getattr(self, "explainer", None) is not None:
+            self.explainer.reset()
 
     def _event(self, event_type: str, t: float, **fields: Any) -> None:
         if self._log_fn is not None:
@@ -504,6 +519,31 @@ class EscalationEngine:
             start_level=ep.start_level if ep.level is None else None,
             start_reason=ep.start_reason if ep.level is None else "")
 
+    def _explain(self, ladder: str, level: int, tone: str, now: float, behavior: str,
+                 timer: bool = False) -> Optional[Dict[str, Any]]:
+        """A20: the explanation of this nudge. The window: since the evidence for this climb began
+        building (the first nudge), or since the previous nudge of the climb (what is new)."""
+        if self.explainer is None or timer:
+            return None
+        ep = self.episode
+        start = None
+        if ep is not None:
+            before = [n.t for n in self.nudges if n.ladder == ladder and n.t >= ep.started]
+            start = before[-1] if before else ep.started
+        explanation = self.explainer.explain(ladder, level, tone, now, start,
+                                             ambiguous=bool(ep is not None and ep.ambiguous))
+        if explanation is None:
+            return None
+        speaks = getattr(self.actuator, "speaks", None)
+        has_voice = bool(speaks(behavior)) if callable(speaks) else False
+        explanation["condition"] = "on" if self.explanations else "off"
+        explanation["spoken"] = bool(self.explanations and explanation.get("sentence") and has_voice)
+        if not explanation["spoken"]:
+            explanation["not_spoken"] = ("explanations are off" if not self.explanations else
+                                         "no evidence to put in words" if not explanation.get("sentence") else
+                                         "this level does not speak")
+        return explanation
+
     def _evidence_text(self) -> str:
         """{evidence} in a spoken line. The HMM gives a short `say` ("" when it has no clear
         reason -- never its long sentence); the rules give their reason."""
@@ -522,13 +562,21 @@ class EscalationEngine:
                        (ladder, level), now - self.session_start)
         reaction = cfg.ladders[ladder].reaction.get(level) if window == -1.0 else window
         behavior = self.actuator.level_behavior(ladder, level)
+        explanation = self._explain(ladder, level, action.tone, now, behavior,
+                                    timer=policy_name == "wind_down_timer")
         self._event("nudge_decision", now, decision_id=decision_id, policy=policy_name or self.policy.name,
                     ladder=ladder, level=level, behavior=behavior, tone=action.tone,
                     intensity=action.intensity, propensity=action.propensity, reason=action.reason,
-                    reaction_window=reaction, context=context.summary())
-        self.actuator.play_level(ladder, level, action.intensity, action.tone,
-                                 {"minutes": max(1, int(round(minutes / 60))),
-                                  "evidence": self._evidence_text()})
+                    reaction_window=reaction, context=context.summary(), explanation=explanation)
+        play_context: Dict[str, Any] = {"minutes": max(1, int(round(minutes / 60))),
+                                        "evidence": self._evidence_text()}
+        if explanation is not None and explanation.get("spoken"):
+            top = explanation["items"][0]
+            play_context["explanation"] = {"line": f"explain_{top['type']}", "sentence": explanation["sentence"],
+                                           "placeholders": top.get("placeholders") or {}}
+        if explanation is not None:
+            self.explanation = dict(explanation, decision_id=decision_id, t=now, behavior=behavior)
+        self.actuator.play_level(ladder, level, action.intensity, action.tone, play_context)
         self.open = OpenNudge(decision_id, ladder, level, now, reaction)
         if self._state in ("absent", "unknown"):
             self.open.freeze_start = now

@@ -222,16 +222,21 @@ class Speaker:
 
     def speak_line(self, line_id: str, variant: str = "hedged", *,
                    source: Optional[str] = None, behavior: Optional[str] = None,
-                   **values: Any) -> Utterance:
+                   then: Optional[str] = None, **values: Any) -> Utterance:
         """Say a line from lines.yaml. Returns at once.
 
         variant is "hedged" or "direct". Placeholders are filled from the
         keyword arguments: speak_line("bedtime_negotiate", "direct", minutes=10).
+        `then`: a sentence said right after it, in the same clip (the explanation
+        after a nudge, A20) -- one clip, so neither cuts the other off.
         Raises SpeechError -- with an explanation -- if the line does not exist
         or no wording of that variant can be filled in.
         """
         text = self.selector.pick(line_id, variant, **values)
         cacheable = text in self.selector.wordings(line_id, variant) and not placeholders(text)
+        then = " ".join(str(then or "").split())
+        if then:
+            text, cacheable = f"{text} {then}", False
         return self._enqueue(Utterance(line_id, variant, text, cacheable, source, behavior))
 
     def speak_text(self, text: str, *, source: Optional[str] = None,

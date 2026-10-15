@@ -26,6 +26,12 @@
 #  Only those two are allowed; the validator rejects anything else, so a typo
 #  like {minute} is caught before it ever reaches the robot.
 #
+#  EXPLANATION LINES (A20): a line called explain_<evidence type>, e.g.
+#  explain_eye_closure, is said right after a nudge's own line when that
+#  evidence was the main reason. It may use that type's placeholders
+#  ({closed_pct}, {yawns_times}, ...). Without one, EEPY uses its default
+#  sentence. The types, placeholders and defaults: docs/EXPLANATION_CATALOG.md
+#
 #  After editing run:  python -m eepy.behaviors.validate
 # ===========================================================================
 lines:

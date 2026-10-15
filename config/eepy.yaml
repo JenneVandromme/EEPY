@@ -17,6 +17,18 @@
 # mode in amber, and records that no controller was running.
 mode: wizard
 
+# Explanations after nudges (A20): after a spoken nudge, EEPY adds one sentence
+# saying why ("Your eyes were closed 34% of the last minute."). This is an
+# experimental condition (nudges with vs without explanations), so it is
+# recorded in every session's meta.json. Off, EEPY still logs what it WOULD
+# have said. `python -m eepy.wizard --explanations off` overrides it for one run.
+# The reasons and their sentences: docs/EXPLANATION_CATALOG.md.
+explanations:
+  enabled: true
+  top_k: 3                  # evidence items kept per decision (the panel and the log)
+  window_min_seconds: 60    # a decision's evidence window: at least the last minute ...
+  window_max_seconds: 600   # ... and at most the last 10 minutes
+
 # Where session folders go. data/ is gitignored: participant data must never
 # be committed.
 data_dir: data/sessions

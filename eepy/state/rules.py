@@ -22,7 +22,9 @@ from .estimate import STATES, Reason, StateEstimate, register
 
 KEY_VALUES = ("perclos_60s", "blink_mean_ms_60s", "blink_mean_ms_rel_60s", "long_blinks_60s",
               "yawns_60s", "nods_60s", "eyes_closed_now_s", "face_present_ratio_10s",
-              "gaze_off_ratio_60s", "away_current_s", "down_other_ratio_10s", "AU43_active_60s")
+              "gaze_off_ratio_60s", "away_current_s", "down_other_ratio_10s", "AU43_active_60s",
+              # also for the explanations' values (A20, eepy/explanations/catalog.py)
+              "blink_max_ms_60s", "AU26_active_60s", "away_episodes_60s")
 
 
 class RulesEstimator:
@@ -156,7 +158,8 @@ class RulesEstimator:
                 skipped.append("gaze not calibrated: default screen and notes zones")
         return StateEstimate(t=t, state=self.state, scores={s: float(s == self.state) for s in STATES},
                              reasons=reasons, calibrated=calibrated, skipped=skipped,
-                             since=self.since, pending=pending, estimator=self.name, values=values)
+                             since=self.since, pending=pending, estimator=self.name, values=values,
+                             fired={k: v for k, v in fired.items() if k not in ("focused", "unknown")})
 
     def _hold_reason(self, t: float, pending: Optional[str]) -> Reason:
         """Why the state is still shown although its own signs are gone."""

@@ -473,6 +473,8 @@ def test_session_metadata_is_complete(make, files):
     client.post("/api/session/start", json={"participant": "P22", "notes": "pilot, quiet room"})
     client.post("/api/session/end", json={"notes": "participant was tired"})
     meta = json.loads((session_folder(files) / "meta.json").read_text())
+    # the explanations condition (A20) is part of what a session MEANS
+    assert meta["explanations"]["enabled"] is True and meta["explanations"]["top_k"] == 3
     assert meta["participant"] == "P22" and meta["schema_version"] == 1
     assert meta["notes"] == ["pilot, quiet room", "participant was tired"]
     assert meta["code"]["commit"] and "dirty" in meta["code"]

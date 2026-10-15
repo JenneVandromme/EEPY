@@ -68,6 +68,11 @@
   .rung.next { color: var(--ink); border-color: var(--lc); border-style: dashed; }
   @keyframes rungpulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lc) 35%, transparent); } }
   .ladrow .lnote { color: var(--muted); }
+  /* the last nudge's explanation (A20): what EEPY said or would say, and why */
+  .explain { font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+  .explain .said { font-style: italic; }
+  .explain .evi { padding: 1px 8px; border-radius: 999px; background: var(--key); white-space: nowrap; }
+  .explain .evi b { font-weight: 600; }
   .evbar { display: inline-block; width: 60px; height: 8px; border-radius: 4px; background: var(--key);
            border: 1px solid var(--line); overflow: hidden; vertical-align: middle; }
   .evbar > span { display: block; height: 100%; background: var(--lc); }
@@ -168,6 +173,7 @@
   <div class="row calib" id="calib-row" hidden></div>
   <div class="row calib" id="auto-row" hidden></div>
   <div class="calib" id="ladder-view" hidden></div>
+  <div class="calib explain" id="explain-row" hidden></div>
   <div id="error" class="error" hidden>
     <b>Last problem</b> <span class="muted" id="error-time"></span>
     <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
@@ -541,6 +547,46 @@ function renderAutonomy(a, se) {
   btn.hidden = !a.active && !a.paused;
   renderChain(state.status.user_state, a);
   renderLadders(a);
+  renderExplanation(a);
+}
+
+// The last nudge's explanation (A20, docs/EXPLANATION_CATALOG.md): the sentence EEPY said -- or
+// would say, with explanations off or on a silent level -- the top evidence, and the contrast.
+function renderExplanation(a) {
+  const box = $("explain-row");
+  const x = a.explanation;
+  box.hidden = !a.active || !x;
+  if (box.hidden) return;
+  const key = `${x.decision_id}|${a.explanations}`;
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const pct = (v) => `${Math.round(v * 100)} %`;
+  const head = `<b>Why #${x.decision_id}</b> <span class="muted">${x.ladder} level ${x.level}, ${x.mode}</span>`;
+  const said = x.sentence ? (x.spoken ? "said: " : `would say (${x.not_spoken}): `) : "nothing to say: ";
+  box.innerHTML = head + `<span><span class="muted"></span><span class="said"></span></span>`;
+  box.querySelector("span > .muted").textContent = said;
+  box.querySelector(".said").textContent = x.sentence ? `“${x.sentence}”` : (x.not_spoken || "no evidence");
+  for (const item of x.items || []) {
+    const el = document.createElement("span");
+    el.className = "evi";
+    const p = item.placeholders || {};
+    const detail = [p.closed_pct && `closed ${p.closed_pct} %`, p.times_normal && `blinks ${p.times_normal}x`,
+                    p.yawns && `${p.yawns} yawn(s)`, p.nods && `${p.nods} nod(s)`, p.away_pct && `away ${p.away_pct} %`,
+                    p.away_for && `away now ${p.away_for}`].filter(Boolean).slice(0, 2).join(", ");
+    el.innerHTML = "<b></b> <span></span>";
+    el.querySelector("b").textContent = item.type.replaceAll("_", " ");
+    el.querySelector("span").textContent = (item.share != null ? pct(item.share) : "")
+      + (item.seconds != null ? ` · fired ${Math.round(item.seconds)} s` : "") + (detail ? ` · ${detail}` : "");
+    el.title = item.contribution != null ? `${item.contribution.toFixed(2)} nats over ${Math.round(x.window.seconds)} s`
+                                         : `rules: ${(item.rules || []).join(", ")}`;
+    box.appendChild(el);
+  }
+  const c = document.createElement("span");
+  c.className = "muted";
+  c.textContent = x.contrast && x.contrast.text ? `— ${x.contrast.text}` : "";
+  c.title = x.checks && x.checks.sum_error != null
+    ? `log-odds change ${x.checks.log_odds_change} = evidence ${x.checks.evidence} + dynamics ${x.checks.dynamics}` : "";
+  box.appendChild(c);
 }
 
 // Where the robot is on each ladder: filled = played in this climb (✓ it worked, · no reaction),
