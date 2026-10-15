@@ -115,25 +115,35 @@ behaviors:
     level: 5
     group: bedtime
     description: >
-      Says goodnight and goes to sleep. The last keyframe hands over to the
-      SDK's own goto_sleep(), which is the only way to reach the real
-      calibrated sleep pose -- it needs a sideways head shift that this file
-      format deliberately does not expose. That handover plays the SDK's own
-      go_sleep sound by itself, which is why the last keyframe has no "sound:".
+      Says goodnight with its head up, waves its right antenna twice (down
+      and back up, slowly), then goes to sleep. No acted-out drowsiness: the
+      last keyframe hands over to the SDK's own goto_sleep(), the robot's real
+      sleep sequence (the only way to reach the calibrated sleep pose). That
+      handover plays the SDK's own go_sleep sound by itself, which is why the
+      last keyframe has no "sound:".
     loop: once
     keyframes:
-      - use: glance_at_user
-      - head: { pitch: -6 }
-        antennas: { right: -30, left: 30 }
-        duration: 0.8
+      # Head up, antennas up, and say goodnight.
+      - head: { pitch: -15 }
+        antennas: { right: 0, left: 0 }
+        duration: 1.4          # from folded-back ears (170) this is a long way: keep it calm
         easing: ease_in_out
         say: bedtime_goodnight
-        hold: 2.0
-      # The settling-down sound comes once the words are finished: the robot
-      # can only play one clip at a time, and speech would cut it off.
-      - use: antenna_droop_deep
-        sound: goodnight.wav
-      - use: head_sag
+        hold: 1.5
+      # The wave: right antenna down and back up, twice, smooth and unhurried.
+      - antennas: { right: -60, left: 0 }
+        duration: 0.7
+        easing: ease_in_out
+      - antennas: { right: 0, left: 0 }
+        duration: 0.7
+        easing: ease_in_out
+      - antennas: { right: -60, left: 0 }
+        duration: 0.7
+        easing: ease_in_out
+      - antennas: { right: 0, left: 0 }
+        duration: 0.7
+        easing: ease_in_out
+        hold: 0.3
       # Hand over to the robot's built-in sleep. Nothing may follow this.
       - action: goto_sleep
         duration: 2.0

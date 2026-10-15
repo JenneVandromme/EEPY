@@ -99,12 +99,13 @@ blocks:
 
   antenna_droop:
     description: >
-      Antennas folded over -- tired, deflated. Large mirrored values are the
-      direction the SDK's own sleep pose uses, so this reads as "flopped
-      down", not "spread wide".
+      Antennas folded back and down, behind the head -- tired, deflated.
+      Large mirrored values are the direction the SDK's own sleep pose uses
+      (about 175), so this reads as "flopped down", not "spread wide".
+      170: nearly the sleep pose's fold, within the +-180 limit.
     keyframes:
-      - antennas: { right: -70, left: 70 }
-        duration: 1.2
+      - antennas: { right: -160, left: 160 }
+        duration: 2.5
         easing: minjerk
 
   antenna_droop_deep:
