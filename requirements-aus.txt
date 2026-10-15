@@ -1,0 +1,27 @@
+# OPTIONAL: facial Action Units (AUs) with Py-Feat -- eepy/perception/aus/.
+# Install it INTO the vision environment, on top of requirements-vision.txt:
+#
+#     pip install -r requirements-aus.txt
+#
+# Without it, everything else works and AUs are simply switched off.
+#
+# Needs Python 3.11 or newer (Py-Feat 2.x). Not available on Intel Macs (no
+# PyTorch for them). Pulls in PyTorch: ~300 MB on a Mac, ~2.5 GB with CUDA.
+#
+# WINDOWS OR UBUNTU WITH AN NVIDIA GPU: first install PyTorch, torchvision AND
+# torchcodec together, from ONE PyTorch CUDA index (a torchcodec from PyPI is
+# built for another CUDA and breaks the import):
+#     pip install torch torchvision torchcodec --index-url https://download.pytorch.org/whl/cu126
+#     pip install -r requirements-aus.txt
+# (RTX 50-series GPUs, e.g. an RTX 5090: use .../whl/cu130 instead.)
+# Macs: just the second line. Details and a check that the GPU is used:
+# eepy/perception/aus/README.md.
+
+# The vision requirements are included on purpose: installed on its own, Py-Feat
+# would upgrade numpy to 2.x, which breaks MediaPipe 0.10.14. Resolved together,
+# pip keeps numpy < 2 for both.
+-r requirements-vision.txt
+
+# Pinned: EEPY calls Py-Feat's AU model directly (no face detector of its own --
+# it reuses MediaPipe's face box), so a new Py-Feat version must be checked first.
+py-feat==2.1.2

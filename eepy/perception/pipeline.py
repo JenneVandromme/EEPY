@@ -27,7 +27,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Callable, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from .baseline import BaselineProvider
 from .config import PerceptionConfig
@@ -40,6 +40,11 @@ log = logging.getLogger("eepy.perception")
 # MediaPipe / TensorFlow Lite chatter that means nothing to the user.
 os.environ.setdefault("GLOG_minloglevel", "2")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+# Set ONCE, here, at import -- not inside warnings.catch_warnings(), which is not
+# thread-safe: the AU worker thread restoring its saved filters would wipe it.
+import warnings  # noqa: E402
+
+warnings.filterwarnings("ignore", message=".*SymbolDatabase.GetPrototype.*")
 
 
 class PerceptionError(Exception):
@@ -54,6 +59,9 @@ class PerceptionResult:
     values: Dict[str, Optional[float]]          # per-frame features, by column name
     events: List[FaceEvent] = field(default_factory=list)
     window: Optional[Dict[str, Any]] = None     # the window summary, when one was due
+    # Other records for the event log, from plug-ins: (event type, fields), e.g.
+    # ("au_window", {...}) or ("au_status", {...}).
+    records: List[Tuple[str, Dict[str, Any]]] = field(default_factory=list)
 
     @property
     def t(self) -> float:
@@ -89,9 +97,6 @@ class Landmarker:
 
     def __init__(self, model_path: Optional[str] = None) -> None:
         try:
-            import warnings
-
-            warnings.filterwarnings("ignore", message=".*SymbolDatabase.GetPrototype.*")
             import mediapipe as mp
             from mediapipe.tasks.python import BaseOptions, vision
         except ImportError:
@@ -176,6 +181,8 @@ class FacePipeline:
         if self._thread is not None:
             self._thread.join(5)
             self._thread = None
+        for extractor in self.extractors:
+            extractor.close()
         if stop_camera:
             self.camera.stop()
         with self._lock:
@@ -225,7 +232,16 @@ class FacePipeline:
             events += out.events
         values["process_ms"] = round(observation.process_ms + (time.perf_counter() - started) * 1000, 2)
         window = self.windows.add(observation.t, values, events, baseline)
-        return PerceptionResult(observation, values, events, window)
+        # Optional plug-in hooks (see Extractor): notice() sees every frame's
+        # finished values and events, summary() adds to each window, drain()
+        # hands over status messages from a plug-in's own thread.
+        records: List[Tuple[str, Dict[str, Any]]] = []
+        for extractor in self.extractors:
+            extractor.notice(observation.t, values, events)
+            if window is not None:
+                records += extractor.summary(observation.t)
+            records += extractor.drain()
+        return PerceptionResult(observation, values, events, window, records)
 
     # --- the thread -----------------------------------------------------------------------------
 
@@ -280,3 +296,5 @@ class FacePipeline:
             self.events.event(event.type, t_mono=event.t, **event.fields)
         if result.window is not None:
             self.events.event("face_window", t_mono=result.t, **result.window)
+        for event_type, fields in result.records:   # au_window, au_status, ...
+            self.events.event(event_type, t_mono=fields.pop("t_mono", result.t), **fields)

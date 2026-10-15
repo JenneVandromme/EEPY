@@ -285,7 +285,13 @@ source .venv-vision/bin/activate      # Windows: .venv-vision\Scripts\Activate.p
 python -m eepy.perception.selftest    # guided, ~1 minute: blink, yawn, nod, look away
 ```
 
-It prints PASS or CHECK per step and how long each frame takes to analyse. The
+It prints PASS or CHECK per step and how long each frame takes to analyse.
+
+**Optional: action units** (frown, squint, eyes closed, jaw drop... with
+Py-Feat). An extra install of ~3 GB (Python 3.11+, a GPU recommended), never
+required:
+`pip install -r requirements-aus.txt` (Windows/Ubuntu with an NVIDIA GPU: first
+`torch torchvision torchcodec` from PyTorch's CUDA index, see the link). Everything, per OS: [`eepy/perception/aus/README.md`](eepy/perception/aus/README.md). The
 preview above also shows the face features live: eye and mouth openness, head
 angles, and a flash on every blink, yawn or nod. What every value means, in
 plain words, is in [`eepy/perception/README.md`](eepy/perception/README.md).
@@ -414,6 +420,7 @@ EEPY/
 ├── tests/                 # pytest: python -m pytest tests/
 ├── models/                # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
+├── requirements-aus.txt   # OPTIONAL action units (Py-Feat) -- see eepy/perception/aus/README.md
 ├── requirements-robot.txt
 └── .env.example           # copy to .env for API keys / robot address (gitignored)
 ```

@@ -8,6 +8,7 @@
     s.behaviors     # one row per behaviour run: start, end, outcome, who triggered it
     s.notes         # free-text notes made during the session
     s.features      # perception features, or None
+    s.aus           # action units (one row per AU result), or None
     s.meta          # meta.json, as a dict
     s.check         # the integrity check's verdict and any problems
 
@@ -52,6 +53,7 @@ class Session:
     features: "pd.DataFrame | None"
     check: CheckResult
     feature_spec: dict = field(default_factory=dict)
+    aus: "pd.DataFrame | None" = None   # action units, one row per AU result (optional)
 
     @property
     def participant(self) -> str | None:
@@ -151,8 +153,9 @@ def _behaviors_frame(events: "pd.DataFrame") -> "pd.DataFrame":
     return frame[columns]
 
 
-def _features_frame(folder: Path, start: float | None) -> tuple["pd.DataFrame | None", dict]:
-    spec_path, csv_path = folder / "features.json", folder / "features.csv"
+def _features_frame(folder: Path, start: float | None,
+                    name: str = "features") -> tuple["pd.DataFrame | None", dict]:
+    spec_path, csv_path = folder / f"{name}.json", folder / f"{name}.csv"
     if not csv_path.is_file():
         return None, {}
     spec = json.loads(spec_path.read_text()) if spec_path.is_file() else {}
@@ -178,12 +181,13 @@ def load_session(name: str | Path, data_dir: Path = DATA_DIR) -> Session:
     start = _start(meta, raw_events)
     events = _events_frame(folder, meta, start)
     features, spec = _features_frame(folder, start)
+    aus, _ = _features_frame(folder, start, "aus")
     return Session(
         name=folder.name, folder=folder, meta=meta, events=events,
         annotations=_subset(events, "annotation", ["marker", "label", "via", "source"]),
         behaviors=_behaviors_frame(events),
         notes=_subset(events, "note", ["text", "source"]),
-        features=features, check=result, feature_spec=spec)
+        features=features, check=result, feature_spec=spec, aus=aus)
 
 
 def sessions_table(data_dir: Path = DATA_DIR) -> "pd.DataFrame":

@@ -21,30 +21,42 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--camera", choices=("auto", "robot", "laptop", "fake"),
                         help="which camera (default: camera.source in config/eepy.yaml)")
     parser.add_argument("--index", type=int, help="laptop camera number")
+    parser.add_argument("--profile", help="machine profile for action units: laptop, demo-desktop, "
+                                          "... (default: EEPY_PROFILE in .env, else laptop)")
+    parser.add_argument("--no-aus", action="store_true", help="no action units, even if installed")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
 
     from eepy.camera import CameraConfigError, CameraError, open_camera
     from eepy.logs.features import FeatureStream, ProcessEventLog
 
+    from .aus import ActionUnitExtractor
+    from .aus import load_config as load_au_config
     from .config import load
     from .extractors import all_columns, default_extractors
     from .pipeline import FacePipeline
 
     try:
         config = load()
+        au_config = load_au_config(profile=args.profile)
         events = ProcessEventLog("vision")
         camera = open_camera(args.camera, events=events,
                              **({"index": args.index} if args.index is not None else {}))
-    except (CameraError, CameraConfigError) as exc:
+    except (CameraError, CameraConfigError) as exc:   # also a wrong --profile
         print(f"\n  {exc}", file=sys.stderr)
         return 2
     extractors = default_extractors(config)
     features = FeatureStream(all_columns(extractors) + ["process_ms"], rate_hz=camera.config.fps)
+    au_features = None
+    if not args.no_aus:
+        # One row per AU result, at its own rate, in the session's aus.csv.
+        au_features = FeatureStream(list(au_config.units) + ["infer_ms"],
+                                    rate_hz=au_config.profile.max_rate, name="aus")
+        extractors.append(ActionUnitExtractor(au_config, config, features=au_features))
     pipeline = FacePipeline(camera, config, extractors=extractors, features=features,
                             events=events).start()
-    print(f"\n  Face perception running on the {camera.describe()}. It records only while the\n"
-          "  Wizard panel runs a session. Ctrl+C to stop.\n")
+    print(f"\n  Face perception running on the {camera.describe()} (profile {au_config.profile.name}). "
+          "It records\n  only while the Wizard panel runs a session. Ctrl+C to stop.\n")
     try:
         while True:
             time.sleep(5)
@@ -54,13 +66,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             stats, latest = pipeline.stats(), pipeline.get_latest()
             face = "face" if latest and latest.observation.present else "no face"
             recording = f"recording into {features.session}" if features.session else "not recording (no session)"
+            aus = next((e for e in extractors if isinstance(e, ActionUnitExtractor)), None)
+            au_text = "AUs off" if aus is None or aus.status == "off" else \
+                f"AUs {aus.status} {aus.achieved_rate():.0f}/s"
             print(f"  {stats['fps'] or 0:4.1f} fps   {stats['process_ms'] or 0:5.1f} ms/frame   "
-                  f"{face:8}  {camera.status}   {recording}")
+                  f"{face:8}  {au_text:18} {camera.status}   {recording}")
     except KeyboardInterrupt:
         pass
     finally:
         pipeline.stop()
         features.close()
+        if au_features is not None:
+            au_features.close()
     return 0
 
 

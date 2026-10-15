@@ -23,11 +23,10 @@ this computer.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Optional
 
-from .config import CameraConfig, CameraConfigError, load as load_config
+from .config import CameraConfig, CameraConfigError, env_value, load as load_config
 from .errors import CameraError
 from .frame import Frame
 from .region import Box, HeadPose
@@ -41,19 +40,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _backend_setting() -> str:
-    """EEPY_BACKEND from the environment, else from the repo's .env, else dry.
-    Read by hand: the vision environment has no python-dotenv."""
-    value = os.environ.get(BACKEND_ENV)
-    if not value:
-        env_file = REPO_ROOT / ".env"
-        try:
-            for line in env_file.read_text(encoding="utf-8").splitlines():
-                key, _, rest = line.strip().partition("=")
-                if key.strip() == BACKEND_ENV:
-                    value = rest.split("#", 1)[0].strip().strip("'\"")
-        except OSError:
-            pass
-    return (value or "dry").strip().lower()
+    """EEPY_BACKEND from the environment, else from the repo's .env, else dry."""
+    return (env_value(BACKEND_ENV) or "dry").lower()
 
 
 def choose_source(config: CameraConfig, override: Optional[str] = None,

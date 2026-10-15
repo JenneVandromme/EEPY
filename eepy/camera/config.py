@@ -19,6 +19,23 @@ SETTINGS_PATH = REPO_ROOT / "config" / "eepy.yaml"
 SOURCES = ("auto", "robot", "laptop", "fake")
 
 
+def env_value(name: str) -> Optional[str]:
+    """A setting from the environment, else from the repo's .env, else None.
+    Read by hand: the vision environment has no python-dotenv. Used for
+    EEPY_BACKEND and EEPY_PROFILE -- personal choices that do not belong in the
+    shared config/eepy.yaml."""
+    value = os.environ.get(name)
+    if not value:
+        try:
+            for line in (REPO_ROOT / ".env").read_text(encoding="utf-8").splitlines():
+                key, _, rest = line.strip().partition("=")
+                if key.strip() == name:
+                    value = rest.split("#", 1)[0].strip().strip("'\"")
+        except OSError:
+            pass
+    return value.strip() if value else None
+
+
 class CameraConfigError(Exception):
     """The camera settings are unusable. The message is for a non-programmer."""
 
