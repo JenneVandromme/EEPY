@@ -203,6 +203,7 @@ class Line:
     t: float
     text: str
     explanation: Optional[Dict[str, Any]] = None      # a nudge's explanation (A20)
+    outcome_of: Optional[Any] = None                  # a nudge_outcome's decision_id (for its reward, A22)
 
 
 class Recorder:
@@ -229,7 +230,8 @@ class Recorder:
         else:
             rest = ", ".join(f"{k} {v}" for k, v in fields.items() if k != "what" and v is not None)
             text = f"{fields['what'].replace('_', ' ')}" + (f" ({rest})" if rest else "")
-        self.lines.append(Line(t, text, fields.get("explanation") if event_type == "nudge_decision" else None))
+        self.lines.append(Line(t, text, fields.get("explanation") if event_type == "nudge_decision" else None,
+                               fields.get("decision_id") if event_type == "nudge_outcome" else None))
 
 
 def _clock(seconds: float) -> str:
@@ -350,10 +352,30 @@ def synthetic_estimates(spec: str, estimator: str = "hmm", seed: int = 1) -> Tup
     return [dict(panel_view(e)) for e in run(features, est, estimator_gap(est))], t0
 
 
+def _rewards(recorder: Recorder, start: float) -> Dict[str, Any]:
+    """A22: each nudge's reward (config/rewards.yaml), by decision_id; {} when unavailable."""
+    try:
+        from eepy.bandit.rewards import load_config, records_from_recorder, rewards_from_stream
+
+        from .config import load as load_escalation
+        recs = records_from_recorder(recorder.events, start)
+        events = rewards_from_stream([(float(r["t_mono"]), 1, "record", r) for r in recs], load_config(),
+                                     load_escalation())
+        return {e.decision_id: e for e in events}
+    except Exception:  # noqa: BLE001 -- a broken rewards file must not break the simulation
+        return {}
+
+
 def print_run(title: str, recorder: Recorder, engine: EscalationEngine, start: float = 0.0) -> None:
     print(f"\n  {title}\n")
+    rewards = _rewards(recorder, start)
     for line in recorder.lines:
         print(f"  {_clock(line.t - start)}  {line.text}")
+        r = rewards.get(str(line.outcome_of)) if line.outcome_of is not None else None
+        if r is not None:
+            value = "excluded (censored)" if r.reward is None else f"{r.reward:+.2f}"
+            off = f", recovery discount {r.discount:.0%}" if r.discount else ""
+            print(f"  {'':5}    reward: {value} ({r.rule}{off})")
         x = line.explanation
         if x:
             said = "says" if x.get("spoken") else f"would say ({x.get('not_spoken')})"
@@ -366,8 +388,10 @@ def print_run(title: str, recorder: Recorder, engine: EscalationEngine, start: f
         if kind == "nudge_outcome":
             outcomes[fields["outcome"]] = outcomes.get(fields["outcome"], 0) + 1
     decided = sum(1 for kind, _, _ in recorder.events if kind == "nudge_decision")
+    included = [r.reward for r in rewards.values() if r.reward is not None]
+    total = f"; reward total {sum(included):+.2f} over {len(included)} nudge(s)" if included else ""
     print(f"\n  {decided} nudge(s); outcomes: "
-          + (", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())) or "none") + "\n")
+          + (", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())) or "none") + total + "\n")
 
 
 def _realtime(scenario: Scenario, config: Any) -> int:

@@ -1,0 +1,37 @@
+# ===========================================================================
+#  rewards.yaml -- what each nudge outcome is worth to the bandit (A22).
+#
+#  Every nudge becomes one training example for the bandit (A24):
+#  (context at decision time, action, reward). The outcome itself is decided
+#  by the escalation (config/escalation.yaml, A14/A19); this file only says
+#  what each outcome is worth. Design and reasoning: docs/A22_REWARDS.md.
+#
+#  Try a change:  python -m eepy.bandit.rewards all
+#  (or the launcher's Rewards tab: Recorded / Simulated)
+# ===========================================================================
+
+outcomes:
+  refocus_success:
+    best: 1.0       # back to focused at once: exactly what a refocus nudge is for
+    worst: 0.4      # back only at the end of the reaction window: it still worked, but later
+  bedtime_success: 1.0    # went to bed / goodnight confirmed: the goal; timing is the wind-down's job
+  break_success: 1.0      # took or accepted the offered break (refocus top level): the intended answer
+  accepted: 0.6           # said OK to a lower-level nudge, not yet seen back at work: willing, unproven
+  snoozed: 0.1            # a valid, engaged answer to a negotiation, but not compliance
+  no_reaction: -0.1       # an interruption that achieved nothing; small, so gentle nudges stay worth trying
+  dismissed: -0.5         # explicitly unwanted
+  interrupted_focus: -1.0 # nudging someone who was already working: the worst outcome
+  # censored: no reward -- excluded from training, but counted in the report
+
+# A user already drifting back to focus before the nudge should not make the nudge look good.
+recovery:
+  # The trend is P(focused) at the decision minus P(focused) 20 s before it, stored with the
+  # decision (context focused_trend_20s), so it uses nothing from after the decision.
+  full_discount_at: 0.3   # a rise of 0.3 or more in P(focused) gets the full discount ...
+  max_discount: 0.75      # ... which takes 75 % of a success's credit away (25 % stays: maybe it helped)
+  rules_pending_discount: 0.5   # rules mode (no probabilities): "focused" was already pending
+
+# Nudges the operator played by hand (source: wizard) are judged with the same rules and
+# reaction windows as the escalation's own, and flagged so the bandit can choose to skip them.
+wizard:
+  include: true

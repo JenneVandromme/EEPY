@@ -11,12 +11,14 @@
   --ok: #2f9e44; --warn: #e8a317; --bad: #e03131; --off: #a8a69e; --ext: #7048e8;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --log-bg: #1b1b1f; --log-text: #d9d9de;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141416; --surface: #1d1d21; --surface-2: #26262b; --border: #34343a;
     --text: #ececef; --muted: #9a9aa3; --accent: #6c8cff; --accent-text: #0d0d10;
     --off: #5c5c64; --log-bg: #0e0e11;
+    color-scheme: dark;   /* native controls (lists, inputs) follow the theme too */
   }
 }
 * { box-sizing: border-box; }
@@ -96,6 +98,22 @@ label.field select, label.field input { display: block; width: 100%; margin-top:
 .cmd .cmd-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .cmd code { display: block; font: 12px/1.5 var(--mono); background: var(--surface-2); padding: 8px 10px; border-radius: 6px;
             white-space: pre-wrap; word-break: break-all; }
+/* every form control on the page: readable in light and dark */
+input, select, option, textarea { color: var(--text); background: var(--bg); }
+.box input, .box select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); }
+select[multiple] option { padding: 3px 6px; }
+select:disabled { opacity: .55; }
+.rw-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.rw-table th, .rw-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.rw-table td.num, .rw-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rw-pos { color: var(--ok); } .rw-neg { color: var(--bad); } .rw-none { color: var(--muted); }
+.rw-sum { font-size: 14px; margin: 10px 0 4px; }
+.rw-cols { display: block; }                 /* the breakdowns stacked, one under the other */
+.rw-group { table-layout: fixed; }
+.rw-group th:first-child, .rw-group td:first-child { width: 30%; white-space: normal; }
+.rw-group th.num, .rw-group td.num { width: 70px; }
+.rw-group td:last-child { white-space: normal; overflow-wrap: anywhere; }
+.rw-table td.hint { white-space: normal; }
 .log-full { background: var(--log-bg); color: var(--log-text); font: 12px/1.5 var(--mono); border-radius: 8px;
             padding: 10px 12px; height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 .log-full .p { display: inline-block; min-width: 64px; opacity: .55; }
@@ -119,6 +137,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
   <button data-tab="overview" class="active">Overview</button>
   <button data-tab="panel"><span class="dot" id="tab-dot-panel"></span>Wizard panel</button>
   <button data-tab="live"><span class="dot" id="tab-dot-vision"></span>Live HMM</button>
+  <button data-tab="rewards">Rewards</button>
   <button data-tab="dev">Developer</button>
 </nav>
 <main>
@@ -158,6 +177,46 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
         <button class="btn primary" data-start="vision">Start vision</button></div>
     </div>
   </section>
+
+  <section id="rewards"><div class="pad">
+    <p class="hint" style="margin-top:0">What every nudge was worth to the bandit (A22): the outcome, priced by
+      <code>config/rewards.yaml</code>. Censored nudges get no reward. Design: <code>docs/A22_REWARDS.md</code>.</p>
+    <div class="box">
+      <h3>Live: this session</h3>
+      <div class="hint" id="rw-live-head">No session running.</div>
+      <div id="rw-live"></div>
+    </div>
+    <div class="box" style="margin-top:20px">
+      <h3>Recorded sessions</h3>
+      <div class="log-tools">
+        <select id="rw-sessions" multiple size="6" style="min-width:320px"></select>
+        <div>
+          <label><input type="checkbox" id="rw-all" checked> all sessions</label><br>
+          <label title="for sessions without the escalation's decisions, e.g. wizard mode">
+            <input type="checkbox" id="rw-rerun"> re-run the HMM escalation where none ran</label><br><br>
+          <button class="btn primary" id="rw-build">Build table</button>
+        </div>
+      </div>
+      <div id="rw-recorded"></div>
+    </div>
+    <div class="box" style="margin-top:20px">
+      <h3>Simulated</h3>
+      <div class="log-tools">
+        <select id="rw-kind">
+          <option value="responsive">Reactive user (answers nudges; made-up numbers)</option>
+          <option value="synthetic">Simulated faces through the real HMM (never reacts)</option>
+          <option value="scenario">Scripted states with replies</option>
+        </select>
+        <input id="rw-spec" style="flex:1;min-width:260px" value="focused 3m, distracted 6m, focused 3m, drowsy 15m">
+        <select id="rw-persona" title="reactive user"><option>average</option><option>responsive</option><option>stubborn</option></select>
+        <label title="reactive user: how many runs">runs <input id="rw-runs" type="number" value="10" min="1" max="200" style="width:60px"></label>
+        <label title="the clock time the simulated evening starts">start <input id="rw-hour" type="number" value="21" step="0.5" style="width:60px"></label>
+        <button class="btn primary" id="rw-run">Run</button>
+      </div>
+      <div class="hint" id="rw-kind-hint"></div>
+      <div id="rw-simulated"></div>
+    </div>
+  </div></section>
 
   <section id="dev"><div class="pad dev">
     <div>
@@ -246,7 +305,7 @@ async function refresh() {
 function render() {
   const s = status.settings;
   const backendText = { dry: "dry run", sim: "simulator", real: "real robot" }[s.backend];
-  $("chips").innerHTML = `<span class="chip">robot <b>${backendText}</b></span><span class="chip">mode <b>${s.mode}</b></span>` +
+  $("chips").innerHTML = `<span class="chip">robot <b>${backendText}</b></span><span class="chip" style="cursor:pointer" title="change on the Developer tab" onclick="showTab('dev')">mode <b>${s.mode}</b></span>` +
     (s.backend === "real" ? `<span class="chip">${status.robot_host}</span>` : "");
   $("step").textContent = status.step || "";
   $("start-all").disabled = status.busy;
@@ -378,6 +437,88 @@ function copyText(button, text) {
 }
 function esc(t) { return String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function duration(s) { return s < 60 ? s + " s" : s < 3600 ? Math.floor(s / 60) + " min" : (s / 3600).toFixed(1) + " h"; }
+
+// ---- rewards (A22) ----
+const KIND_HINT = {
+  responsive: "A user who follows the timeline but may react to each nudge (eepy/bandit/simuser.py). States: focused, distracted, drowsy, very_drowsy, absent.",
+  synthetic: "Simulated faces through the real HMM: work, phone, sleepy, leave. They never react, so every nudge ends 'no reaction'.",
+  scenario: "Scripted states, plus replies the operator would mark: e.g. drowsy 6m, snoozed, drowsy 10m.",
+};
+const KIND_DEFAULT = { responsive: "focused 3m, distracted 6m, focused 3m, drowsy 15m",
+                       synthetic: "work 3m, phone 5m, work 2m, sleepy 8m",
+                       scenario: "focused 2m, distracted 3m, snoozed, distracted 6m, focused 4m" };
+function fmtReward(v) {
+  if (v === null || v === undefined) return '<span class="rw-none">excluded</span>';
+  return `<span class="${v > 0 ? "rw-pos" : v < 0 ? "rw-neg" : ""}">${v > 0 ? "+" : ""}${Number(v).toFixed(2)}</span>`;
+}
+function groupTable(title, groups) {
+  const rows = Object.entries(groups || {}).map(([k, g]) => `<tr><td>${esc(k)}</td><td class="num">${g.n}</td>
+    <td class="num">${g.mean_reward === null ? "–" : fmtReward(g.mean_reward)}</td>
+    <td>${esc(Object.entries(g.outcomes).map(([o, n]) => `${o.replace("_", " ")} ${n}`).join(", "))}</td></tr>`).join("");
+  return `<div><h4 style="margin:14px 0 0">${title}</h4><table class="rw-table rw-group"><tr><th></th><th class="num">n</th>
+    <th class="num">mean</th><th>outcomes</th></tr>${rows}</table></div>`;
+}
+function renderReport(box, r) {
+  if (!r.ok) { box.innerHTML = `<div class="warnbox" style="margin-top:10px">${esc(r.message)}</div>
+      <div class="hint">${esc(r.command || "")}</div>`; return; }
+  const rep = r.report;
+  if (!rep.nudges) { box.innerHTML = `<p class="rw-sum">No nudges.</p><div class="hint">${esc(r.command)}</div>`; return; }
+  const cens = Object.entries(rep.censored_reasons).map(([k, n]) => `${n}× ${esc(k)}`).join("; ");
+  const sus = rep.suspicious.length ? `<h4 style="margin:14px 0 4px">Worth a look</h4><ul class="hint">${rep.suspicious.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  box.innerHTML = `<p class="rw-sum"><b>${rep.nudges}</b> nudges · <b>${rep.included}</b> with a reward (mean ${fmtReward(rep.all.mean_reward)})
+      · <b>${rep.censored}</b> censored (${Math.round((rep.censored_share || 0) * 100)} %, excluded)</p>
+    ${cens ? `<div class="hint">censored: ${cens}</div>` : ""}
+    <div class="hint">${esc(rep.title)} · rewards from ${esc(rep.config)}${rep.out ? ` · table: <code>${esc(rep.out)}</code>` : ""}</div>
+    ${groupTable("Per action", rep.by_action)}
+    <div class="rw-cols">${groupTable("Per state", rep.by_state)}${groupTable("Per confidence", rep.by_confidence)}
+      ${groupTable("Per source", rep.by_source)}${groupTable("Per hour", rep.by_hour)}${groupTable("Calibrated?", rep.by_calibrated)}</div>
+    ${sus}<div class="hint" style="margin-top:10px">Same in a terminal: <code>${esc(r.command)}</code></div>`;
+}
+async function rewardsRun(body, box, button) {
+  button.disabled = true; const old = button.textContent; button.textContent = "Running…";
+  box.innerHTML = '<p class="hint">Running…</p>';
+  try {
+    const res = await fetch("/api/rewards/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    renderReport(box, await res.json());
+  } catch (e) { box.innerHTML = '<div class="warnbox">The launcher is not answering.</div>'; }
+  finally { button.disabled = false; button.textContent = old; }
+}
+async function rewardsSessions() {
+  try {
+    const d = await (await fetch("/api/rewards/sessions")).json();
+    $("rw-sessions").innerHTML = d.sessions.map((x) => `<option value="${esc(x.name)}">${esc(x.name)} · ${x.nudges} nudge${x.nudges === 1 ? "" : "s"}${x.mode ? " · " + esc(x.mode) : ""}</option>`).join("");
+  } catch (e) {}
+}
+async function rewardsLive() {
+  if (!$("rewards").classList.contains("active")) return;
+  try {
+    const d = await (await fetch("/api/rewards/live")).json();
+    if (!d.session) { $("rw-live-head").textContent = "No session running."; $("rw-live").innerHTML = ""; return; }
+    const total = d.rows.filter((x) => x.reward !== null).reduce((a, x) => a + x.reward, 0);
+    $("rw-live-head").innerHTML = `${esc(d.session)} · ${d.rows.length} reward${d.rows.length === 1 ? "" : "s"}` +
+      (d.rows.length ? ` · total ${fmtReward(total)}` : "") + (d.open ? ` · ${d.open} nudge${d.open === 1 ? "" : "s"} still waiting for an outcome` : "");
+    $("rw-live").innerHTML = d.rows.length ? `<table class="rw-table"><tr><th>time</th><th>nudge</th><th>source</th><th>outcome</th>
+      <th class="num">latency</th><th class="num">discount</th><th class="num">reward</th><th>detail</th></tr>` +
+      d.rows.slice().reverse().map((x) => `<tr><td>${duration(x.t || 0)}</td><td>${esc(x.ladder)} L${x.level}${x.tone ? " " + esc(x.tone) : ""}</td>
+        <td>${esc(x.source)}</td><td>${esc(String(x.outcome).replace("_", " "))}</td>
+        <td class="num">${x.latency == null ? "" : x.latency + " s"}</td><td class="num">${x.discount ? Math.round(x.discount * 100) + " %" : ""}</td>
+        <td class="num">${fmtReward(x.reward)}</td><td class="hint">${esc(x.detail || "")}</td></tr>`).join("") + "</table>" : "";
+  } catch (e) {}
+}
+$("rw-kind").onchange = () => { const k = $("rw-kind").value; $("rw-spec").value = KIND_DEFAULT[k]; $("rw-kind-hint").textContent = KIND_HINT[k];
+  $("rw-persona").disabled = $("rw-runs").disabled = k !== "responsive"; };
+$("rw-kind").onchange();
+$("rw-all").onchange = () => { $("rw-sessions").disabled = $("rw-all").checked; };
+$("rw-all").onchange();
+$("rw-build").onclick = () => {
+  const picked = [...$("rw-sessions").selectedOptions].map((o) => o.value);
+  const sessions = $("rw-all").checked || !picked.length ? ["all"] : picked;
+  rewardsRun({ kind: "recorded", sessions, rerun: $("rw-rerun").checked ? "hmm" : null }, $("rw-recorded"), $("rw-build"));
+};
+$("rw-run").onclick = () => rewardsRun({ kind: $("rw-kind").value, spec: $("rw-spec").value, persona: $("rw-persona").value,
+  runs: Number($("rw-runs").value), start_hour: $("rw-hour").value }, $("rw-simulated"), $("rw-run"));
+document.querySelector('nav button[data-tab="rewards"]').addEventListener("click", () => { rewardsSessions(); rewardsLive(); });
+rewardsSessions(); setInterval(rewardsLive, 3000);
 
 refresh(); pollLogs();
 setInterval(refresh, 1000);

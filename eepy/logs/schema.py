@@ -168,6 +168,14 @@ EVENT_TYPES: Dict[str, EventType] = {
                                 "reason, the reaction window, the context it decided on, and the "
                                 "explanation (A20: the top evidence over the decision window, the "
                                 "contrast with the runner-up, the sentence, and whether it was spoken)."),
+    "wizard_nudge": EventType("operator", ("ladder", "level", "behavior"),
+                              "The operator played a ladder behaviour by hand (A22): a nudge the bandit "
+                              "may learn from, flagged source=wizard. With the context at that moment "
+                              "(the belief, its trend, the session so far)."),
+    "nudge_reward": EventType("autonomy", ("decision_id", "outcome"),
+                              "What a nudge was worth to the bandit (A22, config/rewards.yaml): the "
+                              "action, the outcome, the latency, the recovery discount, the reward "
+                              "(null: censored, excluded) and the decision-time context."),
     "nudge_outcome": EventType("autonomy", ("decision_id", "outcome"),
                                "What came of one nudge_decision (by decision_id), exactly once: "
                                "success, no_reaction, dismissed, snoozed, interrupted_focus or "

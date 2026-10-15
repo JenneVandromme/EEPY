@@ -142,6 +142,14 @@ their `context` too ([docs/A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md)). T
 `user_accepted` / `user_snoozed` / `user_dismissed` are the participant's answers. See
 [eepy/interaction/README.md](../eepy/interaction/README.md#what-is-recorded-for-the-analysis-and-the-bandit).
 
+**Rewards** (A22, every mode): a successful `nudge_outcome` also says `how` (`focus`, `reply`,
+`break`, `bed`) and `back_after` (seconds until the focus began). When the operator plays a ladder
+behaviour by hand, a `wizard_nudge` holds the context at that moment. Each nudge then gets one
+`nudge_reward` (`source` `auto` or `wizard`): outcome, `latency`, `raw_reward`, the recovery
+`discount`, `reward` (absent when censored, with `included` false) and the decision-time `context`.
+The training table: `python -m eepy.bandit.rewards all --out data/rewards/table.csv`
+([docs/A22_REWARDS.md](A22_REWARDS.md)).
+
 **Action units** (optional): `s.aus` has one row per result, timed to the frame it came
 from; `au_window` events hold their 10 s / 60 s averages and the cross-checks with the eye
 and yawn features. See [eepy/perception/aus/README.md](../eepy/perception/aus/README.md).

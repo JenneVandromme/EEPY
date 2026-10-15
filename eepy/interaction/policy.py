@@ -74,6 +74,7 @@ class NudgeContext:
         out["state"] = self.state
         out["calibrated"] = self.calibrated
         out["reason_state"] = self.estimate.get("reason")
+        out["pending"] = self.estimate.get("pending")
         out["estimator"] = self.estimator
         for key in ("confidence", "uncertainty", "most_likely", "probs", "evidence"):
             if self.estimate.get(key) is not None:

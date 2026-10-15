@@ -928,3 +928,46 @@ def test_hmm_mode_belief_decisions_in_the_panel(make, quick_belief):
     acts = [d for d in _recent(wizard, "policy_decision") if d["decision"] == "act"]
     assert acts and acts[0]["decision_id"] == decision[0]["decision_id"]
     wizard.end_session()
+
+
+def test_rewards_live_in_the_panel_equal_the_offline_tool(make, files, quick_belief):
+    """A22: the panel logs a nudge_reward per nudge as outcomes come in; the offline tool, fed
+    the same session's logs, gives the same rewards. Includes an operator's nudge (source wizard)."""
+    from eepy.bandit.rewards import load_config, rewards_from_stream, session_stream
+    from eepy.interaction.config import load as load_escalation
+    from eepy.logs.clock import monotonic
+
+    wizard, _ = make(mode="hmm")
+    wizard.start_session("P43")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10
+    folder = wizard.sessions.folder
+    last = {"state": None}
+
+    def report(distracted):
+        est = dict(_belief(distracted), t=monotonic())
+        if est["state"] != last["state"]:             # what the vision process would log
+            last["state"] = est["state"]
+            with open(folder / "events.vision.jsonl", "a") as f:
+                f.write(json.dumps({"type": "state_changed", "t_mono": est["t"], "to": est["state"]}) + "\n")
+        wizard._state_report(est)
+
+    assert _until(lambda: report(0.95) or _recent(wizard, "nudge_decision"))
+    wizard.play("refocus_verbal", 0.7)                 # the operator takes over: a wizard nudge
+    report(0.95)
+    wizard.annotate("user_accepted")
+    wizard.end_session()
+
+    logged = [r for r in lines(files) if r["type"] == "nudge_reward"]
+    assert {r["source"] for r in logged} == {"auto", "wizard"}
+    wizard_reward = next(r for r in logged if r["source"] == "wizard")
+    assert wizard_reward["outcome"] == "success" and wizard_reward["how"] == "reply"
+    assert wizard_reward["context"]["state"] == "distracted"
+    auto = next(r for r in logged if r["source"] == "auto")
+    assert auto["outcome"] == "censored" and auto.get("reward") is None and auto["included"] is False
+    items, info = session_stream(folder)
+    offline = rewards_from_stream(items, load_config(), load_escalation())
+    key = lambda d, o, r: (str(d), o, r)                # noqa: E731
+    assert sorted(key(r["decision_id"], r["outcome"], r.get("reward")) for r in logged) == \
+        sorted(key(e.decision_id, e.outcome, e.reward) for e in offline)
+    assert info["wizard_nudges"] == 1

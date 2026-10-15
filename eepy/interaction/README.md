@@ -92,6 +92,8 @@ confidence:
 - Each time the gate starts holding a ladder back, and when it stops, an `escalation`
   event is logged (`waiting_for_confidence`, `confidence_wait_ended` with the reason), so
   the [explanation viewer](../../docs/EXPLANATION_VIEWER.md) can show it afterwards.
+- **Every nudge gets a reward for the bandit (A22):** its outcome priced by `config/rewards.yaml`,
+  with the context logged at the decision. [docs/A22_REWARDS.md](../../docs/A22_REWARDS.md).
 - **Every nudge carries an explanation (A20):** the top evidence over the decision window, the
   contrast with the runner-up, and one sentence spoken after the nudge's line (when the condition
   is on). [docs/A20_EXPLANATIONS.md](../../docs/A20_EXPLANATIONS.md).

@@ -165,6 +165,12 @@ def _handler(launcher: Launcher):
                 self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             elif url.path == "/api/status":
                 self._json(launcher.status())
+            elif url.path == "/api/rewards/sessions":
+                from . import rewards
+                self._json({"sessions": rewards.sessions()})
+            elif url.path == "/api/rewards/live":
+                from . import rewards
+                self._json(rewards.live())
             elif url.path == "/api/logs":
                 query = parse_qs(url.query)
                 since = int(query.get("since", ["0"])[0] or 0)
@@ -193,6 +199,10 @@ def _handler(launcher: Launcher):
                     message = launcher.stop_all()
                 elif path == "/api/settings":
                     message = launcher.update_settings(body)
+                elif path == "/api/rewards/run":           # A22: the reward tool, report back as JSON
+                    from . import rewards
+                    self._json(rewards.run(body))
+                    return
                 else:
                     self._json({"error": "not found"}, 404)
                     return

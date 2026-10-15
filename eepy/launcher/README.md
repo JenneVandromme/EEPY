@@ -15,6 +15,7 @@ you would in separate terminals.
 | **Overview** | **Start all** / **Stop all**, and for each program a status light, Start / Stop / Restart and its last lines of output. With the real robot, whether the robot answers. |
 | **Wizard panel** | The panel itself (http://127.0.0.1:8081). Click inside it once before using its keyboard shortcuts, or use **Pop out**. |
 | **Live HMM** | The vision program's live page (http://127.0.0.1:8770): the HMM the panel acts on, and the robot's decisions. |
+| **Rewards** | What every nudge was worth to the bandit (A22): **Live** for the running session, **Recorded** sessions → a report and a CSV training table, **Simulated** runs (a reactive user, simulated faces, scripted replies). See [docs/A22_REWARDS.md](../../docs/A22_REWARDS.md). |
 | **Developer** | Robot (dry run / simulator / real), mode, camera, ports, extra arguments; all output; the terminal commands. |
 
 **Start all** goes in order and waits for each program to answer before starting the

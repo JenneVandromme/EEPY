@@ -22,6 +22,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Deque, Dict, List, Optional, Protocol
 
+from eepy.bandit.context import FocusTrend
 from eepy.explanations.build import Explainer
 
 from .belief import FAMILY_NAME, LADDERS, BeliefTracker, belief_text, is_belief
@@ -118,7 +119,7 @@ class EscalationEngine:
                 return
             if self.open is not None:
                 if self.open.ladder == "bedtime":
-                    self._close("success", now, "the session ended after bedtime nudges")
+                    self._close("success", now, "the session ended after bedtime nudges", how="bed")
                 else:
                     self._close("censored", now, reason)
             self.active = False
@@ -129,6 +130,7 @@ class EscalationEngine:
             self.estimate_t = now
             if self.explainer is not None:
                 self.explainer.feed(self.estimate, now)
+            self.focus_trend.add(self.estimate, now)
             if self.belief is not None:
                 self.belief.update(self.estimate, now)
             self._step(now)
@@ -250,6 +252,7 @@ class EscalationEngine:
         self._decisions = 0
         self.decision: Optional[Dict[str, Any]] = None   # hmm (A19): the last policy_decision
         self.explanation: Optional[Dict[str, Any]] = None  # A20: the last decision's explanation
+        self.focus_trend = FocusTrend()                    # A22: P(focused) just before each decision
         if getattr(self, "belief", None) is not None:
             self.belief.reset()
         if getattr(self, "explainer", None) is not None:
@@ -371,7 +374,8 @@ class EscalationEngine:
         if ep is not None and ep.ladder == "bedtime" and ep.max_level >= cfg.went_to_bed_level:
             if away >= cfg.went_to_bed_after:
                 if self.open is not None:
-                    self._close("success", now, "left after the bedtime nudges (went to bed)")
+                    self._close("success", now, "left after the bedtime nudges (went to bed)", how="bed",
+                                back_after=self.state_since - self.open.t)
                 self._event("escalation", now, what="went_to_bed", level=ep.max_level)
                 self.episode = None
                 self.flow = "went_to_bed"
@@ -519,6 +523,15 @@ class EscalationEngine:
             start_level=ep.start_level if ep.level is None else None,
             start_reason=ep.start_reason if ep.level is None else "")
 
+    def _decision_context(self, context: NudgeContext, level: int, now: float) -> Dict[str, Any]:
+        """The context logged with the decision (A22: the bandit's training context). Only what
+        is known now: the belief trend of the last 20 s, never anything after."""
+        out = context.summary()
+        out["level_played"] = level
+        out["pending"] = self.estimate.get("pending")
+        out["focused_trend_20s"] = self.focus_trend.trend(now)
+        return out
+
     def _explain(self, ladder: str, level: int, tone: str, now: float, behavior: str,
                  timer: bool = False) -> Optional[Dict[str, Any]]:
         """A20: the explanation of this nudge. The window: since the evidence for this climb began
@@ -567,7 +580,8 @@ class EscalationEngine:
         self._event("nudge_decision", now, decision_id=decision_id, policy=policy_name or self.policy.name,
                     ladder=ladder, level=level, behavior=behavior, tone=action.tone,
                     intensity=action.intensity, propensity=action.propensity, reason=action.reason,
-                    reaction_window=reaction, context=context.summary(), explanation=explanation)
+                    reaction_window=reaction, context=self._decision_context(context, level, now),
+                    explanation=explanation)
         play_context: Dict[str, Any] = {"minutes": max(1, int(round(minutes / 60))),
                                         "evidence": self._evidence_text()}
         if explanation is not None and explanation.get("spoken"):
@@ -772,16 +786,23 @@ class EscalationEngine:
 
     # -- outcomes -------------------------------------------------------------------------
 
-    def _close(self, outcome: str, now: float, detail: str) -> None:
+    def _close(self, outcome: str, now: float, detail: str, how: Optional[str] = None,
+               back_after: Optional[float] = None) -> None:
+        """how (A22, for the reward): a success by "focus" (back to work; back_after = seconds from
+        the nudge until the focus began), "reply" (said OK), "break" or "bed"."""
         o = self.open
         if o is None:
             return
         assert outcome in OUTCOMES, outcome
         self.open = None
         self.last_outcome = outcome
+        extra: Dict[str, Any] = {}
+        if how is not None:
+            extra["how"] = how
+            extra["back_after"] = round(max(0.0, now - o.t if back_after is None else back_after), 1)
         self._event("nudge_outcome", now, decision_id=o.decision_id, outcome=outcome,
                     seconds=round(now - o.t, 1), ladder=o.ladder, level=o.level,
-                    policy=self.policy.name, state=self._state, detail=detail)
+                    policy=self.policy.name, state=self._state, detail=detail, **extra)
         self.nudges = [NudgeRecord(r.decision_id, r.t, r.ladder, r.level, outcome)
                        if r.decision_id == o.decision_id else r for r in self.nudges]
         ep = self.episode
@@ -803,7 +824,8 @@ class EscalationEngine:
         state = self._state
         if o.window is None:                         # goodnight: confirmed, or they leave
             if state == "absent" and self._seconds_in_state(now) >= cfg.went_to_bed_after:
-                self._close("success", now, "left after the goodnight (went to bed)")
+                self._close("success", now, "left after the goodnight (went to bed)", how="bed",
+                            back_after=self.state_since - o.t)
             return
         if state == "focused":
             if o.t < self.state_since <= o.t + cfg.false_alarm_seconds:
@@ -812,13 +834,14 @@ class EscalationEngine:
                 return
             if o.ladder == "refocus":
                 if now - self.state_since >= cfg.reset_after:
-                    self._close("success", now, f"back to focused after {self.state_since - o.t:.0f} s")
+                    self._close("success", now, f"back to focused after {self.state_since - o.t:.0f} s",
+                                how="focus", back_after=self.state_since - o.t)
                 return                               # focused, but not long enough yet
             # Bedtime: being alert again is not a bedtime result; the window, a reply or
             # leaving decides (finishing the work during the wind-down is expected).
         if o.ladder == "refocus" and o.level == cfg.break_offer_level and state == "absent":
             if now - o.t <= cfg.break_absent_within:
-                self._close("success", now, "took the break")
+                self._close("success", now, "took the break", how="break")
                 self._start_break(now, left=True)
                 return
         if o.window is not None and o.elapsed(now) >= o.window:
@@ -858,13 +881,13 @@ class EscalationEngine:
             return "noted (no nudge waiting for an answer)"
         if kind == "accepted":
             if o.ladder == "bedtime" and o.level == cfg.goodnight_level:
-                self._close("success", now, "goodnight confirmed")
+                self._close("success", now, "goodnight confirmed", how="bed")
                 return "goodnight confirmed"
             if o.ladder == "refocus" and o.level == cfg.break_offer_level:
-                self._close("success", now, "accepted the break")
+                self._close("success", now, "accepted the break", how="break")
                 self._start_break(now, left=False)
                 return f"break: no nudges for {cfg.break_seconds / 60:.0f} minutes"
-            self._close("success", now, "said OK")
+            self._close("success", now, "said OK", how="reply")
             if self.episode is not None:
                 self.episode.quiet_until = now + (o.window or 0.0)
             if o.ladder == "bedtime" and o.level == cfg.wind_down_offer_level:
@@ -921,7 +944,8 @@ class EscalationEngine:
         present = self._state not in ("absent", "unknown")
         if self._state == "absent" and self._seconds_in_state(now) >= cfg.went_to_bed_after:
             if self.open is not None:
-                self._close("success", now, "left during the wind-down (went to bed)")
+                self._close("success", now, "left during the wind-down (went to bed)", how="bed",
+                            back_after=self.state_since - self.open.t)
             self._event("escalation", now, what="went_to_bed", level=cfg.wind_down_offer_level)
             self.flow, self.episode = "went_to_bed", None
             self.actuator.set_idle(None)

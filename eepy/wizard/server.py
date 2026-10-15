@@ -113,6 +113,8 @@ class Wizard:
     ) -> None:
         from eepy.settings import Explanations
 
+        self.rewards: Any = None                 # A22: a RewardTracker during a session
+        self._nudges_session = 0
         self.backend_factory = backend_factory
         # A20: explanations after nudges (an experimental condition, recorded in meta.json)
         self.explanations = explanations if explanations is not None else Explanations()
@@ -237,7 +239,61 @@ class Wizard:
         """Log an event (saved if a session is running) and show it on the page."""
         record = self.sessions.event(kind, source, t_mono=t, **data)
         self._push(record)
+        if self.rewards is not None and record.get("saved"):
+            if kind in ("nudge_decision", "wizard_nudge"):
+                self._nudges_session += 1
+            self.rewards.on_record(record)           # A22: the same events the offline tool reads
         return record
+
+    # ------------------------------------------------------------- rewards (A22)
+
+    def _start_rewards(self, record: dict) -> None:
+        """A RewardTracker per session: every logged event and user state goes in, a
+        nudge_reward event comes out per nudge (eepy/bandit/rewards.py)."""
+        from eepy.bandit.context import FocusTrend
+        from eepy.bandit.rewards import RewardConfigError, RewardTracker, load_config
+
+        self.rewards, self._nudges_session = None, 0
+        self._focus_trend = FocusTrend()
+        try:
+            config = load_config()
+        except RewardConfigError as exc:
+            self._error(f"Rewards are off this session: config/rewards.yaml has a problem.\n{exc}")
+            return
+        try:
+            from eepy.interaction.config import load as load_escalation
+            escalation = load_escalation()
+        except Exception:  # noqa: BLE001 -- no reaction windows: operator nudges only end with the session
+            escalation = None
+        self._reward_escalation = escalation
+        self.rewards = RewardTracker(config, escalation, emit=self._log_reward)
+        self.rewards.on_record(record)
+
+    def _log_reward(self, event: Any) -> None:
+        fields = event.as_dict()
+        source = fields.pop("source")
+        fields["t_decision"] = fields.pop("t")
+        fields.pop("session", None)
+        self._note("nudge_reward", source, **fields)
+
+    def _wizard_nudge(self, behavior: str, intensity: float, pressed: float) -> None:
+        """An operator's play of a ladder behaviour is a nudge too (source=wizard), with the
+        context at the press: only what was known then."""
+        b = self.library.behaviors.get(behavior)
+        if self.rewards is None or b is None or b.ladder is None or not b.level:
+            return
+        est = dict(self.user_state or {})
+        window = None
+        esc = getattr(self, "_reward_escalation", None)
+        if esc is not None and b.ladder in esc.ladders:
+            window = esc.ladders[b.ladder].reaction.get(b.level)
+        context = {k: est.get(k) for k in ("state", "probs", "confidence", "uncertainty", "most_likely",
+                                           "calibrated", "estimator", "pending")}
+        context.update(focused_trend_20s=self._focus_trend.trend(pressed), ladder=b.ladder, level=None,
+                       session_seconds=round(pressed - self._session_started_at, 1),
+                       nudges_session=self._nudges_session)
+        self._note("wizard_nudge", "wizard", t=pressed, ladder=b.ladder, level=b.level, behavior=behavior,
+                   intensity=round(intensity, 3), reaction_window=window, context=context)
 
     def _error(self, message: str) -> None:
         self.last_error = {"message": message, "wall": self.clock.wall(shared_clock())}
@@ -386,6 +442,7 @@ class Wizard:
             raise WizardError(str(exc)) from None
         self._note("wizard_command", "wizard", t=pressed, action="play", behavior=behavior,
                    intensity=round(intensity, 3), via=via)
+        self._wizard_nudge(behavior, intensity, pressed)
         if self.autonomy is not None:
             self.autonomy.operator_played(behavior, pressed)
 
@@ -453,6 +510,7 @@ class Wizard:
         self._session_started_at = shared_clock()
         self._estimator_warned = False
         self._push(record)
+        self._start_rewards(record)
         if not self.mode_implemented:
             self._note("mode_not_implemented", "system", mode=self.mode)
         self._offer_calibration(participant)
@@ -464,6 +522,9 @@ class Wizard:
     def end_session(self, reason: str = "operator", notes: str | None = None) -> dict:
         if self.autonomy is not None and self.sessions.active:
             self.autonomy.session_ended(shared_clock(), f"session ended ({reason})")
+        if self.rewards is not None and self.sessions.active:
+            self.rewards.finish(shared_clock())         # the open nudges get their reward, in the session
+        self.rewards = None
         try:
             record = self.sessions.end(reason, notes=(notes or "").strip() or None)
         except SessionError as exc:
@@ -871,6 +932,10 @@ class Wizard:
         program switches) is reported once per session, and autonomy waits."""
         self.user_state = estimate
         self._user_state_seen = time.monotonic()
+        if self.rewards is not None and estimate.get("t") is not None:
+            t = float(estimate["t"])
+            self._focus_trend.add(estimate, t)
+            self.rewards.on_state(t, estimate.get("state"))      # judges the operator's open nudge
         if self.autonomy is None:
             return
         expected = AUTONOMY_MODES.get(self.mode)
