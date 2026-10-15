@@ -233,6 +233,19 @@ Two more settings in `.env` are worth knowing:
 
 ## 2. Running / testing things
 
+### Everything at once: the launcher
+
+```bash
+python3 launch.py                          # no virtualenv needed
+```
+
+One page (http://127.0.0.1:8090) that starts the simulator, the Wizard panel
+and the vision program in the right order, shows whether each one is up and
+what it prints, and has the panel and the live HMM page in tabs. Pick dry /
+simulator / real robot and the mode on its **Developer** tab. It runs the same
+commands as below, so they keep working as a fallback; the Developer tab shows
+each one, ready to copy. See [eepy/launcher/README.md](eepy/launcher/README.md).
+
 Each time you come back to work on this, you need to **activate** the
 right environment first (Step 2/3 commands above, minus the `pip install`
 part — you only install once, but you activate every session).

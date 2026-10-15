@@ -36,6 +36,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--live", action="store_true",
                         help="also serve the live HMM page (the HMM the panel acts on, and the robot's decisions)")
     parser.add_argument("--live-port", type=int, default=8770, help="the live page's port (default 8770)")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="do not open the live page in the browser (the launcher shows it in a tab)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
 
@@ -130,7 +132,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"  Live HMM page: {url}\n")
         import webbrowser
 
-        webbrowser.open(url)
+        if not args.no_browser:
+            webbrowser.open(url)
     next_status = time.monotonic() + 5
     next_live = 0.0
     try:

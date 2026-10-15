@@ -1,0 +1,64 @@
+# The launcher
+
+```bash
+python3 launch.py                 # opens http://127.0.0.1:8090
+python3 launch.py --port 8091     # if 8090 is taken
+python3 launch.py --no-browser
+```
+
+One page to start, watch and stop EEPY's programs. It needs no virtualenv (Python
+3.9+, standard library only): it starts each program in its own one, exactly as
+you would in separate terminals.
+
+| Tab | What it is |
+|---|---|
+| **Overview** | **Start all** / **Stop all**, and for each program a status light, Start / Stop / Restart and its last lines of output. With the real robot, whether the robot answers. |
+| **Wizard panel** | The panel itself (http://127.0.0.1:8081). Click inside it once before using its keyboard shortcuts, or use **Pop out**. |
+| **Live HMM** | The vision program's live page (http://127.0.0.1:8770): the HMM the panel acts on, and the robot's decisions. |
+| **Developer** | Robot (dry run / simulator / real), mode, camera, ports, extra arguments; all output; the terminal commands. |
+
+**Start all** goes in order and waits for each program to answer before starting the
+next: the simulator (only with the simulator), the panel, then vision (which uses the
+camera). If one fails, it stops there and says so; its output is on its card.
+
+**Stop** sends Ctrl+C, like in a terminal: the panel ends the session and puts the robot
+back to neutral. Whatever is still running after a few seconds is killed. Ctrl+C in the
+launcher's own terminal stops everything it started.
+
+The settings are saved in `.launcher.json` (per computer, not in git).
+
+## Status lights
+
+| Light | Meaning |
+|---|---|
+| green | running, and answering on its port |
+| amber, blinking | starting (running, not answering yet) or stopping |
+| purple | running, but **not started by the launcher** (in a terminal): it leaves it alone |
+| red | stopped by itself (crashed): see its output |
+| grey | stopped |
+
+## Fallback: separate terminals
+
+The launcher starts the same programs you can start by hand, so if it misbehaves, stop
+it and use terminals. The **Developer** tab shows the commands for the current settings.
+For the simulator in hmm mode:
+
+```bash
+.venv-robot/bin/mjpython .venv-robot/bin/reachy-mini-daemon --sim                    # terminal 1
+.venv-robot/bin/python -m eepy.wizard --backend sim --mode hmm --port 8081         # terminal 2
+.venv-vision/bin/python -m eepy.perception --live                                  # terminal 3
+```
+
+Mixing is fine: a program started in a terminal shows as purple, and **Start all** skips it.
+
+## Two things it guards against
+
+- **A second panel.** Every panel holds the camera relay port (8766), whatever port its
+  page is on. If another panel holds it (in a terminal, or one that did not shut down
+  completely), the launcher will not start a panel, and warns at the top of the Overview:
+  vision started next to it records into **that** panel's session.
+- **A second camera program.** Only one program can hold the camera. Do not run
+  `python -m eepy.perception.live` (or calibration) next to the launcher's vision program.
+
+The MuJoCo simulator opens in its own window: to show it in a presentation, share the
+whole screen rather than the browser tab.

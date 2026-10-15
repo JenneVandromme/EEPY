@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EEPY Launcher</title>
+<style>
+:root {
+  --bg: #f6f5f2; --surface: #ffffff; --surface-2: #efeee9; --border: #dcdad3;
+  --text: #1d1c19; --muted: #6b6960; --accent: #3b5bdb; --accent-text: #ffffff;
+  --ok: #2f9e44; --warn: #e8a317; --bad: #e03131; --off: #a8a69e; --ext: #7048e8;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --log-bg: #1b1b1f; --log-text: #d9d9de;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416; --surface: #1d1d21; --surface-2: #26262b; --border: #34343a;
+    --text: #ececef; --muted: #9a9aa3; --accent: #6c8cff; --accent-text: #0d0d10;
+    --off: #5c5c64; --log-bg: #0e0e11;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+       display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--surface);
+         border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+h1 span { color: var(--muted); font-weight: 500; }
+.chips { display: flex; gap: 6px; }
+.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.chip b { color: var(--text); font-weight: 600; }
+.spacer { flex: 1; }
+.step { color: var(--muted); font-size: 13px; }
+nav { display: flex; gap: 2px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+nav button { border: 0; background: none; padding: 10px 14px; font: inherit; color: var(--muted); cursor: pointer;
+             border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+main { flex: 1; min-height: 0; position: relative; }
+section { position: absolute; inset: 0; overflow: auto; display: none; }
+section.active { display: block; }
+section.frame.active { display: flex; flex-direction: column; overflow: hidden; }
+.pad { padding: 20px; max-width: 1300px; margin: 0 auto; }
+
+button.btn { font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+             background: var(--surface); color: var(--text); cursor: pointer; }
+button.btn:hover:not(:disabled) { background: var(--surface-2); }
+button.btn:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+button.big { padding: 9px 20px; font-size: 15px; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--off); flex: none; }
+.dot.running { background: var(--ok); }
+.dot.starting, .dot.stopping { background: var(--warn); animation: pulse 1s infinite; }
+.dot.crashed { background: var(--bad); }
+.dot.external { background: var(--ext); }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+        display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card.unused { opacity: .5; }
+.card-head { display: flex; align-items: center; gap: 10px; }
+.card-head h2 { font-size: 17px; margin: 0; flex: 1; }
+.state { font-size: 13px; color: var(--muted); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mini-log { background: var(--log-bg); color: var(--log-text); font: 12px/1.45 var(--mono); border-radius: 8px;
+            padding: 8px 10px; height: 150px; overflow: hidden; white-space: pre-wrap; word-break: break-all;
+            display: flex; flex-direction: column; justify-content: flex-end; }
+.hint { color: var(--muted); font-size: 13px; }
+.warnbox { background: color-mix(in srgb, var(--warn) 15%, var(--surface)); border: 1px solid var(--warn);
+           border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.message { margin: 16px 0 0; font-size: 14px; color: var(--muted); }
+a { color: var(--accent); }
+
+.toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--surface);
+           border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.frame-wrap { flex: 1; position: relative; min-height: 0; background: var(--surface); }
+.frame-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 12px; background: var(--bg); color: var(--muted); text-align: center; padding: 16px; }
+
+.dev { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .dev { grid-template-columns: 1fr; } }
+.box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.box h3 { margin: 0 0 12px; font-size: 15px; }
+label.field { display: block; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+label.field select, label.field input { display: block; width: 100%; margin-top: 4px; font: inherit; font-size: 14px;
+  padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.seg { display: flex; margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; padding: 6px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.cmd { margin-bottom: 12px; }
+.cmd .cmd-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.cmd code { display: block; font: 12px/1.5 var(--mono); background: var(--surface-2); padding: 8px 10px; border-radius: 6px;
+            white-space: pre-wrap; word-break: break-all; }
+.log-full { background: var(--log-bg); color: var(--log-text); font: 12px/1.5 var(--mono); border-radius: 8px;
+            padding: 10px 12px; height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.log-full .p { display: inline-block; min-width: 64px; opacity: .55; }
+.log-full .p-launcher { color: #8ab4ff; opacity: .9; }
+.log-tools { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; font-size: 13px; }
+.log-tools select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+@media (max-width: 600px) { header, .pad { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>EEPY <span>launcher</span></h1>
+  <div class="chips" id="chips"></div>
+  <div class="spacer"></div>
+  <span class="step" id="step"></span>
+  <button class="btn primary big" id="start-all">Start all</button>
+  <button class="btn big" id="stop-all">Stop all</button>
+</header>
+<nav id="tabs">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="panel"><span class="dot" id="tab-dot-panel"></span>Wizard panel</button>
+  <button data-tab="live"><span class="dot" id="tab-dot-vision"></span>Live HMM</button>
+  <button data-tab="dev">Developer</button>
+</nav>
+<main>
+  <section id="overview" class="active"><div class="pad">
+    <div id="banner"></div>
+    <div class="cards" id="cards"></div>
+    <p class="message" id="message"></p>
+  </div></section>
+
+  <section id="panel" class="frame">
+    <div class="toolbar">
+      <span class="dot" id="bar-dot-panel"></span><span class="state" id="bar-state-panel"></span>
+      <span class="hint">Click inside the panel once before using its keyboard shortcuts.</span>
+      <div class="spacer"></div>
+      <button class="btn" data-reload="panel">Reload</button>
+      <button class="btn" data-popout="panel">Pop out ↗</button>
+    </div>
+    <div class="frame-wrap">
+      <iframe id="frame-panel" title="Wizard panel"></iframe>
+      <div class="placeholder" id="ph-panel"><div>The Wizard panel is not running.</div>
+        <button class="btn primary" data-start="panel">Start the panel</button></div>
+    </div>
+  </section>
+
+  <section id="live" class="frame">
+    <div class="toolbar">
+      <span class="dot" id="bar-dot-vision"></span><span class="state" id="bar-state-vision"></span>
+      <span class="hint">The HMM the panel acts on, with the robot's decisions.</span>
+      <div class="spacer"></div>
+      <button class="btn" data-reload="vision">Reload</button>
+      <button class="btn" data-popout="vision">Pop out ↗</button>
+    </div>
+    <div class="frame-wrap">
+      <iframe id="frame-vision" title="Live HMM"></iframe>
+      <div class="placeholder" id="ph-vision"><div>The vision program is not running.<br>
+        <span class="hint">It uses the camera.</span></div>
+        <button class="btn primary" data-start="vision">Start vision</button></div>
+    </div>
+  </section>
+
+  <section id="dev"><div class="pad dev">
+    <div>
+      <div class="box">
+        <h3>Settings</h3>
+        <label class="field">Robot<div class="seg" data-seg="backend">
+          <button data-v="dry">Dry run</button><button data-v="sim">Simulator</button><button data-v="real">Real robot</button></div></label>
+        <label class="field">Mode<div class="seg" data-seg="mode">
+          <button data-v="wizard">Wizard</button><button data-v="rules">Rules</button><button data-v="hmm">HMM</button></div></label>
+        <label class="field">Camera
+          <select id="camera"><option value="">Default (config/eepy.yaml)</option><option value="auto">auto</option>
+            <option value="robot">robot</option><option value="laptop">laptop</option><option value="fake">fake (no camera)</option></select></label>
+        <label class="field">Real robot address <input id="robot_host" placeholder=""></label>
+        <details><summary>Ports and extra arguments</summary>
+          <label class="field">Panel port <input id="panel_port" type="number"></label>
+          <label class="field">Live HMM port <input id="live_port" type="number"></label>
+          <label class="field">Extra arguments: simulator <input id="sim_extra" placeholder="e.g. --headless"></label>
+          <label class="field">Extra arguments: panel <input id="panel_extra" placeholder="e.g. --session-prior prior.json"></label>
+          <label class="field">Extra arguments: vision <input id="vision_extra" placeholder="e.g. --no-aus"></label>
+        </details>
+        <button class="btn primary" id="save">Save settings</button>
+        <p class="hint" id="save-msg"></p>
+      </div>
+      <div class="box" style="margin-top:20px">
+        <h3>Fallback: the same commands in terminals</h3>
+        <p class="hint" style="margin-top:0">If the launcher misbehaves, stop it and run these, each in its own terminal, in the EEPY folder. They follow the settings above.</p>
+        <div id="commands"></div>
+      </div>
+    </div>
+    <div class="box">
+      <h3>Logs</h3>
+      <div class="log-tools">
+        <select id="log-filter"><option value="">All programs</option><option value="launcher">Launcher</option>
+          <option value="sim">Simulator</option><option value="panel">Wizard panel</option><option value="vision">Vision</option></select>
+        <label><input type="checkbox" id="autoscroll" checked> Follow</label>
+        <button class="btn" id="clear-log">Clear view</button>
+      </div>
+      <div class="log-full" id="log-full"></div>
+    </div>
+  </div></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STATE_TEXT = { stopped: "Stopped", starting: "Starting…", running: "Running", stopping: "Stopping…",
+                     crashed: "Crashed", external: "Running in a terminal" };
+const PART_NOTES = {
+  sim: "MuJoCo opens in its own window (share the whole screen to show it).",
+  panel: "Ctrl+C-style stop: ends the session and puts the robot back to neutral.",
+  vision: "Holds the camera: do not run a second camera program next to it.",
+};
+let status = null, logs = [], lastLog = 0, dirty = false;
+const frameUp = { panel: false, vision: false };
+
+// ---- tabs (remember the last one, per viewer) ----
+function showTab(name) {
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll("main section").forEach((s) => s.classList.toggle("active", s.id === name));
+  try { localStorage.setItem("eepy-launcher-tab", name); } catch (e) {}
+}
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+try { const t = localStorage.getItem("eepy-launcher-tab"); if (t && $(t)) showTab(t); } catch (e) {}
+
+// ---- talking to the launcher ----
+async function post(path, body) {
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const data = await r.json();
+    $("message").textContent = data.message || "";
+    return data;
+  } catch (e) { $("message").textContent = "The launcher is not answering. Is it still running in its terminal?"; }
+  finally { refresh(); }
+}
+const up = (state) => state === "running" || state === "external";
+
+async function refresh() {
+  try {
+    status = await (await fetch("/api/status")).json();
+  } catch (e) {
+    $("step").textContent = "Launcher not answering…";
+    return;
+  }
+  render();
+}
+
+function render() {
+  const s = status.settings;
+  const backendText = { dry: "dry run", sim: "simulator", real: "real robot" }[s.backend];
+  $("chips").innerHTML = `<span class="chip">robot <b>${backendText}</b></span><span class="chip">mode <b>${s.mode}</b></span>` +
+    (s.backend === "real" ? `<span class="chip">${status.robot_host}</span>` : "");
+  $("step").textContent = status.step || "";
+  $("start-all").disabled = status.busy;
+  if (status.message && !$("message").textContent) $("message").textContent = status.message;
+
+  // cards
+  const cards = [];
+  if (status.robot) {
+    const ok = status.robot.reachable;
+    cards.push(`<div class="card"><div class="card-head"><span class="dot ${ok ? "running" : "crashed"}"></span>
+      <h2>Real robot</h2><span class="state">${ok ? "Reachable" : "Not reachable"}</span></div>
+      <div class="hint">${status.robot.host}:8000 — ${ok ? "its daemon answers." :
+        "check it is on, and that this computer is on the robot's router."}</div></div>`);
+  }
+  for (const [name, p] of Object.entries(status.parts)) {
+    const needed = status.needed.includes(name);
+    if (!needed && p.state === "stopped") {
+      if (name === "sim") continue;          // dry or real: no simulator card at all
+    }
+    const running = p.pid !== null;
+    const lines = logs.filter((l) => l[1] === name).slice(-9).map((l) => esc(l[2])).join("\n");
+    const missing = p.missing.length ? `<div class="warnbox">${esc(p.missing[0])} is missing: set up the virtualenvs (README, step 1).</div>` : "";
+    const external = p.state === "external" ? `<div class="hint">Started outside the launcher; stop it in its own terminal.</div>` : "";
+    const crashed = p.state === "crashed" ? `<div class="warnbox">Exited with code ${p.exit_code}. See the lines below, or the Developer tab.</div>` : "";
+    const open = p.url && up(p.state) ? `<button class="btn" onclick="window.open('${p.url}', '_blank')">Open ↗</button>` : "";
+    cards.push(`<div class="card${needed ? "" : " unused"}">
+      <div class="card-head"><span class="dot ${p.state}"></span><h2>${p.label}</h2>
+        <span class="state">${STATE_TEXT[p.state]}${p.uptime != null && p.state === "running" ? " · " + duration(p.uptime) : ""}</span></div>
+      ${missing}${crashed}${external}
+      <div class="actions">
+        <button class="btn primary" ${running || up(p.state) ? "disabled" : ""} onclick="post('/api/start', {part:'${name}'})">Start</button>
+        <button class="btn" ${running && p.state !== "stopping" ? "" : "disabled"} onclick="post('/api/stop', {part:'${name}'})">Stop</button>
+        <button class="btn" ${running && p.state !== "stopping" ? "" : "disabled"} onclick="post('/api/restart', {part:'${name}'})">Restart</button>
+        ${open}
+      </div>
+      <div class="mini-log">${lines || '<span style="opacity:.5">No output yet.</span>'}</div>
+      <div class="hint">${needed ? PART_NOTES[name] : "Not used with this robot setting."}</div>
+    </div>`);
+  }
+  const warn = status.other_panel ? `<div class="warnbox" style="margin-bottom:16px">A Wizard panel the launcher did not start is
+    running: in a terminal, on another port, or one that did not shut down completely (it still holds the camera relay port).
+    Vision started from here records into <b>that</b> panel's session, and the panel will not start from here.
+    Stop it first: Ctrl+C in its terminal, or find it with <code>lsof -nP -iTCP -sTCP:LISTEN | grep 8766</code>.</div>` : "";
+  $("cards").innerHTML = cards.join("");
+  $("banner").innerHTML = warn;
+
+  // embedded pages
+  for (const [name, frame] of [["panel", "frame-panel"], ["vision", "frame-vision"]]) {
+    const p = status.parts[name];
+    $("tab-dot-" + name).className = "dot " + p.state;
+    $("bar-dot-" + name).className = "dot " + p.state;
+    $("bar-state-" + name).textContent = STATE_TEXT[p.state] + (up(p.state) ? " — " + p.url : "");
+    const isUp = up(p.state);
+    if (isUp && !frameUp[name]) $(frame).src = p.url + "?t=" + Date.now();   // just came up: load it
+    if (!isUp && frameUp[name]) $(frame).src = "about:blank";
+    frameUp[name] = isUp;
+    $("ph-" + name).style.display = isUp ? "none" : "flex";
+  }
+
+  // developer tab
+  if (!dirty) fillSettings(s);
+  $("robot_host").placeholder = status.robot_host;
+  const order = status.needed;
+  $("commands").innerHTML = order.map((name, i) => {
+    const p = status.parts[name];
+    return `<div class="cmd"><div class="cmd-head"><span>Terminal ${i + 1}: ${p.label}</span>
+      <button class="btn" onclick="copyText(this, ${JSON.stringify(p.command).replace(/"/g, "&quot;")})">Copy</button></div>
+      <code>${esc(p.command)}</code></div>`;
+  }).join("") + (s.backend === "real" ? `<p class="hint">Real robot: no simulator needed; its daemon runs on the robot.</p>` : "");
+}
+
+// ---- settings form ----
+function fillSettings(s) {
+  document.querySelectorAll("[data-seg]").forEach((seg) =>
+    seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === s[seg.dataset.seg])));
+  for (const k of ["camera", "robot_host", "panel_port", "live_port", "sim_extra", "panel_extra", "vision_extra"]) $(k).value = s[k];
+}
+document.querySelectorAll("[data-seg] button").forEach((b) => b.onclick = (e) => {
+  e.preventDefault(); dirty = true;
+  b.parentElement.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  $("save-msg").textContent = "Not saved yet.";
+});
+document.querySelectorAll("#dev input, #dev select").forEach((el) => {
+  if (el.id === "autoscroll" || el.id === "log-filter") return;
+  el.oninput = () => { dirty = true; $("save-msg").textContent = "Not saved yet."; };
+});
+$("save").onclick = async () => {
+  const body = {};
+  document.querySelectorAll("[data-seg]").forEach((seg) => body[seg.dataset.seg] = seg.querySelector(".on").dataset.v);
+  for (const k of ["camera", "robot_host", "sim_extra", "panel_extra", "vision_extra"]) body[k] = $(k).value;
+  for (const k of ["panel_port", "live_port"]) body[k] = Number($(k).value);
+  const r = await post("/api/settings", body);
+  if (r) { $("save-msg").textContent = r.message; if (r.ok) dirty = false; }
+};
+
+// ---- logs ----
+async function pollLogs() {
+  try {
+    const data = await (await fetch("/api/logs?since=" + lastLog)).json();
+    if (data.last < lastLog) { logs = []; lastLog = 0; }     // the launcher restarted
+    if (data.lines.length) { logs = logs.concat(data.lines).slice(-4000); lastLog = data.lines[data.lines.length - 1][0]; drawLog(); }
+  } catch (e) {}
+}
+let logFloor = 0;
+function drawLog() {
+  const filter = $("log-filter").value;
+  const rows = logs.filter((l) => l[0] > logFloor && (!filter || l[1] === filter)).slice(-1500);
+  $("log-full").innerHTML = rows.map((l) => `<span class="p p-${l[1]}">${l[1]}</span> ${esc(l[2])}`).join("\n");
+  if ($("autoscroll").checked) $("log-full").scrollTop = $("log-full").scrollHeight;
+}
+$("log-filter").onchange = drawLog;
+$("clear-log").onclick = () => { logFloor = lastLog; drawLog(); };
+
+// ---- buttons ----
+$("start-all").onclick = () => post("/api/start-all");
+$("stop-all").onclick = () => post("/api/stop-all");
+document.querySelectorAll("[data-start]").forEach((b) => b.onclick = () => post("/api/start", { part: b.dataset.start }));
+document.querySelectorAll("[data-reload]").forEach((b) => b.onclick = () => {
+  const p = status && status.parts[b.dataset.reload];
+  if (p && up(p.state)) $("frame-" + b.dataset.reload).src = p.url + "?t=" + Date.now();
+});
+document.querySelectorAll("[data-popout]").forEach((b) => b.onclick = () => {
+  const p = status && status.parts[b.dataset.popout];
+  if (p) window.open(p.url, "_blank");
+});
+
+function copyText(button, text) {
+  navigator.clipboard.writeText(text).then(() => { button.textContent = "Copied"; setTimeout(() => button.textContent = "Copy", 1200); });
+}
+function esc(t) { return String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function duration(s) { return s < 60 ? s + " s" : s < 3600 ? Math.floor(s / 60) + " min" : (s / 3600).toFixed(1) + " h"; }
+
+refresh(); pollLogs();
+setInterval(refresh, 1000);
+setInterval(pollLogs, 1000);
+</script>
+</body>
+</html>

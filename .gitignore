@@ -17,6 +17,8 @@ dist/
 # Local environment configuration (copy .env.example to .env to configure)
 .env
 .env.local
+# The launcher's last choices (backend, mode, ports): per computer
+/.launcher.json
 
 # AI / ML model weights and raw data — large binary files, don't commit them
 *.pt
