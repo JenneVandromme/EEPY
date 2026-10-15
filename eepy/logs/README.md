@@ -61,6 +61,7 @@ All event types live in `schema.py`, in these groups plus reserved ones:
 | Speech | `speech_requested`, `speech_started`, `speech_finished`, `speech_interrupted`, `speech_failed` |
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
+| Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
 | Camera | `camera_started`, `camera_error`, `camera_reconnected`, `camera_stats` — statistics only, never pixels; written by the vision process to `events.vision.jsonl` (see [eepy/camera/README.md](../camera/README.md)) |
 | **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |
 
@@ -178,8 +179,9 @@ exactly this with `os._exit`.
 
 ## Not verified yet
 
-- **A real vision process.** The feature stream has been tested with a scripted
-  stand-in running in the real vision venv (190 rows, aligned to within one
-  frame), not with actual camera features — those arrive with stage 1.
+- **A full lab session with a real face.** The real vision process
+  (`python -m eepy.perception`, A9) has recorded into a session from the
+  laptop camera (`check` says OK), but not yet during an actual study session
+  with a participant and the panel side by side.
 - **A long session.** Tested for seconds to minutes; an hour-long pilot will be
   the first real test of file sizes and the flush rate.

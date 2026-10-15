@@ -10,9 +10,10 @@ data/sessions/
   2026-10-06_P03_wizard/        <date>_<participant>_<mode>
     meta.json                   who, when, which mode, which code version, notes
     events.jsonl                everything that happened, one line per event
-    features.csv                what the camera measured, ~15 rows a second (once perception runs)
+    features.csv                face features, ~15 rows a second (python -m eepy.perception)
     features.json               which columns features.csv has
-    events.vision.jsonl         events from the vision process: camera status and statistics
+    events.vision.jsonl         from the vision process: blinks, yawns, nods, face lost/back,
+                                per-second summaries (PERCLOS ...), camera status
     snapshot/                   the exact behaviour and config files used
 ```
 
@@ -64,7 +65,15 @@ words, which engine spoke them, and `latency_ms`; `speech_interrupted` and
 `speech_failed` say when words were cut off or never came out. These are the
 robot's words, not the participant's.
 
-`events.vision.jsonl` holds the camera's health: `camera_stats` every 10 s (frames per
+**Face features.** `features.csv` has one row per analysed frame: eye openness
+(`ear`, `eye_closure`), mouth openness (`mar`), head angles, `face_present`, ...
+`events.vision.jsonl` has the events (`blink`, `yawn`, `nod`, `face_lost`,
+`face_back`) and, every second, a `face_window` with PERCLOS, blink rate, yawn and
+nod counts over the last 10 s and 60 s. Every column and field is explained in plain
+words in [eepy/perception/README.md](../eepy/perception/README.md). Where
+`blink_confidence` is `low`, the camera was too slow to count blinks reliably.
+
+`events.vision.jsonl` also holds the camera's health: `camera_stats` every 10 s (frames per
 second, `latency_ms`, `dropped` frames), plus `camera_error` / `camera_reconnected`
 when the camera dropped out. Check these before trusting a stretch of features:
 a gap in the camera is a gap in what perception could see.

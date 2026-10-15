@@ -278,6 +278,21 @@ settings) is in [`eepy/camera/README.md`](eepy/camera/README.md).
 **Testing the camera properly?** Follow the step-by-step tutorial for macOS,
 Windows and Linux: [eepy/camera/README.md → Tutorial: test everything](eepy/camera/README.md#tutorial-test-everything-about-15-minutes).
 
+### Test the face features (blinks, yawns, nods)
+
+```bash
+source .venv-vision/bin/activate      # Windows: .venv-vision\Scripts\Activate.ps1
+python -m eepy.perception.selftest    # guided, ~1 minute: blink, yawn, nod, look away
+```
+
+It prints PASS or CHECK per step and how long each frame takes to analyse. The
+preview above also shows the face features live: eye and mouth openness, head
+angles, and a flash on every blink, yawn or nod. What every value means, in
+plain words, is in [`eepy/perception/README.md`](eepy/perception/README.md).
+
+**Testing the face features properly?** Follow the step-by-step tutorial for
+macOS, Windows and Linux: [eepy/perception/README.md → Tutorial: test the face features](eepy/perception/README.md#tutorial-test-the-face-features-about-10-minutes).
+
 ### Test the robot connection
 
 This needs **two terminals at once**: one running the robot's "daemon"
@@ -387,8 +402,9 @@ EEPY/
 ├── eepy/logs/             # recording and loading session data — how it works: eepy/logs/README.md
 ├── eepy/speech/           # the robot's voice (text-to-speech) — how it works: eepy/speech/README.md
 ├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
+├── eepy/perception/       # face features: blinks, yawns, nods, PERCLOS — what they mean: eepy/perception/README.md
 ├── config/
-│   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera
+│   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── docs/
@@ -425,7 +441,8 @@ head can physically reach a pose and how fast it moves. Details in
 | edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
 | find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
-| check the camera, or work on perception | [eepy/camera/README.md](eepy/camera/README.md) |
+| check the camera | [eepy/camera/README.md](eepy/camera/README.md) |
+| understand the face values (blinks, PERCLOS, …), or work on perception | [eepy/perception/README.md](eepy/perception/README.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
