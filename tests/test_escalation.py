@@ -185,6 +185,18 @@ def test_onset_delay_then_one_level_up_per_reaction_window():
     assert [r["to"] for r in h.of("role_changed")] == ["study_buddy", "refocus"]
 
 
+def test_the_status_lists_the_levels_played_in_this_climb():
+    """For the panel's ladder view: which rungs were played, with their outcomes."""
+    h = Harness().run("focused", 10).run("distracted", 70)
+    status = h.engine.status(h.t)
+    assert status["ladder"] == "refocus" and status["level"] == 2
+    assert status["played"] == [{"level": 1, "outcome": "no_reaction"}, {"level": 2, "outcome": None}]
+    h.run("focused", 30)                                         # back to work: the climb is over
+    assert h.engine.status(h.t)["played"] == []
+    v = Harness().run("focused", 10).run("very_drowsy", 60)      # very drowsy starts at level 2
+    assert [p["level"] for p in v.engine.status(v.t)["played"]] == [2]
+
+
 def test_back_to_focused_is_a_success_resets_the_ladder_and_nods_once():
     h = Harness().run("focused", 10).run("distracted", 70).run("focused", 30)   # L1 30, L2 60
     assert h.outcomes() == [(1, "no_reaction"), (2, "success")]

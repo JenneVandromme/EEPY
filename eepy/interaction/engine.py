@@ -188,6 +188,10 @@ class EscalationEngine:
                                    "direct": self.config.direct_confidence},
                 "open": None if self.open is None else
                 {"decision_id": self.open.decision_id, "ladder": self.open.ladder, "level": self.open.level},
+                # the levels played in this climb, for the panel's ladder view (outcome None: still open)
+                "played": [] if ep is None else
+                [{"level": r.level, "outcome": r.outcome} for r in self.nudges
+                 if r.ladder == ep.ladder and r.t >= ep.started],
             }
             if self.flow == "wind_down" and self.wind_until is not None:
                 out["wind_down_left"] = max(0.0, round(self.wind_until - now))

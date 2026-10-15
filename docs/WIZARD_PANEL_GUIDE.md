@@ -93,6 +93,15 @@ under the session bar shows:
 - the robot's role, ladder and level;
 - what comes next and when.
 
+Under it, **one row per ladder** (refocus and bedtime) shows where the robot is:
+- **filled** rungs were played in this climb, with how it went (✓ it worked,
+  · no reaction, ✗ interrupted focus; hover for the words);
+- the **solid** rung is the level it is on now, **pulsing** while it moves (L0 is
+  the ladder's quiet idle);
+- the **dashed** rung is the next level if there is no reaction, with its countdown;
+- "on a break", "winding down" or "goodnight" when the robot is in that phase;
+- in the hmm mode, before a first nudge: how much evidence has built up toward it.
+
 What you do in this mode:
 - **Pause autonomy** stops it at once, and you drive by hand; **Resume** starts
   afresh. Use it for demos and whenever something looks wrong.

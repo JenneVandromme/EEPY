@@ -52,6 +52,25 @@
   .chain .step.yes { outline: 1.5px solid var(--ok); } .chain .step.no { outline: 1.5px solid var(--warn); }
   .chain .lit { animation: chainlit 1.2s ease-out; }
   @keyframes chainlit { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  /* where the robot is on each ladder (autonomy): done -> now -> next */
+  .ladrow { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; }
+  .ladrow + .ladrow { margin-top: 4px; }
+  .ladrow .lname { width: 64px; font-weight: 600; color: var(--lc); }
+  .rungs { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; }
+  .rung { padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--panel);
+          white-space: nowrap; color: var(--muted); }
+  .rung b { font-weight: 600; margin-right: 3px; }
+  .rlink { width: 12px; height: 2px; background: var(--line); }
+  .rlink.on { background: var(--lc); }
+  .rung.done { color: var(--ink); border-color: var(--lc); background: color-mix(in srgb, var(--lc) 14%, var(--panel)); }
+  .rung.now { color: #fff; border-color: var(--lc); background: var(--lc); font-weight: 600; }
+  .rung.now.moving { animation: rungpulse 1.1s ease-in-out infinite; }
+  .rung.next { color: var(--ink); border-color: var(--lc); border-style: dashed; }
+  @keyframes rungpulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lc) 35%, transparent); } }
+  .ladrow .lnote { color: var(--muted); }
+  .evbar { display: inline-block; width: 60px; height: 8px; border-radius: 4px; background: var(--key);
+           border: 1px solid var(--line); overflow: hidden; vertical-align: middle; }
+  .evbar > span { display: block; height: 100%; background: var(--lc); }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
   .calbar { display: inline-block; width: 160px; height: 10px; border: 1px solid var(--muted); border-radius: 5px; overflow: hidden; }
   .calbar > span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
@@ -148,6 +167,7 @@
   <div class="row session" id="session-row"></div>
   <div class="row calib" id="calib-row" hidden></div>
   <div class="row calib" id="auto-row" hidden></div>
+  <div class="calib" id="ladder-view" hidden></div>
   <div id="error" class="error" hidden>
     <b>Last problem</b> <span class="muted" id="error-time"></span>
     <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
@@ -520,6 +540,64 @@ function renderAutonomy(a, se) {
   btn.textContent = a.paused ? "Resume autonomy" : "Pause autonomy";
   btn.hidden = !a.active && !a.paused;
   renderChain(state.status.user_state, a);
+  renderLadders(a);
+}
+
+// Where the robot is on each ladder: filled = played in this climb (✓ it worked, · no reaction),
+// solid = the level it is on now (pulsing while it moves), dashed = the next level, with its time.
+// Level 0 is the ladder's role idle. The rungs come from behaviors/*.yaml (the ladder sections).
+const OUTCOME_MARK = { success: "✓", no_reaction: "·", interrupted_focus: "✗", censored: "–",
+                       accepted: "✓", snoozed: "z", dismissed: "✗" };
+function renderLadders(a) {
+  const box = $("ladder-view");
+  const groups = (state.panel?.groups || []).filter((g) => !["basics", "lines", "markers"].includes(g.id));
+  box.hidden = !a.active || !groups.length;
+  if (box.hidden) return;
+  const s = state.status, pctx = (p) => `${Math.round(p * 100)} %`;
+  const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
+  const flowTag = { refocus: { break: "on a break" }, bedtime: { wind_down: "winding down", goodnight: "goodnight" } };
+  box.innerHTML = "";
+  for (const { id, title, buttons } of groups) {
+    const here = a.ladder === id;
+    const played = here ? Object.fromEntries((a.played || []).map((p) => [p.level, p.outcome])) : {};
+    const row = document.createElement("div");
+    row.className = "ladrow";
+    row.style.setProperty("--lc", `var(--${id}, var(--accent))`);
+    row.innerHTML = `<span class="lname"></span><span class="rungs"></span><span class="lnote"></span>`;
+    row.querySelector(".lname").textContent = title.replace(/ ladder$/, "");
+    const rungs = row.querySelector(".rungs");
+    let note = "";
+    buttons.forEach((b, i) => {
+      const level = parseInt(b.label.slice(1), 10);
+      const el = document.createElement("span");
+      let cls = "", tip = `${b.label}: ${b.target.replaceAll("_", " ")}`;
+      const atIdle = level === 0 && a.role === id && !(here && a.level != null);
+      if ((here && a.level === level) || atIdle) {
+        cls = "now" + (s.playing === b.target ? " moving" : "");
+        tip += atIdle ? " — the role's idle" : played[level] === null ? " — waiting for a reaction" : "";
+      } else if (level in played) {
+        cls = "done"; tip += ` — ${String(played[level]).replace("_", " ")}`;
+      } else if (here && a.open && level === a.level + 1 && a.flow === "normal") {
+        cls = "next"; tip += " — next, if there is no reaction";
+        if (a.next_in != null && /next level in$/.test(a.next || "")) note = `next: ${b.label} in ${mmss(a.next_in)}`;
+      }
+      if (i) rungs.insertAdjacentHTML("beforeend", `<span class="rlink${cls === "done" || cls.startsWith("now") ? " on" : ""}"></span>`);
+      el.className = `rung ${cls}`; el.title = tip;
+      el.innerHTML = `<b></b><span></span>`;
+      el.querySelector("b").textContent = b.label + (level in played && played[level] ? ` ${OUTCOME_MARK[played[level]] || ""}` : "");
+      el.querySelector("span").textContent = b.detail;
+      rungs.appendChild(el);
+    });
+    const tag = flowTag[id]?.[a.flow];
+    if (tag) note = tag + (note ? ` · ${note}` : "");
+    const prog = (a.evidence_progress || {})[id];
+    if (!here && prog > 0) {              // hmm belief decisions: evidence building toward a first nudge
+      row.querySelector(".lnote").innerHTML = `evidence <span class="evbar"><span></span></span> `;
+      row.querySelector(".evbar span").style.width = pctx(Math.min(1, prog));
+      row.querySelector(".lnote").append(pctx(Math.min(1, prog)) + " of a first nudge");
+    } else row.querySelector(".lnote").textContent = note;
+    box.appendChild(row);
+  }
 }
 
 // hmm mode: the decision as a chain -- belief -> sure enough? -> what the robot does. The
