@@ -392,3 +392,15 @@ def test_engines_report_failure_as_engine_error():
         MockEngine(fail=True).synthesize("hello")
     with pytest.raises(EngineError, match="nothing to say"):
         MockEngine().synthesize("   ")
+
+
+def test_auto_output_plays_the_simulator_on_this_computer():
+    """The sim's daemon can stay silent on macOS while answering "ok": auto speaks here instead.
+    The real robot keeps its own speaker; an explicit "robot" still goes through the daemon."""
+    from eepy.speech.outputs import DesktopOutput, RobotOutput, make_output
+
+    sim, real = SimpleNamespace(name="sim"), SimpleNamespace(name="real")
+    assert isinstance(make_output("auto", sim), DesktopOutput)
+    assert isinstance(make_output("auto", real), RobotOutput)
+    assert isinstance(make_output("robot", sim), RobotOutput)
+    assert isinstance(make_output("auto", SimpleNamespace(name="dry")), DesktopOutput)

@@ -1,13 +1,15 @@
 """Where speech comes out: the robot's speaker, this computer's, or nowhere.
 
-    robot    through the robot's daemon -- the robot's speaker, or, in the
-             simulator, this computer's speakers (the sim's daemon plays it).
+    robot    through the robot's daemon -- the robot's speaker. In the simulator
+             the sim's daemon plays it (GStreamer), which can stay silent on
+             macOS while still answering "ok", so `auto` does not use it there.
              Needs a backend whose daemon has media: not dry, not --no-media.
     desktop  this computer's speakers, directly: afplay on macOS, winsound on
              Windows, aplay / paplay on Linux. Used with the dry-run backend.
     none     no audio at all; the words still appear in the panel and the log.
 
-`auto` picks robot when the robot can play sound, else desktop.
+`auto` picks robot for the real robot when it can play sound, else desktop
+(the dry run and the simulator: this computer's speakers, directly).
 
 An output plays one clip at a time, and a new clip replaces whatever was
 playing -- the robot's daemon works that way, and the desktop output copies it
@@ -313,7 +315,7 @@ def _sounddevice():
 
 
 def make_output(name: str, backend=None) -> Output:
-    """Build an output. `auto`: the robot if it can play sound, else desktop."""
+    """Build an output. `auto`: the real robot if it can play sound, else desktop."""
     name = (name or "auto").lower()
     if name not in OUTPUT_NAMES:
         raise OutputError(f'"{name}" is not a speech output. Use one of: {", ".join(OUTPUT_NAMES)}.')
@@ -326,6 +328,11 @@ def make_output(name: str, backend=None) -> Output:
         if robot is None:
             raise OutputError("speech output is set to robot, but there is no robot backend")
         return robot
+    if robot is not None and backend.name == "sim":
+        # The simulator's daemon plays sound through GStreamer: on macOS that stayed silent
+        # while answering "ok" (2026-10-15), so speech goes to these speakers directly.
+        log.info("Speech plays on this computer (simulator).")
+        return DesktopOutput()
     if robot is not None and robot.unavailable() is None:
         return robot
     if robot is not None:

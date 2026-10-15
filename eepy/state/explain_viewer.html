@@ -567,10 +567,14 @@ if (LIVE) {
   const stopFollow = () => { follow = false; };
   $("back").addEventListener("click", stopFollow); canvas.addEventListener("pointerdown", stopFollow);
   document.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") stopFollow(); });
+  let RUN = 0;
   setInterval(() => { $("cam").src = "/frame.jpg?" + Date.now(); }, 300);
   async function poll() {
     try {
-      const r = await fetch("/data?since=" + S.length); const d = await r.json();
+      const r = await fetch("/data?since=" + S.length + "&run=" + RUN); const d = await r.json();
+      if (d.run !== undefined && d.run !== RUN) {        // a new session: the timeline starts over
+        RUN = d.run; S.length = 0; follow = true; T0 = 0; T1 = 1; shownIndex = -1;
+      }
       if (!F.length) { DATA.features = F = d.features; DATA.groups = d.groups; DATA.rates = d.rates;
                        DATA.meta = M = Object.assign(d.meta, { title: "Live" }); renderHeader(); }
       for (const st of d.steps) S.push(st);

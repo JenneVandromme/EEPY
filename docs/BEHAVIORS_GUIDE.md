@@ -145,7 +145,9 @@ when each keyframe, sound and line would happen.
   take longer and tells you so ("slowed down to stay under the speed limit").
   It never changes *where* the move goes, only how long it takes.
 
-In the simulator, sounds go to your computer's own audio output. The files
+In the simulator, sounds go to your computer's own audio output (spoken lines too: with
+`speech.output: auto` they play on this computer directly, not through the simulator, whose
+audio can stay silent on macOS). The files
 in `sounds/` are still silent placeholders, so you will hear nothing until
 someone replaces them with real recordings.
 

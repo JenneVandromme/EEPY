@@ -40,7 +40,7 @@ class LiveState:
     """Everything the page reads, filled from the pipeline thread."""
 
     def __init__(self, params: Any) -> None:
-        from eepy.state.explain import build
+        from eepy.state.explain import _thresholds, build
 
         self.lock = threading.Lock()
         self.params = params
@@ -52,7 +52,10 @@ class LiveState:
         self.frame: Optional[bytes] = None
         self.live: Dict[str, Any] = {}
         self.banner: Dict[str, Any] = {}
-        empty = build([], params, 0.0, meta={"title": "Live", "notes": [], "parts": []})
+        self.run = 0                      # +1 at every reset: the page then starts its timeline over
+        # today's config/escalation.yaml: step 4 shows the 70 % threshold instead of "no gate"
+        empty = build([], params, 0.0, meta={"title": "Live", "notes": [], "parts": []},
+                      thresholds=_thresholds(None))
         self.base = {k: v for k, v in empty.items() if k not in ("steps", "events")}
 
     def add(self, estimate: Any, rules_state: Optional[str], raw: Dict[str, Any]) -> None:
@@ -65,18 +68,26 @@ class LiveState:
             step["raw"] = raw
             self.steps.append(step)
 
+    def reset(self) -> None:
+        """A fresh timeline (the vision program's estimator was reset: a new session)."""
+        with self.lock:
+            self.t0, self.steps, self.events, self.run = None, [], [], self.run + 1
+
     def event(self, t: float, kind: str, text: str) -> None:
         with self.lock:
             if self.t0 is None:
                 self.t0 = t
             self.events.append({"t": round(t - self.t0, 3), "kind": kind, "text": text})
 
-    def snapshot(self, since: int) -> Dict[str, Any]:
+    def snapshot(self, since: int, run: Optional[int] = None) -> Dict[str, Any]:
         with self.lock:
+            if run is not None and run != self.run:
+                since = 0                 # the page still shows an older run: send everything
             out = dict(self.base)
             out["steps"] = self.steps[since:]
             out["events"] = list(self.events)
             out["total"] = len(self.steps)
+            out["run"] = self.run
             out["live"] = dict(self.live, banner=self.banner)
             return out
 
@@ -122,14 +133,15 @@ def _handler(state: LiveState, page: str) -> Any:
             if path == "/":
                 self._send(page.encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/data":
-                since = 0
+                numbers: Dict[str, int] = {}
                 for part in query.split("&"):
-                    if part.startswith("since="):
-                        try:
-                            since = max(0, int(part[6:]))
-                        except ValueError:
-                            pass
-                body = json.dumps(state.snapshot(since), separators=(",", ":"), default=str)
+                    key, _, value = part.partition("=")
+                    try:
+                        numbers[key] = max(0, int(value))
+                    except ValueError:
+                        pass
+                body = json.dumps(state.snapshot(numbers.get("since", 0), numbers.get("run")),
+                                  separators=(",", ":"), default=str)
                 self._send(body.encode("utf-8"), "application/json")
             elif path == "/frame.jpg" and state.frame is not None:
                 self._send(state.frame, "image/jpeg")
@@ -138,6 +150,90 @@ def _handler(state: LiveState, page: str) -> Any:
                 self.end_headers()
 
     return Handler
+
+
+def serve(state: LiveState, port: int) -> Any:
+    """Start the page's web server (127.0.0.1 only) in the background; OSError if the port is busy."""
+    from eepy.state.explain import VIEWER
+
+    page = VIEWER.read_text(encoding="utf-8").replace("/*__LIVE__*/false", "true").replace(
+        "__TITLE__", "Live").replace("/*__DATA__*/null", "null")
+    server = ThreadingHTTPServer(("127.0.0.1", port), _handler(state, page))
+    threading.Thread(target=server.serve_forever, name="eepy-live-http", daemon=True).start()
+    return server
+
+
+class SessionFeed:
+    """The live page inside the vision program (python -m eepy.perception --live): it shows
+    the SAME HMM the panel acts on (the vision program's tracker), and the robot's decisions
+    from the session's event logs. Subscribe it to the pipeline before StateFromPipeline (it
+    keeps the picture and the raw signs), and add it to the tracker's listeners."""
+
+    def __init__(self, params: Any, config: Any, baseline: Any) -> None:
+        from eepy.state.estimate import make_estimator
+        from eepy.state.runner import StateTracker
+
+        self.state = LiveState(params)
+        self.config, self.baseline = config, baseline
+        self.rules = StateTracker(make_estimator("rules"))    # only for the page's "the rules said"
+        self._raw: Dict[str, Any] = {}
+        self._rules_state: Optional[str] = None
+        self._last_frame = 0.0
+
+    def on_result(self, result: Any) -> None:
+        """Pipeline subscriber: the picture, the live status, the raw signs."""
+        from eepy.state.runner import from_result
+
+        now = time.perf_counter()
+        if now - self._last_frame >= 0.2:
+            self._last_frame = now
+            picture = _jpeg(result)
+            if picture is not None:
+                self.state.frame = picture
+        self.state.live = {"face": bool(result.observation.present),
+                           "eyes_judged": result.values.get("eye_closure") is not None,
+                           "zone": result.values.get("gaze_zone"),
+                           "eye_closure": result.values.get("eye_closure"),
+                           "calibrated": bool(self.baseline.current().calibrated)}
+        f = from_result(result, self.config.windows)
+        if f is None:
+            return
+        self._raw = {k: f.get(k) for k in RAW_KEYS if f.get(k) is not None}
+        rules = self.rules.feed(f)
+        self._rules_state = rules.state if rules is not None else None
+
+    def __call__(self, estimate: Any) -> None:
+        """Tracker listener: every HMM step goes on the page (the rules mode has no belief)."""
+        if getattr(estimate, "estimator", None) == "hmm":
+            self.state.add(estimate, self._rules_state, self._raw)
+
+    def reset(self) -> None:                  # called by the tracker at a session change
+        self.state.reset()
+        self.rules.reset()
+
+    def refresh(self, session: Optional[str], folder: Any, estimator: str) -> None:
+        """Call every few seconds: the banner, and the robot's decisions from the session's logs."""
+        from eepy.state.explain import _events
+
+        if session is None:
+            self.state.banner = {"part": "No session yet",
+                                 "text": "Start a session in the Wizard panel (--mode hmm); the HMM starts with it."}
+        elif estimator != "hmm":
+            self.state.banner = {"part": f"Session {session}: rules",
+                                 "text": "This session runs the rules, which have no belief to show. "
+                                         "Start the panel with --mode hmm."}
+        else:
+            self.state.banner = {"part": f"Session {session} (hmm)",
+                                 "text": "The robot acts on this HMM: its decisions show in step 4, "
+                                         "step 5 and the timeline."}
+        if folder is None or self.state.t0 is None:
+            return
+        try:
+            events = _events(folder, self.state.t0)
+        except Exception:  # noqa: BLE001 -- a log being written: try again next time
+            return
+        with self.state.lock:
+            self.state.events = events
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -256,16 +352,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                       {k: f.get(k) for k in RAW_KEYS if f.get(k) is not None})
 
     pipeline.subscribe(on_result)
-    from eepy.state.explain import VIEWER
-
-    page = VIEWER.read_text(encoding="utf-8").replace("/*__LIVE__*/false", "true").replace(
-        "__TITLE__", "Live").replace("/*__DATA__*/null", "null")
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), _handler(state, page))
+        server = serve(state, args.port)
     except OSError as exc:
         print(f"\n  Port {args.port} is busy ({exc}). Try --port {args.port + 1}.", file=sys.stderr)
         return 2
-    threading.Thread(target=server.serve_forever, name="eepy-live-http", daemon=True).start()
     pipeline.start()
     url = f"http://127.0.0.1:{args.port}/"
     print(f"\n  Live debug page: {url}   (camera: {camera.describe()}; Ctrl+C to stop)")

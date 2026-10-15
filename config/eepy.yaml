@@ -48,8 +48,9 @@ speech:
   # If the engine above fails or is missing (e.g. the Piper voice is not
   # downloaded yet), use the computer's own voice instead of staying silent.
   fallback: system
-  # auto     the robot's speaker when connected to one, else this computer
-  # robot    always the robot (in the simulator: this computer's speakers)
+  # auto     the real robot's speaker when connected to one, else this computer
+  #          (dry run and simulator: this computer's speakers, directly)
+  # robot    always through the robot's daemon (in the simulator this may stay silent)
   # desktop  always this computer
   # none     no audio
   output: auto

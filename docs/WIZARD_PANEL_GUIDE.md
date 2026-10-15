@@ -117,6 +117,13 @@ line then says *not sure enough yet*. How to read it:
   robot does. After the session, `python -m eepy.state.explain latest --open` shows the
   whole session this way, second by second
   ([docs/EXPLANATION_VIEWER.md](EXPLANATION_VIEWER.md)).
+- **The full HMM live, while the robot acts on it:** start the vision program with
+  `--live` (`python -m eepy.perception --live`). It also opens the live HMM page
+  (http://127.0.0.1:8770): the camera picture, the signs, the belief, *sure enough to
+  act?* and the robot's decisions (waits, holds, nudges) in the timeline. It shows the
+  same HMM the robot acts on, and starts over at every session. Do not use
+  `python -m eepy.perception.live` for this: it takes the camera for itself and does not
+  feed the panel, so the robot only idles.
 - The vision program follows the session's mode by itself. If the panel says
   *Mode "hmm" acts on the hmm estimate, but the vision program sends the rules
   one*, restart the vision program (`python -m eepy.perception`); its terminal says

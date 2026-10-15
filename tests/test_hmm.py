@@ -1221,8 +1221,50 @@ def test_the_live_page_serves_data_and_the_page():
         data = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/data?since=10", timeout=5).read())
         assert page == "<html>live</html>" and data["total"] == 12 and len(data["steps"]) == 2
         assert data["steps"][-1]["raw"] and data["features"]
+        assert data["meta"]["thresholds"]["act"] == {"refocus": 0.7, "bedtime": 0.7}   # step 4: not "no gate"
     finally:
         server.shutdown()
+
+
+def test_the_live_page_inside_the_vision_program_follows_the_session(tmp_path):
+    """python -m eepy.perception --live: the page shows the tracker's own HMM (rules steps are
+    left out), starts over at a new session, and reads the robot's decisions from the logs."""
+    import json
+
+    from eepy.perception.live import SessionFeed
+    from eepy.state.estimate import make_estimator
+    from eepy.state.runner import StateTracker
+
+    class Baseline:
+        def current(self):
+            return type("B", (), {"calibrated": True})()
+
+    feed = SessionFeed(PARAMS, type("C", (), {"windows": (10, 60)})(), Baseline())
+    tracker = StateTracker(make_estimator("rules"), listeners=[feed])
+    work = simulate([("work", 30)], seed=1)
+    for f in work[:5]:
+        tracker.feed(f)
+    assert feed.state.snapshot(0)["total"] == 0                   # the rules have no belief to show
+    tracker.use(make_estimator("hmm", params=PARAMS))             # an hmm session starts: a fresh run
+    for f in work[5:]:
+        tracker.feed(f)
+    data = feed.state.snapshot(0)
+    assert data["total"] == 25 and data["run"] == 1
+    assert len(feed.state.snapshot(20, run=0)["steps"]) == 25     # an older run on the page: everything again
+    assert len(feed.state.snapshot(20, run=1)["steps"]) == 5
+
+    t0 = feed.state.t0
+    (tmp_path / "events.jsonl").write_text(json.dumps(
+        {"type": "policy_decision", "t_mono": t0 + 12, "decision": "wait", "ladder": "refocus",
+         "reason": "not sure yet", "evidence": [{"text": "looking away"}]}) + "\n")
+    feed.refresh("2026-10-15_P99_hmm", tmp_path, "hmm")
+    data = feed.state.snapshot(0)
+    assert data["events"][0]["decision"] == "wait" and data["events"][0]["t"] == 12
+    assert "(hmm)" in data["live"]["banner"]["part"]
+    feed.refresh("2026-10-15_P99_rules", None, "rules")
+    assert "rules" in feed.state.snapshot(0)["live"]["banner"]["part"]
+    tracker.reset()
+    assert feed.state.snapshot(0)["total"] == 0 and feed.state.run == 2
 
 
 # --- the drowsiness ladder (A16 option A: docs/A16_HMM_DECISIONS.md, Part H) ----------------------------

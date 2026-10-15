@@ -88,6 +88,16 @@ follows again. With `--record`, open the same run afterwards in the viewer or re
 other numbers. Only this computer can open the page; no pictures are written. Options:
 `--camera`, `--hmm-params FILE`, `--no-aus`, `--port`, `--seconds`.
 
+**With the robot (or the simulator): `python -m eepy.perception --live`.** The page above
+is a stand-alone debugger: it keeps the camera for itself and drives nothing, so the panel
+gets no state and the robot only idles. To watch the HMM while the robot acts on it, run the
+panel in hmm mode and start the vision program with `--live` instead (`--live-port` for
+another port). The same page then shows the vision program's own HMM (the one the panel
+acts on), starts over at every session, and adds the robot's decisions (waits, holds,
+nudges, outcomes) from the session's logs. Before a session starts, or in a rules
+session, it says so and stays empty. No `--scenario` or `--record` there: the panel's
+session records everything.
+
 **Where to look when it says "focused" while you act drowsy:** *eyes judged now* and
 `eyes_measured_s_60s`. If those drop (head down, turned), the eye signs are skipped. Then
 the eye closure: acted half-closed lids stay below the 80 % that counts as closed.

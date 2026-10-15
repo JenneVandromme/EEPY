@@ -4,6 +4,9 @@ Runs the camera and the face pipeline, and records into the session the Wizard
 panel is running (features.csv, events.vision.jsonl). Outside a session it
 still runs, but records nothing. Start it next to the panel, in .venv-vision.
 Ctrl+C to stop.
+
+    python -m eepy.perception --live    # also the live HMM page (http://127.0.0.1:8770): the HMM
+                                        # the panel acts on, with the robot's decisions
 """
 
 from __future__ import annotations
@@ -30,6 +33,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="user-state estimator: auto (default) follows the session's mode -- the HMM "
                              "in hmm sessions, the rules otherwise; or always rules / always hmm")
     parser.add_argument("--hmm-params", help="the HMM's parameter file (default: config/state_hmm.yaml)")
+    parser.add_argument("--live", action="store_true",
+                        help="also serve the live HMM page (the HMM the panel acts on, and the robot's decisions)")
+    parser.add_argument("--live-port", type=int, default=8770, help="the live page's port (default 8770)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
 
@@ -90,6 +96,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     from eepy.state.runner import SessionEstimators, StateFromPipeline, StatePublisher, StateRecorder, \
         describe_estimator
 
+    live = server = None
+    if args.live:                  # before StateFromPipeline: the page keeps the picture and the raw signs
+        from .live import SessionFeed, serve
+
+        live = SessionFeed(hmm_params, config, baseline)
+        try:
+            server = serve(live.state, args.live_port)
+        except OSError as exc:
+            print(f"\n  Port {args.live_port} is busy ({exc}). Try --live-port {args.live_port + 1}.",
+                  file=sys.stderr)
+            camera.stop()
+            return 2
+        pipeline.subscribe(live.on_result)
+        tracker.listeners.append(live)
     state_stream = StateRecorder.make_stream()
     state_publisher = StatePublisher(camera.config.relay_port)
     tracker.listeners += [StateRecorder(events, state_stream, describe=lambda: describe_estimator(tracker.estimator)),
@@ -105,7 +125,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     commands = CommandHandler(pipeline, camera, store, gaze, baseline, events, setup_label=args.setup)
     print(f"\n  Face perception running on the {camera.describe()} (profile {au_config.profile.name}). "
           "It records\n  only while the Wizard panel runs a session. Ctrl+C to stop.\n")
+    if live is not None:
+        url = f"http://127.0.0.1:{args.live_port}/"
+        print(f"  Live HMM page: {url}\n")
+        import webbrowser
+
+        webbrowser.open(url)
     next_status = time.monotonic() + 5
+    next_live = 0.0
     try:
         while True:
             time.sleep(0.5)
@@ -116,6 +143,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             done = commands.tick()                 # the panel asked to calibrate / reuse / skip?
             if done:
                 print(f"  Calibration: {done}")
+            if live is not None and time.monotonic() >= next_live:
+                next_live = time.monotonic() + 2
+                live.refresh(features.session, choose._folder(features.session), tracker.estimator.name)
             if time.monotonic() < next_status:
                 continue
             next_status = time.monotonic() + 5
@@ -137,6 +167,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         pass
     finally:
         pipeline.stop()
+        if server is not None:
+            server.shutdown()
         publisher.close()
         state_publisher.close()
         state_stream.close()
