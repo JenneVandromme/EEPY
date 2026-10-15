@@ -6,3 +6,7 @@ numpy<2
 opencv-python
 mediapipe==0.10.14
 scipy
+# Reads the camera: section of config/eepy.yaml (eepy/camera/config.py).
+pyyaml
+# Runs the camera tests here too:  python -m pytest tests/test_camera.py
+pytest

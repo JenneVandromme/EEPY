@@ -97,6 +97,18 @@ EVENT_TYPES: Dict[str, EventType] = {
     "reload": EventType("system", ("ok",), "Behaviour files and config were reloaded."),
     "error": EventType("system", ("message",), "Something went wrong."),
 
+    # --- the camera (eepy/camera/): statistics only, never pixels --------------------
+    "camera_started": EventType("camera", ("camera", "width", "height"),
+                                "A camera delivered its first frame."),
+    "camera_error": EventType("camera", ("camera", "message"),
+                              "A camera failed or dropped out; it keeps retrying."),
+    "camera_reconnected": EventType("camera", ("camera", "down_seconds"),
+                                    "A camera came back after an error."),
+    "camera_stats": EventType("camera", ("camera", "fps", "dropped"),
+                              "Periodic: frames per second delivered, frames dropped to "
+                              "stay real-time, and latency_ms (capture to use) once "
+                              "something consumes the frames."),
+
     # --- reserved for later tasks: defined now so the format is settled ---------------
     "hmm_belief": EventType("model", ("probs", "most_likely"),
                             "The HMM's belief over hidden states, e.g. "

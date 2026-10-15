@@ -1,0 +1,159 @@
+"""See what EEPY's camera sees:  python -m eepy.camera.preview
+
+    python -m eepy.camera.preview                   # the camera EEPY would use
+    python -m eepy.camera.preview --camera laptop   # force the laptop camera
+    python -m eepy.camera.preview --camera robot    # the robot's own camera
+    python -m eepy.camera.preview --index 1         # another laptop camera
+
+With the LAPTOP camera it shows the whole webcam picture and, in BLUE, the box
+the robot sees: only what is inside the box goes to perception. Sit so your
+face is well inside it. With the Wizard panel running, the box follows the
+robot's head. A small copy of the robot's view sits in the corner.
+
+With the ROBOT camera it shows the robot's picture as it is.
+
+Press Q or Esc (or close the window) to stop. Nothing is recorded or saved.
+Run it in .venv-vision.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+from typing import Any, List, Optional
+
+WINDOW = "EEPY camera preview  (Q to quit)"
+BLUE = (255, 0, 0)          # OpenCV colours are BGR: this is blue, as in BURTRAM
+WHITE, BLACK, AMBER = (255, 255, 255), (0, 0, 0), (0, 165, 255)
+
+
+def _text(cv2: Any, image: Any, lines: List[str], x: int, y: int, color: Any = WHITE,
+          scale: float = 0.6) -> None:
+    """Readable text on any background: dark outline, light fill."""
+    for i, line in enumerate(lines):
+        pos = (x, y + int(i * 26 * scale / 0.6))
+        cv2.putText(image, line, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, BLACK, 4, cv2.LINE_AA)
+        cv2.putText(image, line, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
+
+
+def _waiting_screen(cv2: Any, np: Any, camera: Any, seconds: float) -> Any:
+    image = np.full((540, 960, 3), 40, dtype=np.uint8)
+    lines = [f"Waiting for the {camera.describe()}...  ({seconds:.0f} s)", ""]
+    if camera.error:
+        lines += ["Problem:"] + camera.error.splitlines() + ["", "It keeps trying by itself. Fix the problem above,",
+                                                                "or press Q to quit."]
+    _text(cv2, image, lines, 24, 40, AMBER if camera.error else WHITE, 0.55)
+    return image
+
+
+def _draw(cv2: Any, frame: Any, fps: float, camera: Any) -> Any:
+    from eepy.logs.clock import monotonic
+
+    latency_ms = max(0.0, (monotonic() - frame.t) * 1000)
+    if frame.full is None:                       # robot camera: the picture itself
+        image = frame.image.copy()
+        lines = [f"robot camera  {frame.width}x{frame.height}",
+                 f"{fps:4.1f} fps   latency {latency_ms:4.0f} ms"]
+        _text(cv2, image, lines, 12, 28)
+        return image
+
+    image = frame.full.copy()
+    box = frame.box
+    cv2.rectangle(image, (box.x, box.y), (box.x + box.w, box.y + box.h), BLUE, 3)
+    _text(cv2, image, ["what the robot sees"], max(box.x + 6, 6), max(box.y + 24, 24), WHITE, 0.55)
+
+    # Small copy of the robot's view, top-right: exactly what perception gets.
+    height, width = image.shape[:2]
+    inset_w = max(80, width // 4)
+    inset_h = max(2, int(inset_w * frame.height / frame.width))
+    inset = cv2.resize(frame.image, (inset_w, inset_h))
+    x0, y0 = width - inset_w - 10, 10
+    image[y0:y0 + inset_h, x0:x0 + inset_w] = inset
+    cv2.rectangle(image, (x0 - 1, y0 - 1), (x0 + inset_w, y0 + inset_h), BLUE, 2)
+
+    head = ("blue box follows the robot's head" if camera.head_known
+            else "head position unknown: box centred (start the Wizard panel to move it)")
+    lines = [f"laptop camera {width}x{height}  ->  robot view {frame.width}x{frame.height}",
+             f"{fps:4.1f} fps   latency {latency_ms:4.0f} ms",
+             head]
+    _text(cv2, image, lines, 12, 28)
+    if not box.inside(width, height):
+        _text(cv2, image, ["part of the robot's view is outside the laptop camera (black)"],
+              12, height - 16, AMBER)
+    return image
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m eepy.camera.preview",
+                                     description="Show what EEPY's camera sees. Nothing is recorded.")
+    parser.add_argument("--camera", choices=("auto", "robot", "laptop", "fake"),
+                        help="which camera (default: camera.source in config/eepy.yaml)")
+    parser.add_argument("--index", type=int, help="laptop camera number (see python -m eepy.camera.list)")
+    parser.add_argument("--seconds", type=float, default=0,
+                        help="stop by itself after this many seconds (default: run until Q)")
+    args = parser.parse_args(argv)
+
+    import logging
+
+    from . import open_camera
+    from .config import CameraConfigError
+    from .errors import CameraError
+    from .laptop import import_cv2
+
+    logging.basicConfig(level=logging.INFO, format="  %(message)s")
+    try:
+        cv2 = import_cv2()
+        import numpy as np
+        camera = open_camera(args.camera, keep_full=True,
+                             **({"index": args.index} if args.index is not None else {}))
+    except (CameraError, CameraConfigError) as exc:
+        print(f"\n  {exc}", file=sys.stderr)
+        return 2
+    try:
+        cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    except cv2.error:
+        print("\n  This OpenCV cannot open windows (opencv-python-headless is installed).\n"
+              "      pip uninstall -y opencv-python-headless && pip install opencv-python", file=sys.stderr)
+        return 2
+
+    print(f"\n  Opening the {camera.describe()}... Press Q or Esc in the window to stop.")
+    camera.start()
+    started = time.monotonic()
+    frame, fps, last_shown, sized = None, 0.0, None, False
+    try:
+        while True:
+            newest = camera.wait_for_frame(newer_than=frame, timeout=0.1)
+            if newest is not None:
+                now = time.monotonic()
+                if last_shown is not None:
+                    fps = 0.85 * fps + 0.15 / max(now - last_shown, 1e-3) if fps else 1 / max(now - last_shown, 1e-3)
+                frame, last_shown = newest, now
+                image = _draw(cv2, frame, fps, camera)
+                if not sized:
+                    cv2.resizeWindow(WINDOW, min(image.shape[1], 1280), min(image.shape[0], 800))
+                    sized = True
+                cv2.imshow(WINDOW, image)
+            elif frame is None or camera.status == "reconnecting":
+                cv2.imshow(WINDOW, _waiting_screen(cv2, np, camera, time.monotonic() - started))
+            key = cv2.waitKey(1) & 0xFF
+            if key in (ord("q"), ord("Q"), 27):
+                break
+            if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
+                break   # the window was closed
+            if args.seconds and time.monotonic() - started > args.seconds:
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        camera.stop()
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+    if frame is None and camera.error:
+        print(f"\n  No picture arrived. The last problem was:\n  {camera.error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

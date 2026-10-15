@@ -102,6 +102,7 @@ class Wizard:
         session_log: SessionLog | None = None,
         speech_callback: Callable[[str, str], None] | None = None,
         speaker_factory: Callable[[], Any] | None = None,
+        camera_relay: tuple[int, float] | None = None,
     ) -> None:
         self.backend_factory = backend_factory
         self.backend_name = backend_name
@@ -163,6 +164,13 @@ class Wizard:
             self._error(f'Mode "{mode}" has no controller yet, so nothing decides on its own: '
                         "the robot only does what you press. Sessions are still recorded "
                         f'as mode "{mode}".')
+
+        # The camera relay: the robot's camera and head pose, for the vision
+        # process, on 127.0.0.1 only (eepy/camera/relay.py). (port, fps); None
+        # in tests. A busy port is a warning, not a reason to refuse to start.
+        self.camera_relay = None
+        if camera_relay is not None:
+            self._start_camera_relay(*camera_relay)
 
         self._watching = True
         threading.Thread(target=self._watch_connection, name="eepy-wizard-watch",
@@ -441,8 +449,50 @@ class Wizard:
                    behaviors=len(self.library.behaviors) if ok else None)
         return {"ok": ok, "message": message}
 
+    # --------------------------------------------------------------- the camera
+
+    def _start_camera_relay(self, port: int, fps: float) -> None:
+        from eepy.camera.relay import CameraRelay, RelayPortBusy, pose_dict
+
+        def pose() -> dict | None:
+            player = self.player
+            return pose_dict(player.pose) if player is not None and player.error is None else None
+
+        def frame() -> bytes | None:
+            mini = self._robot_camera_client()
+            return mini.media.get_frame_jpeg() if mini is not None else None
+
+        relay = CameraRelay(port, frame_fn=frame, pose_fn=pose, fps=fps,
+                            label=lambda: "real" if self._robot_camera_client() is not None else None)
+        try:
+            self.camera_relay = relay.start()
+        except RelayPortBusy as exc:
+            self._error(f"The camera relay could not start, so the vision process gets no robot "
+                        f"camera or head position from this panel.\n{exc}")
+
+    def _robot_camera_client(self) -> Any:
+        """The SDK client, when connected to the REAL robot -- the only backend
+        whose camera perception uses. (The simulator's is a rendering.)"""
+        player = self.player
+        if self.backend_name != "real" or player is None or player.error is not None:
+            return None
+        mini = getattr(player.backend, "mini", None)
+        return mini if mini is not None and getattr(mini, "media", None) is not None else None
+
+    def camera_status(self) -> dict | None:
+        relay = self.camera_relay
+        if relay is None:
+            return None
+        status = relay.status()
+        return {"port": status["port"], "robot_camera": bool(status["camera"]),
+                "fps": status["fps"], "viewers": status["clients"], "error": status["error"],
+                "source": "robot" if self.backend_name == "real" else "laptop"}
+
     def shutdown(self) -> None:
         self._watching = False
+        if self.camera_relay is not None:
+            self.camera_relay.stop()
+            self.camera_relay = None
         if self.sessions.active:
             self.end_session(reason="panel stopped")
         player = self.player
@@ -469,6 +519,7 @@ class Wizard:
             "last_error": self.last_error,
             "session": self.sessions.status(),
             "panel_version": self.panel_version,
+            "camera": self.camera_status(),
         }
 
     def log_since(self, seq: int) -> tuple[int, list[dict]]:
@@ -665,6 +716,8 @@ def make_wizard(backend: str | None, robot_host: str | None, settings: Any = Non
     from eepy.speech import make_speaker
 
     name = (backend or os.environ.get(BACKEND_ENV) or "dry").lower()
+    camera = settings.camera_config
+    kwargs.setdefault("camera_relay", (camera.relay_port, camera.fps))
     return Wizard(lambda: make_backend(name, robot_host=robot_host),
                   backend_name=name, mode=settings.mode,
                   speaker_factory=lambda: make_speaker(settings.speech), **kwargs)

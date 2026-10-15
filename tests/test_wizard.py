@@ -527,3 +527,50 @@ def test_a_line_needing_a_value_is_explained_on_the_panel(make):
     _, client = make()
     r = client.post("/api/say", json={"line_id": "bedtime_negotiate", "tone": "direct"})
     assert r.status_code == 409 and "{minutes}" in r.json()["message"]
+
+
+# --- the camera relay (eepy/camera/relay.py) ---------------------------------------------
+
+
+def test_panel_serves_the_head_pose_to_the_vision_process(files):
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = Wizard(DryRunBackend, backend_name="dry", behaviors_dir=files["behaviors"],
+                    sounds_dir=files["sounds"], config_path=files["config"],
+                    session_log=SessionLog(data_dir=files["data"], repo_root=REPO),
+                    camera_relay=(port, 15))
+    client = RelayClient(port)
+    try:
+        pose = client.pose()
+        assert pose is not None and set(pose) >= {"yaw", "pitch", "roll"}
+        assert client.status()["camera"] is None        # dry run: no robot camera
+        camera = wizard.status()["camera"]
+        assert camera["source"] == "laptop" and camera["port"] == port
+        assert camera["viewers"] == 1
+    finally:
+        client.close()
+        wizard.shutdown()
+    assert wizard.status()["camera"] is None
+
+
+def test_a_busy_camera_port_is_a_warning_not_a_crash(files):
+    import socket
+
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        wizard = Wizard(DryRunBackend, backend_name="dry", behaviors_dir=files["behaviors"],
+                        sounds_dir=files["sounds"], config_path=files["config"],
+                        session_log=SessionLog(data_dir=files["data"], repo_root=REPO),
+                        camera_relay=(port, 15))
+        try:
+            assert wizard.connected()
+            assert "camera relay could not start" in wizard.last_error["message"]
+        finally:
+            wizard.shutdown()
