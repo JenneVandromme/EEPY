@@ -90,6 +90,9 @@ def test_commands_follow_the_settings():
     assert vision_command(settings)[1:] == ["-m", "eepy.perception", "--live", "--live-port", "8771",
                                             "--no-browser", "--camera", "fake", "--no-aus"]
     assert "--robot-host" not in panel_command(Settings(backend="sim"))
+    # Default camera: the robot's with the real robot (vision's "auto" would follow .env instead)
+    assert vision_command(Settings(backend="real"))[-2:] == ["--camera", "robot"]
+    assert "--camera" not in vision_command(Settings(backend="sim"))
     assert "--sim" in sim_command(Settings())
 
 

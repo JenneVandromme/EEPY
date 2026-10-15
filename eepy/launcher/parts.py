@@ -163,8 +163,10 @@ def panel_command(settings: Settings) -> List[str]:
 def vision_command(settings: Settings) -> List[str]:
     cmd = [str(venv_bin(".venv-vision", "python")), "-m", "eepy.perception", "--live",
            "--live-port", str(settings.live_port), "--no-browser"]
-    if settings.camera:
-        cmd += ["--camera", settings.camera]
+    # The vision program's "auto" follows EEPY_BACKEND in .env, not the panel's --backend: say it.
+    camera = settings.camera or ("robot" if settings.backend == "real" else "")
+    if camera:
+        cmd += ["--camera", camera]
     return cmd + shlex.split(settings.vision_extra)
 
 
