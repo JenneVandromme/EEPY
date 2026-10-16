@@ -34,32 +34,25 @@ lines:
     description: Level 3 of the refocus ladder -- the first spoken nudge.
     variants:
       hedged:
-        - "Losing focus a bit?"
-        - "Still with it?"
-        - "Hmm, drifting?"
+        - "Drifting a little? Shall we get back to it?"
       direct:
-        - "Back to it?"
         - "Shall we get back to it?"
 
   refocus_break_offer:
     description: Level 4 of the refocus ladder -- stop pushing, offer a break.
     variants:
       hedged:
-        - "Maybe a short break would help?"
-        - "Want to pause for a bit?"
+        - "Maybe a little breather would help. Want a five-minute break?"
       direct:
-        - "Let's take five."
-        - "Time for a break. Come back in {minutes} minutes?"
+        - "Want a five-minute break first? I'll keep your spot."
 
   bedtime_check:
     description: Level 3 of the bedtime ladder -- first spoken bedtime nudge.
     variants:
       hedged:
-        - "Getting late, isn't it?"
-        - "You must be getting tired."
+        - "Getting sleepy? Want to wrap up for tonight?"
       direct:
-        - "Time for bed?"
-        - "You've been at this {minutes} minutes. Bed?"
+        - "You look tired. Shall we call it a night?"
 
   bedtime_negotiate:
     description: >
@@ -67,21 +60,17 @@ lines:
       repeating the same nudge.
     variants:
       hedged:
-        - "Shall we wind down in {minutes} minutes?"
-        - "How about we stop in a little while?"
+        - "Would {minutes} more minutes help you wrap up, then off to bed?"
       direct:
-        - "Let's finish in {minutes} minutes. Deal?"
-        - "Last {minutes} minutes, then bed."
+        - "How about {minutes} more minutes to finish up, then bed?"
 
   bedtime_goodnight:
     description: Level 5 of the bedtime ladder -- said just before sleeping.
     variants:
       hedged:
-        - "I think I'm going to sleep. Night."
-        - "I'm fading. Goodnight?"
+        - "I'm getting sleepy too. Goodnight, study buddy."
       direct:
-        - "Goodnight."
-        - "Sleep well."
+        - "Goodnight, study buddy. Sleep well."
 
   approving:
     description: >
