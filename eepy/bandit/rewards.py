@@ -273,8 +273,11 @@ class RewardTracker:
         with self._lock:
             self._judge(t)
             if self.wizard is not None:
-                if self.wizard.ladder == "bedtime":
-                    self._close_wizard("success", t, "the session ended after a bedtime nudge", how="bed")
+                if self.wizard.ladder == "bedtime" and self.state == "absent" and self.state_since is not None:
+                    self._close_wizard("success", t, "the session ended after they left (went to bed)", how="bed",
+                                       back_after=self.state_since - self.wizard.t)
+                elif self.wizard.ladder == "bedtime":
+                    self._close_wizard("censored", t, "the session ended while they were still at the desk")
                 else:
                     self._close_wizard("censored", t, "the session ended")
             for p in list(self.pending.values()):
@@ -431,17 +434,20 @@ def rewards_from_stream(items: Iterable[Tuple[float, int, str, Dict[str, Any]]],
     return tracker.events
 
 
+def sim_wall(t: float, t0: float = 0.0, start_hour: float = 21.0) -> str:
+    """A made-up wall clock for simulations: the session starts at `start_hour`."""
+    minutes = start_hour * 60 + (t - t0) / 60.0
+    h, m = int(minutes // 60) % 24, int(minutes % 60)
+    return f"2026-01-01T{h:02d}:{m:02d}:00.000+00:00"
+
+
 def records_from_recorder(events: Sequence[Tuple[str, float, Dict[str, Any]]], t0: float,
                           start_hour: float = 21.0, session: str = "simulated") -> List[Dict[str, Any]]:
     """A simulation's engine events as logged records, with a made-up wall clock (the session
     starts at `start_hour`), so the offline path is the same."""
-    def wall(t: float) -> str:
-        minutes = start_hour * 60 + (t - t0) / 60.0
-        h, m = int(minutes // 60) % 24, int(minutes % 60)
-        return f"2026-01-01T{h:02d}:{m:02d}:00.000+00:00"
-    out = [{"type": "session_start", "t_mono": t0, "t_wall": wall(t0), "session": session}]
+    out = [{"type": "session_start", "t_mono": t0, "t_wall": sim_wall(t0, t0, start_hour), "session": session}]
     for kind, t, fields in events:
-        out.append(dict(fields, type=kind, t_mono=t, t_wall=wall(t)))
+        out.append(dict(fields, type=kind, t_mono=t, t_wall=sim_wall(t, t0, start_hour)))
     return out
 
 
@@ -510,9 +516,9 @@ def report(events: Sequence[RewardEvent], infos: Sequence[Dict[str, Any]] = ()) 
             suspicious.append(f"{tag}: decided on state {e.context.get('state')!r}")
         if e.latency is not None and e.latency < 0:
             suspicious.append(f"{tag}: negative latency {e.latency}")
-        if e.outcome == "success" and "session ended" in e.detail:
-            suspicious.append(f"{tag}: bedtime success only because the session ended "
-                              f"{e.latency:.0f} s after the nudge (a test session ending is not going to bed)")
+        if e.outcome == "success" and "the session ended after bedtime nudges" in e.detail:
+            suspicious.append(f"{tag}: bedtime success only because the session ended (logged before the fix of "
+                              "2026-10-16: they may still have been at the desk)")
         if e.window and e.latency is not None and e.latency > 2 * e.window and e.outcome == "success":
             suspicious.append(f"{tag}: success after {e.latency:.0f} s on a {e.window:.0f} s window (the window "
                               "pauses while absent or unknown); priced as the slowest success")

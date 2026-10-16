@@ -68,6 +68,16 @@
   .rung.next { color: var(--ink); border-color: var(--lc); border-style: dashed; }
   @keyframes rungpulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lc) 35%, transparent); } }
   .ladrow .lnote { color: var(--muted); }
+  /* the bandit's last choice (A24): per allowed action, posterior mean +- spread, the sample, the pick */
+  .bandit { font-size: 12.5px; }
+  .bandit .barrow { display: grid; grid-template-columns: 190px 1fr 120px; align-items: center; gap: 8px; margin: 2px 0; }
+  .bandit .track { position: relative; height: 12px; border-radius: 6px; background: var(--key); }
+  .bandit .zero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+  .bandit .spread { position: absolute; top: 3px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .bandit .mean { position: absolute; top: 1px; width: 3px; height: 10px; margin-left: -1px; background: var(--accent); }
+  .bandit .sample { position: absolute; top: -3px; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-top: 6px solid var(--ink); }
+  .bandit .chosen .name { font-weight: 700; } .bandit .chosen .track { outline: 1.5px solid var(--accent); }
+  .bandit .waitrow .track { background: transparent; border: 1px dashed var(--line); }
   /* the last nudge's explanation (A20): what EEPY said or would say, and why */
   .explain { font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
   .explain .said { font-style: italic; }
@@ -174,6 +184,7 @@
   <div class="row calib" id="auto-row" hidden></div>
   <div class="calib" id="ladder-view" hidden></div>
   <div class="calib explain" id="explain-row" hidden></div>
+  <div class="calib bandit" id="bandit-row" hidden></div>
   <div id="error" class="error" hidden>
     <b>Last problem</b> <span class="muted" id="error-time"></span>
     <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
@@ -548,6 +559,36 @@ function renderAutonomy(a, se) {
   renderChain(state.status.user_state, a);
   renderLadders(a);
   renderExplanation(a);
+  renderBandit(a);
+}
+
+// The bandit's last choice (A24, docs/A24_BANDIT.md): for each allowed action, the posterior mean
+// (bar) +- its spread (band) on the reward scale -1..+1, the value it drew (triangle), and the pick.
+// "waiting" has a fixed value: the bandit only waits when it has learned nothing here helps.
+function renderBandit(a) {
+  const box = $("bandit-row");
+  const b = a.bandit;
+  box.hidden = !a.active || a.policy_name !== "bandit" || !b;
+  if (box.hidden) return;
+  const key = `${b.t}|${b.chosen}`;
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const x = (v) => `${Math.max(0, Math.min(100, (v + 1) * 50))}%`;
+  const names = { refocus_early: "distracted, early", refocus_late: "distracted, long work", bedtime_early: "drowsy, before 23:00",
+                  bedtime_late: "drowsy, late", ambiguous: "distracted or drowsy" };
+  let html = `<div><b>Bandit</b> <span class="muted">${names[b.bucket] || b.bucket} · chose ${b.chosen === "wait" ? "to wait"
+    : (b.arms.find((r) => r.arm === b.chosen) || {}).words || b.chosen} · chance ${Math.round(b.propensity * 100)} %</span></div>`;
+  for (const r of b.arms) {
+    const lo = r.mean - r.sd, hi = r.mean + r.sd;
+    html += `<div class="barrow${r.arm === b.chosen ? " chosen" : ""}${r.arm === "wait" ? " waitrow" : ""}"
+      title="${r.arm}: posterior mean ${r.mean.toFixed(2)} ± ${r.sd.toFixed(2)}, ${r.n} tries; drew ${r.sample.toFixed(2)}">
+      <span class="name">${r.words}</span>
+      <span class="track"><i class="zero"></i>${r.arm === "wait" ? "" : `<i class="spread" style="left:${x(lo)};width:calc(${x(hi)} - ${x(lo)})"></i>`}
+        <i class="mean" style="left:${x(r.mean)}"></i><i class="sample" style="left:${x(r.sample)}"></i></span>
+      <span class="muted">${r.mean >= 0 ? "+" : ""}${r.mean.toFixed(2)}${r.arm === "wait" ? " (fixed)" : ` · ${Math.round(r.n)} tries`}</span></div>`;
+  }
+  if (b.sentence) html += `<div class="muted" style="margin-top:4px">${b.sentence}</div>`;
+  box.innerHTML = html;
 }
 
 // The last nudge's explanation (A20, docs/EXPLANATION_CATALOG.md): the sentence EEPY said -- or

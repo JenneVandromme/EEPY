@@ -92,6 +92,9 @@ confidence:
 - Each time the gate starts holding a ladder back, and when it stops, an `escalation`
   event is logged (`waiting_for_confidence`, `confidence_wait_ended` with the reason), so
   the [explanation viewer](../../docs/EXPLANATION_VIEWER.md) can show it afterwards.
+- **In the hmm_bandit mode a bandit chooses which nudge (A24):** inside the same
+  allowed set and timing, learning per participant from the rewards.
+  [docs/A24_BANDIT.md](../../docs/A24_BANDIT.md).
 - **Every nudge is chosen inside an allowed set (A23):** the policy may only pick actions that fit the
   state (`config/escalation.yaml` `actions:`); the set is logged with the decision.
   [docs/A23_ALLOWED_ACTIONS.md](../../docs/A23_ALLOWED_ACTIONS.md).
@@ -311,7 +314,7 @@ Every nudge gives **two events**, linked by `decision_id`:
 
 | Outcome | Refocus | Bedtime |
 |---|---|---|
-| `success` | focused for 10 s within the window; or took/accepted the break | "user accepted"; goodnight confirmed; left after level ≥ 3 (went to bed); or the session ended after bedtime nudges |
+| `success` | focused for 10 s within the window; or took/accepted the break | "user accepted"; goodnight confirmed; left after level ≥ 3 (went to bed); or the session ended after they had left the desk (still at the desk: censored) |
 | `no_reaction` | the window passed, still not focused | the window passed without an answer |
 | `dismissed` | "user dismissed" | the same |
 | `snoozed` | "user snoozed" | "user snoozed" at the wind-down |
@@ -337,8 +340,16 @@ The robot's own behaviours carry `source=auto` and the operator's
 
 - **`policy.py`:** `NudgePolicy.decide(NudgeContext) -> Action` decides **which**
   level, tone and intensity, with a `propensity`. `FixedEscalation` goes one
-  level up after no reaction. The bandit (A24) implements the same interface
-  and replaces only this choice.
+  level up after no reaction, inside the allowed set. The bandit (A24,
+  `eepy/bandit/policy.py`) implements the same interface and replaces only this
+  choice, in the hmm_bandit mode. `make_policy(config, mode)` picks one
+  (`policy: auto | fixed` in `config/escalation.yaml`); `tone_for()` is the
+  shared confidence → tone rule.
+- **`actions.py`** (A23): `allowed_actions(context)`, everything a policy may
+  choose now. The engine fills `context.allowed`, checks the policy's choice
+  (`_choose`) and falls back to the fixed escalation if the policy fails or
+  picks outside the set. A policy's `Action.wait` with `extra["hold"]` (the
+  bandit's veto) holds for that long.
 - **`engine.py`:** `EscalationEngine` decides **when**:
   - onset delays, reaction windows (frozen while absent or unknown), cooldowns
     and guards;

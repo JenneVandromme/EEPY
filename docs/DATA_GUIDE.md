@@ -146,6 +146,13 @@ their `context` too ([docs/A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md)). T
 choose, e.g. `refocus 2 hedged`), `most_intrusive` (the subset marked so) and `chosen_in_allowed`. An
 `escalation` event `policy_failed` or `policy_outside_allowed` means the fixed escalation stepped in.
 
+**The bandit** (A24, hmm_bandit mode): each `nudge_decision` has `bandit`: the situation
+(`bucket`), every allowed arm's posterior `mean`, `sd`, tries `n` and its draw (`sample`), the
+`chosen` arm and the `propensity`. A `bandit_update` event follows each reward it learned from;
+`escalation` `policy_wait` is the bandit choosing to wait. `meta.json` has `policy` (the policy
+used, its settings, the file and its updates before the session). The posteriors themselves are in
+`data/bandit/<participant>.json` (evidence per situation and arm: Σy, Σ(1−y), n).
+
 **Rewards** (A22, every mode): a successful `nudge_outcome` also says `how` (`focus`, `reply`,
 `break`, `bed`) and `back_after` (seconds until the focus began). When the operator plays a ladder
 behaviour by hand, a `wizard_nudge` holds the context at that moment. Each nudge then gets one

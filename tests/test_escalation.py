@@ -362,11 +362,21 @@ def test_dismissing_the_wind_down_cools_down_then_restarts_at_level_3():
     assert h.nudges()[-1][0] == said_no + 600                  # the bedtime cooldown
 
 
-def test_session_end_after_bedtime_nudges_is_a_success():
-    h = Harness().run("focused", 10).run("drowsy", 50)          # L1 open
+def test_session_end_after_they_left_a_bedtime_nudge_is_a_success():
+    h = Harness().run("focused", 10).run("drowsy", 50).run("absent", 20)   # L1 open, then they left
     h.engine.session_ended(h.t)
     assert h.outcomes() == [(1, "success")]
-    assert h.of("nudge_outcome")[0]["detail"] == "the session ended after bedtime nudges"
+    out = h.of("nudge_outcome")[0]
+    assert out["detail"] == "the session ended after they left (went to bed)" and out["how"] == "bed"
+    assert out["back_after"] == 20.0                           # timed from when they left
+
+
+def test_session_end_while_still_at_the_desk_is_no_verdict():
+    """The operator ending the session (time up, a test) is not "went to bed": no false success."""
+    h = Harness().run("focused", 10).run("drowsy", 50)          # L1 open, still drowsy at the desk
+    h.engine.session_ended(h.t)
+    assert h.outcomes() == [(1, "censored")]
+    assert h.of("nudge_outcome")[0]["detail"] == "the session ended while they were still at the desk"
 
 
 # --- pause autonomy -------------------------------------------------------------------------------------

@@ -505,18 +505,31 @@ EEPY/
 ├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
 ├── eepy/perception/       # face features: blinks, yawns, nods, PERCLOS — what they mean: eepy/perception/README.md
 ├── eepy/state/            # the user's state (focused, drowsy, …) from those features — eepy/state/README.md
-├── eepy/interaction/      # the escalation: what the robot does about that state (rules and hmm modes) — eepy/interaction/README.md
+├── eepy/interaction/      # the escalation: when to nudge, what may be played (A23), the policy — eepy/interaction/README.md
+├── eepy/explanations/     # why EEPY nudged: the evidence catalog and the Explanation per decision (A20) — docs/A20_EXPLANATIONS.md
+├── eepy/bandit/           # rewards per nudge (A22), the contextual bandit (A24), simulated users — eepy/bandit/README.md
+├── eepy/launcher/         # one page to start, watch and test everything: python3 launch.py — eepy/launcher/README.md
 ├── config/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
 │   ├── state_rules.yaml   # the threshold rules: features -> focused / distracted / drowsy / ... (eepy/state/README.md)
-│   ├── escalation.yaml    # when the robot nudges: onset delays, reaction windows, cooldowns, guards (eepy/interaction/README.md)
+│   ├── escalation.yaml    # when the robot nudges (timings, guards, belief decisions), what it may play (actions:), the policy switch
+│   ├── rewards.yaml       # what each nudge outcome is worth to the bandit (docs/A22_REWARDS.md)
+│   ├── bandit.yaml        # the contextual bandit: model, priors, situations, waiting (docs/A24_BANDIT.md)
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
 ├── data/calibration/      # per-person calibrations: gaze zones + baseline (gitignored; numbers only)
+├── data/bandit/           # what the bandit learned per participant (gitignored; numbers only)
+├── data/rewards/          # reward tables built by the launcher / python -m eepy.bandit.rewards (gitignored)
 ├── docs/
+│   ├── HOW_EEPY_DECIDES.md    # START HERE for the system: camera -> state -> when -> what -> which -> outcome -> reward
 │   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
 │   ├── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
-│   └── DATA_GUIDE.md      # where session data is, and how to load it
+│   ├── DATA_GUIDE.md      # where session data is, and how to load it
+│   ├── A16_HMM_DECISIONS.md, A19_BELIEF_DECISIONS.md, A20_EXPLANATIONS.md, A22_REWARDS.md,
+│   │   A23_ALLOWED_ACTIONS.md, A24_BANDIT.md   # one per task: what was built, why, results, limits
+│   ├── EXPLANATION_CATALOG.md # the evidence types and placeholders for explanation lines (generated)
+│   ├── EXPLANATION_VIEWER.md, SYNTHETIC_DATASET.md   # the HMM's replay page; testing on simulated users
+│   └── TODO.md            # parked problems and open ends
 ├── tests/                 # pytest: python -m pytest tests/
 ├── models/                # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
@@ -545,6 +558,8 @@ head can physically reach a pose and how fast it moves. Details in
 | You want to… | Read |
 |---|---|
 | set up your computer, or run the sanity checks | this README |
+| **understand how EEPY decides, end to end, and where each part lives** | [docs/HOW_EEPY_DECIDES.md](docs/HOW_EEPY_DECIDES.md) |
+| start and test everything from one page | [eepy/launcher/README.md](eepy/launcher/README.md) |
 | edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
 | find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
@@ -558,7 +573,8 @@ head can physically reach a pose and how fast it moves. Details in
 | how EEPY explains each nudge ("your eyes were closed 34 % of the last minute"), and how faithful that is | [docs/A20_EXPLANATIONS.md](docs/A20_EXPLANATIONS.md) |
 | write explanation lines (the evidence types and their placeholders) | [docs/EXPLANATION_CATALOG.md](docs/EXPLANATION_CATALOG.md) |
 | how each nudge becomes a training example for the bandit (rewards), and build the table | [docs/A22_REWARDS.md](docs/A22_REWARDS.md) |
-| what the robot (and later the bandit) may do in each state, and why | [docs/A23_ALLOWED_ACTIONS.md](docs/A23_ALLOWED_ACTIONS.md) |
+| what the robot (and the bandit) may do in each state, and why | [docs/A23_ALLOWED_ACTIONS.md](docs/A23_ALLOWED_ACTIONS.md) |
+| how the bandit learns which nudge works for whom (model, priors, results) | [docs/A24_BANDIT.md](docs/A24_BANDIT.md) |
 | open problems we parked (e.g. keeping the face in the robot camera's view) | [docs/TODO.md](docs/TODO.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |

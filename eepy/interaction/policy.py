@@ -51,6 +51,7 @@ class NudgeContext:
     ambiguous: bool = False                # A19's ambiguous episode: the gentle option only
     blocked: Optional[str] = None          # a guard blocks every nudge now (then: wait only)
     allowed: Tuple["Action", ...] = ()     # filled in by the engine before decide()
+    hour: Optional[float] = None           # A24: the local time of day (21.5 = 21:30), when the engine knows it
 
     @property
     def state(self) -> str:
@@ -147,10 +148,7 @@ class FixedEscalation:
             if very and ladder.start_level_very_drowsy is not None:
                 level = max(level, ladder.start_level_very_drowsy)
             why = f"no reaction to level {context.level}"
-        repeat = context.level is not None and context.last_outcome == "no_reaction"
-        conf = context.confidence
-        sure = conf is None or conf >= self.config.direct_confidence     # the rules: no confidence
-        tone = "direct" if context.calibrated and (very or repeat) and sure else "hedged"
+        tone = tone_for(context, self.config)
         if context.allowed:                     # A23: stay inside the allowed set
             plays = [a for a in context.allowed if a.kind == "play"]
             levels = sorted({a.level for a in plays if a.level is not None and a.level <= ladder.top})
@@ -167,9 +165,23 @@ class FixedEscalation:
                       reason=f"{context.ladder} level {level}: {why}")
 
 
-def make_policy(config: EscalationConfig) -> "NudgePolicy":
-    """The policy config/escalation.yaml asks for (`policy:`). "fixed" is the default and the
-    fallback; the bandit (A24) will add its own name here."""
-    if config.policy == "fixed":
+def tone_for(context: NudgeContext, config: EscalationConfig) -> str:
+    """A19's confidence rule: direct when calibrated, sure (confidence.direct), and very drowsy or
+    after a nudge without reaction; else hedged. Shared by the fixed escalation and the bandit."""
+    very = context.state == "very_drowsy"
+    repeat = context.level is not None and context.last_outcome == "no_reaction"
+    conf = context.confidence
+    sure = conf is None or conf >= config.direct_confidence     # the rules: no confidence
+    return "direct" if context.calibrated and (very or repeat) and sure else "hedged"
+
+
+def make_policy(config: EscalationConfig, mode: Optional[str] = None, participant: str = "default",
+                store: Any = None, bandit_config: Any = None, seed: Optional[int] = None) -> "NudgePolicy":
+    """The policy for this mode (config/escalation.yaml `policy:`). auto: the bandit (A24) in the
+    hmm_bandit mode, the fixed escalation in every other mode; fixed: the fixed escalation always."""
+    if config.policy == "fixed" or mode != "hmm_bandit":
         return FixedEscalation(config)
-    raise ValueError(f"unknown policy {config.policy!r}")
+    from eepy.bandit.policy import BanditPolicy, Store, load_config
+
+    return BanditPolicy(config, bandit_config or load_config(), store=store if store is not None else Store(),
+                        participant=participant, seed=seed)

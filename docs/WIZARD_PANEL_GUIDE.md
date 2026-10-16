@@ -81,10 +81,11 @@ file's `aim:` section.
    session as a whole (or leave it empty); **Cancel** keeps recording. It is
    saved in `data/sessions/` — see [DATA_GUIDE.md](DATA_GUIDE.md).
 
-The **mode** pill in the top bar shows the experimental condition. Normally it
-says `wizard`. If it is **amber** ("not built, manual only"), the panel was
-started in a mode whose controller does not exist yet: everything still works
-by hand, and the session is recorded under that mode.
+The **mode** pill in the top bar shows the experimental condition: `wizard`,
+`rules`, `hmm` or `hmm_bandit` (how they differ: [HOW_EEPY_DECIDES.md](HOW_EEPY_DECIDES.md#the-modes)).
+If it is ever **amber** ("not built, manual only"), the panel was started in a mode
+whose controller does not exist: everything still works by hand, and the session is
+recorded under that mode.
 
 **The rules mode** (`--mode rules`) makes the robot act **on its own**: it nudges
 when the camera says the participant is distracted or drowsy. The vision program
@@ -140,6 +141,28 @@ line then says *not sure enough yet*. How to read it:
 - **A starting belief per session** (switched off by default): start the panel
   with `--session-prior my_prior.json`. It is copied into each session as
   `prior.json`; a broken file is reported here and the HMM starts as usual.
+
+**Why it nudged (A20, rules and hmm modes):** after each nudge, a **Why #…** line under
+the ladder view shows the sentence EEPY said after its line, or *would say* when that
+level is wordless or explanations are off (`--explanations off`), plus the top evidence
+with its share, and the contrast (*drowsy rather than focused, because…*). Explanations
+on/off is an experimental condition: it's recorded in the session's `meta.json`.
+[docs/A20_EXPLANATIONS.md](A20_EXPLANATIONS.md).
+
+**The hmm_bandit mode** (`--mode hmm_bandit`) works like the hmm mode, but a
+contextual **bandit** chooses *which* nudge, and learns per participant which ones
+work (A24). Under the autonomy rows, a **Bandit** row shows its last choice:
+- one bar per allowed nudge: the expected reward (the line) ± its uncertainty (the band);
+- what it drew (the triangle), with the chosen one in bold and its chance;
+- "waiting" as a fixed dashed bar;
+- a sentence, e.g. *"EEPY has learned that the wordless glance works best for you here"*.
+
+It learns from each nudge's outcome (`bandit_update` in the log) and keeps it per
+participant code in `data/bandit/`. **Always use the participant's own code**, or two
+people's learning gets mixed. To start a participant from scratch:
+`python -m eepy.bandit reset P03`, or the launcher's Bandit tab. To turn the bandit off
+without changing the mode: `policy: fixed` in `config/escalation.yaml`.
+[docs/A24_BANDIT.md](A24_BANDIT.md).
 
 **macOS / Linux:**
 ```bash

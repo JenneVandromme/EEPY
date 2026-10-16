@@ -23,7 +23,7 @@ LADDER_ROLES = ("refocus", "bedtime")
 TOP_KEYS = {"roles", "role_switch", "onset", "ladders", "focused", "guards", "absent", "break",
             "wind_down", "false_alarm_seconds", "tick_seconds", "confidence", "hmm", "policy", "actions"}
 DECISIONS = ("belief", "gate")
-POLICIES = ("fixed",)        # A24 adds "bandit"; "fixed" stays the default and the fallback
+POLICIES = ("auto", "fixed")  # auto: the bandit in the hmm_bandit mode, else fixed; fixed: always (the fallback)
 
 
 class EscalationConfigError(ValueError):
@@ -128,7 +128,7 @@ class EscalationConfig:
     act_confidence: Dict[str, float] = field(default_factory=dict)    # ladder -> minimum P to act
     direct_confidence: float = 0.85                                    # minimum P for the direct tone
     belief: Optional[BeliefConfig] = None                              # hmm: decisions on the full belief (A19)
-    policy: str = "fixed"                                              # who chooses WHAT to play (A23/A24)
+    policy: str = "auto"                                               # who chooses WHAT to play (A23/A24)
     actions: ActionsConfig = field(default_factory=ActionsConfig)      # what it may choose from (A23)
     path: str = "config/escalation.yaml"
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -331,7 +331,7 @@ def parse(raw: Any, where: str = "config/escalation.yaml") -> EscalationConfig:
         false_alarm_seconds=seconds(raw.get("false_alarm_seconds", 5), "false_alarm_seconds"),
         tick_seconds=seconds(raw.get("tick_seconds", 0.5), "tick_seconds", positive=True),
         act_confidence=act_confidence, direct_confidence=direct_confidence, belief=belief,
-        policy=_policy(raw.get("policy", "fixed"), fail),
+        policy=_policy(raw.get("policy", "auto"), fail),
         actions=_actions(raw.get("actions"), fail, ladders), path=where, raw=raw)
     if "refocus" in ladders and config.break_offer_level not in ladders["refocus"].reaction:
         raise fail(f"break.offer_level {config.break_offer_level} is not a refocus level "
@@ -351,8 +351,8 @@ def parse(raw: Any, where: str = "config/escalation.yaml") -> EscalationConfig:
 
 def _policy(value: Any, fail: Any) -> str:
     if value not in POLICIES:
-        raise fail(f"policy must be one of {list(POLICIES)}, not {value!r} (the bandit comes with A24; "
-                   "fixed is the fixed escalation, and always the fallback).")
+        raise fail(f"policy must be one of {list(POLICIES)}, not {value!r} (auto: the bandit in the hmm_bandit "
+                   "mode and the fixed escalation elsewhere; fixed: the fixed escalation in every mode).")
     return str(value)
 
 

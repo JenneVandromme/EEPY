@@ -31,7 +31,7 @@ Contents: [In short](#in-short) · [Where the outcome comes from](#where-the-out
 
 | Outcome | Decided by the escalation when … |
 |---|---|
-| `success` | back to focused for 10 s within the reaction window (refocus; `how: focus`), said OK (`reply`), took / accepted the break (`break`), goodnight confirmed, left after the bedtime nudges, or the session ended after them (`bed`) |
+| `success` | back to focused for 10 s within the reaction window (refocus; `how: focus`), said OK (`reply`), took / accepted the break (`break`), goodnight confirmed, left after the bedtime nudges, or the session ended after they had left (`bed`) |
 | `snoozed` / `dismissed` | the participant's answer (the operator's markers) |
 | `no_reaction` | the reaction window ran out |
 | `interrupted_focus` | they were back to focused within 5 s of the nudge: it came too late |
@@ -158,9 +158,10 @@ nudges ended in "success": recoveries that would have happened anyway. The recov
   information from before the decision; using later information would be leakage. The fix belongs
   in A24: compare against a baseline (how often users recover without a nudge), e.g. by giving the
   bandit a "not yet" option and learning the advantage over it.
-- **"The session ended after bedtime nudges" counts as bedtime success** (as the escalation
-  defines it). In real evening sessions that is right; in test sessions it is not, and the report
-  flags it.
+- **The session ending after a bedtime nudge** counts as going to bed only when the student had
+  already left the desk; still sitting there, it's censored (no verdict). Before 2026-10-16 it always
+  counted as success, which taught the bandit a false +1.0 when an operator ended a test session; the
+  report flags such older outcomes.
 - **Reaction windows pause** while the user is absent or the state unknown, so a success can come
   long after the window's nominal end; it is priced as the slowest success and flagged.
 - **Operator nudges** are judged without the window pause, and with the user states the vision

@@ -152,15 +152,19 @@ def test_the_actions_section_is_validated(change, message):
         parse(raw)
 
 
-def test_the_policy_is_one_setting_and_fixed_is_the_default():
-    assert CFG.policy == "fixed" and isinstance(make_policy(CFG), FixedEscalation)
+def test_the_policy_is_one_setting_and_fixed_outside_the_bandit_mode():
+    assert CFG.policy == "auto"
+    for mode in (None, "rules", "hmm", "wizard"):
+        assert isinstance(make_policy(CFG, mode), FixedEscalation)       # the other modes stay unchanged
     raw = copy.deepcopy(RAW)
+    raw["policy"] = "fixed"
+    assert isinstance(make_policy(parse(raw), "hmm_bandit"), FixedEscalation)   # the switch: off everywhere
     raw["policy"] = "magic"
     with pytest.raises(EscalationConfigError, match="policy"):
         parse(raw)
     raw.pop("policy")
     raw.pop("actions")
-    assert parse(raw).policy == "fixed" and parse(raw).actions.max_step_up == 2   # older files: the defaults
+    assert parse(raw).policy == "auto" and parse(raw).actions.max_step_up == 2   # older files: the defaults
 
 
 # --- the engine: the set is logged, the policy stays inside it -------------------------------

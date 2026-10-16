@@ -28,7 +28,7 @@ from typing import Callable, Deque, Dict, List, Optional, Tuple
 REPO = Path(__file__).resolve().parents[2]
 WINDOWS = os.name == "nt"
 BACKENDS = ("dry", "sim", "real")
-MODES = ("wizard", "rules", "hmm")
+MODES = ("wizard", "rules", "hmm", "hmm_bandit")
 CAMERAS = ("", "auto", "robot", "laptop", "fake")       # "": camera.source in config/eepy.yaml
 DAEMON_PORT = 8000
 SETTINGS_FILE = REPO / ".launcher.json"

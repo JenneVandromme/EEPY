@@ -32,6 +32,11 @@ def command(body: Dict[str, Any]) -> List[str]:
         cmd += [KINDS[kind], spec]
         if kind == "responsive" and body.get("seed") not in (None, ""):
             cmd += ["--seed", str(int(body["seed"]))]
+        if body.get("bandit"):
+            cmd += ["--bandit"]
+            evenings = int(body.get("evenings") or 0)
+            if kind == "responsive" and 0 < evenings <= 200:
+                cmd += ["--evenings", str(evenings)]
         return cmd
     raise ValueError(f"unknown kind: {kind!r}")
 

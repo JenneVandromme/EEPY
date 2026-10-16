@@ -10,8 +10,9 @@
 #
 #   wizard       a human operator drives the robot through the panel
 #   rules        the threshold rules (A13) + the escalation (A14): the robot nudges on its own
-#   hmm          the HMM (A16) + the same escalation; acts only when >= 70 % sure
-#   hmm_bandit   HMM plus a bandit choosing the action    -- not built yet
+#   hmm          the HMM (A16) + the same escalation; acts on the belief (A19)
+#   hmm_bandit   the same, but a contextual bandit (A24) learns WHICH nudge works for
+#                this participant (config/bandit.yaml; off with policy: fixed in escalation.yaml)
 #
 # In a mode that is not built yet, the panel still works by hand, shows the
 # mode in amber, and records that no controller was running.

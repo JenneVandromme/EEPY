@@ -90,7 +90,8 @@ class Episode:
 class EscalationEngine:
     def __init__(self, config: EscalationConfig, policy: NudgePolicy, actuator: Actuator,
                  log: Optional[Log] = None, idle: Optional[str] = "study_buddy_idle",
-                 explanations: Optional[bool] = True, explainer: Optional[Explainer] = None) -> None:
+                 explanations: Optional[bool] = True, explainer: Optional[Explainer] = None,
+                 hour: Optional[Callable[[float], Optional[float]]] = None) -> None:
         """explanations (A20, an experimental condition): True builds, logs AND speaks an
         explanation after spoken nudges; False builds and logs it (what EEPY would have said)
         but does not speak it; None builds none."""
@@ -100,6 +101,7 @@ class EscalationEngine:
         self.actuator = actuator
         self._log_fn = log
         self.idle = idle
+        self.hour = hour                  # A24: now -> the local hour of day (the bandit's late evening)
         self.explanations = explanations
         self.explainer = (explainer or Explainer()) if explanations is not None else None
         self._lock = threading.RLock()
@@ -121,8 +123,14 @@ class EscalationEngine:
             if not self.active:
                 return
             if self.open is not None:
-                if self.open.ladder == "bedtime":
-                    self._close("success", now, "the session ended after bedtime nudges", how="bed")
+                if self.open.ladder == "bedtime" and self._state == "absent":
+                    # They had left the desk after a bedtime nudge, and then the session ended: went to bed.
+                    self._close("success", now, "the session ended after they left (went to bed)", how="bed",
+                                back_after=self.state_since - self.open.t)
+                elif self.open.ladder == "bedtime":
+                    # Still at the desk: the operator ended it (time up, a test, a problem). No verdict --
+                    # counting it as "went to bed" would teach the bandit a false success.
+                    self._close("censored", now, "the session ended while they were still at the desk")
                 else:
                     self._close("censored", now, reason)
             self.active = False
@@ -218,6 +226,8 @@ class EscalationEngine:
                 if out["decisions"] == "belief":
                     out["evidence_progress"] = self.belief.view()
                     out["decision"] = self.decision
+            out["policy_name"] = self.policy.name
+            out["bandit"] = getattr(self.policy, "last", None)        # A24: the last choice, for the bars
             out["explanations"] = {True: "on", False: "off", None: "none"}[self.explanations]
             out["explanation"] = self.explanation
             return out
@@ -445,6 +455,13 @@ class EscalationEngine:
         context = self._context(ep, now, since)
         context = replace(context, allowed=tuple(allowed_actions(context, self.config)))
         action = self._choose(context, now)
+        if action.kind != "play" and action.extra.get("hold"):
+            # A24: the bandit chose to wait -- ask again only after the hold (no dice roll each tick)
+            ep.quiet_until = now + float(action.extra["hold"])
+            self._event("escalation", now, what="policy_wait", ladder=ep.ladder, reason=action.reason,
+                        bandit=action.extra.get("bandit"), **describe(context.allowed))
+            self._wait(f"policy: {action.reason}; asking again in", ep.quiet_until)
+            return
         if action.kind != "play":
             if action.reason == "top of the ladder" or (ep.level is not None and ep.level >= ladder.top):
                 ep.cooldown_until = now + ladder.cooldown
@@ -547,7 +564,7 @@ class EscalationEngine:
                                          if r.ladder == ep.ladder and r.outcome == "no_reaction"
                                          and r.t >= (ep.round_started if ep.round_started is not None
                                                      else ep.started)})),
-            ambiguous=ep.ambiguous)
+            ambiguous=ep.ambiguous, hour=None if self.hour is None else self.hour(now))
 
     def _decision_context(self, context: NudgeContext, level: int, now: float) -> Dict[str, Any]:
         """The context logged with the decision (A22: the bandit's training context). Only what
@@ -607,7 +624,7 @@ class EscalationEngine:
                     ladder=ladder, level=level, behavior=behavior, tone=action.tone,
                     intensity=action.intensity, propensity=action.propensity, reason=action.reason,
                     reaction_window=reaction, context=self._decision_context(context, level, now),
-                    explanation=explanation,
+                    explanation=explanation, bandit=action.extra.get("bandit"),
                     **(dict(describe(context.allowed), chosen_in_allowed=contains(context.allowed, action))
                        if context.allowed else {}))
         play_context: Dict[str, Any] = {"minutes": max(1, int(round(minutes / 60))),

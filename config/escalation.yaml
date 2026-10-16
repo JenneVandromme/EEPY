@@ -155,10 +155,13 @@ hmm:
   evidence_top: 3          # the top signs attached to every decision (for the panel, the log and A20)
 
 # --- Who chooses WHAT to play, and what it may choose from (A23) -------------
-# fixed: the fixed escalation (start low, one level up after each nudge without a
-# reaction). It is the default, and the fallback when another policy fails or
-# picks something outside the allowed set. The bandit (A24) will add "bandit".
-policy: fixed
+# auto:  the contextual bandit (A24, config/bandit.yaml) in the hmm_bandit mode, and the
+#        fixed escalation in every other mode (rules, hmm)
+# fixed: the fixed escalation in EVERY mode, the bandit's too -- the one switch to turn
+#        the bandit off. The fixed escalation (start low, one level up after each nudge
+#        without a reaction) is also what plays whenever a policy fails or picks
+#        something outside the allowed set.
+policy: auto
 
 # The action space: what any policy may play at a moment. The bandit only ever picks
 # inside this set, however it learns. Timing (onset, guards, cooldowns, the belief's

@@ -34,7 +34,11 @@ def rows_from_events(events: Sequence[Tuple[str, float, Dict[str, Any]]], t0: fl
             "chosen": f"{f.get('ladder')} {f.get('level')} {f.get('tone')}", "reason": f.get("reason"),
             "allowed": f.get("allowed"), "most_intrusive": f.get("most_intrusive") or [],
             "inside": f.get("chosen_in_allowed"), "ignored": ctx.get("ignored_levels") or [],
-            "outcome": out.get("outcome"), "detail": out.get("detail")})
+            "outcome": out.get("outcome"), "detail": out.get("detail"),
+            "bandit": None if not f.get("bandit") else {
+                "bucket": f["bandit"]["bucket"], "propensity": f["bandit"].get("propensity"),
+                "samples": {a["words"]: a["sample"] for a in f["bandit"]["arms"]},
+                "means": {a["words"]: a["mean"] for a in f["bandit"]["arms"]}}})
     return rows
 
 
@@ -67,6 +71,10 @@ def print_rows(rows: List[Dict[str, Any]], title: str) -> None:
         if r["allowed"]:
             marked = [f"{a}{'!' if a in r['most_intrusive'] else ''}" for a in r["allowed"]]
             print(f"         allowed: {', '.join(marked)}" + (f"   (ignored: {r['ignored']})" if r["ignored"] else ""))
+        if r.get("bandit"):
+            b = r["bandit"]
+            drew = ", ".join(f"{k} {v:+.2f}" for k, v in b["samples"].items())
+            print(f"         bandit ({b['bucket']}, chance {b['propensity']:.0%}): drew {drew}")
     outside = sum(1 for r in rows if r["inside"] is False)
     print(f"\n  {len(rows)} decisions, {outside} outside the allowed set.  (! = most intrusive)\n")
 
@@ -79,9 +87,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--responsive", help="a simulated user who reacts to nudges (eepy/bandit/simuser.py)")
     parser.add_argument("--synthetic", help='simulated faces through the real HMM, e.g. "work 3m, phone 5m"')
     parser.add_argument("--seed", type=int, default=1, help="--responsive: the run")
+    parser.add_argument("--bandit", action="store_true",
+                        help="the bandit chooses (A24, untrained unless --evenings), instead of the fixed escalation")
+    parser.add_argument("--evenings", type=int, default=0,
+                        help="--responsive --bandit: let it learn on this many earlier evenings first")
     parser.add_argument("--data", help="the data folder (default data/)")
     parser.add_argument("--json", action="store_true", help="print the rows as JSON (for the launcher)")
     args = parser.parse_args(argv)
+    policy = None
+    if args.bandit:
+        from eepy.bandit.policy import BanditPolicy, MemoryStore, load_config
+        from .config import load as load_escalation
+
+        policy = BanditPolicy(load_escalation(), load_config(), store=MemoryStore(), participant="sim", seed=args.seed)
     try:
         if args.session:
             from eepy.logs.check import resolve
@@ -92,18 +110,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.scenario:
             from .simulate import SCENARIOS, parse_spec, run_scenario
 
-            recorder, _, _ = run_scenario(SCENARIOS.get(args.scenario) or parse_spec(args.scenario))
+            recorder, _, _ = run_scenario(SCENARIOS.get(args.scenario) or parse_spec(args.scenario), policy=policy)
             rows, title = rows_from_events(recorder.events, 0.0), f"scenario: {args.scenario}"
         elif args.responsive:
             from eepy.bandit.simuser import run_responsive
 
-            recorder, t0 = run_responsive(args.responsive, seed=args.seed)
+            for i in range(max(0, args.evenings) if policy is not None else 0):     # learn first
+                run_responsive(args.responsive, seed=1000 + i, policy=policy, learner=policy)
+            recorder, t0 = run_responsive(args.responsive, seed=args.seed, policy=policy, learner=policy)
             rows, title = rows_from_events(recorder.events, t0), f"reactive user: {args.responsive}"
         elif args.synthetic:
             from .simulate import run_estimates, synthetic_estimates
 
             estimates, t0 = synthetic_estimates(args.synthetic)
-            recorder, _, _ = run_estimates(estimates, [])
+            recorder, _, _ = run_estimates(estimates, [], policy=policy)
             rows, title = rows_from_events(recorder.events, t0), f"synthetic: {args.synthetic}"
         else:
             parser.print_help()
@@ -111,6 +131,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     except (FileNotFoundError, ValueError, KeyError) as exc:
         print(f"\n  {exc}\n", file=sys.stderr)
         return 2
+    if policy is not None:
+        title += f" -- the bandit chooses ({policy.data.get('updates', 0)} updates so far)"
     if args.json:
         print(json.dumps({"title": title, "rows": rows}, default=str))
     else:

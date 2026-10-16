@@ -143,6 +143,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
   <button data-tab="panel"><span class="dot" id="tab-dot-panel"></span>Wizard panel</button>
   <button data-tab="live"><span class="dot" id="tab-dot-vision"></span>Live HMM</button>
   <button data-tab="decisions">Decisions</button>
+  <button data-tab="bandit">Bandit</button>
   <button data-tab="rewards">Rewards</button>
   <button data-tab="dev">Developer</button>
 </nav>
@@ -198,10 +199,42 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
         </select>
         <input id="dc-spec" style="flex:1;min-width:260px">
         <select id="dc-session" hidden style="flex:1;min-width:260px"></select>
+        <label title="the contextual bandit chooses (A24) instead of the fixed escalation"><input type="checkbox" id="dc-bandit"> bandit</label>
+        <label title="reactive user + bandit: let it learn on earlier evenings first">learned on <input id="dc-evenings" type="number" value="0" min="0" max="200" style="width:60px"> evenings</label>
         <button class="btn primary" id="dc-run">Show decisions</button>
       </div>
       <div class="hint" id="dc-hint"></div>
       <div id="dc-out"></div>
+    </div>
+  </div></section>
+
+  <section id="bandit"><div class="pad">
+    <p class="hint" style="margin-top:0">The contextual bandit (A24) chooses WHICH nudge in the <b>HMM + bandit</b> mode
+      (Developer → Mode), inside the allowed set, and learns from every reward. Settings: <code>config/bandit.yaml</code>;
+      docs: <code>docs/A24_BANDIT.md</code>. Off everywhere: <code>policy: fixed</code> in <code>config/escalation.yaml</code>.</p>
+    <div class="box">
+      <h3>What it learned, per participant</h3>
+      <div class="log-tools">
+        <select id="bd-who" style="min-width:200px"></select>
+        <input id="bd-new" placeholder="or type a code, e.g. P03" style="width:180px">
+        <button class="btn primary" id="bd-show">Show</button>
+        <button class="btn" id="bd-reset">Reset…</button>
+      </div>
+      <div class="hint">Bars: the expected reward (−1 … +1) per action, with its uncertainty. Before any data it is the prior:
+        gentle actions first. "waiting" is fixed: the bandit only waits once it has learned nothing here helps.</div>
+      <div id="bd-view"></div>
+    </div>
+    <div class="box" style="margin-top:20px">
+      <h3>Smoke simulation: bandit vs fixed escalation</h3>
+      <div class="log-tools">
+        <label>evenings per persona <input id="bd-sessions" type="number" value="30" min="1" max="300" style="width:70px"></label>
+        <select id="bd-persona"><option value="">all 4 personas</option><option>glance_responder</option>
+          <option>needs_words</option><option>break_taker</option><option>late_sleeper</option></select>
+        <button class="btn primary" id="bd-smoke">Run</button>
+      </div>
+      <div class="hint">Simulated users with hidden preferences (made-up numbers, <code>eepy/bandit/personas.yaml</code>). The bandit
+        keeps learning across evenings; does it find each persona's best nudge, and does it beat the fixed escalation?</div>
+      <div id="bd-smoke-out"></div>
     </div>
   </div></section>
 
@@ -252,7 +285,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
         <label class="field">Robot<div class="seg" data-seg="backend">
           <button data-v="dry">Dry run</button><button data-v="sim">Simulator</button><button data-v="real">Real robot</button></div></label>
         <label class="field">Mode<div class="seg" data-seg="mode">
-          <button data-v="wizard">Wizard</button><button data-v="rules">Rules</button><button data-v="hmm">HMM</button></div></label>
+          <button data-v="wizard">Wizard</button><button data-v="rules">Rules</button><button data-v="hmm">HMM</button><button data-v="hmm_bandit">HMM + bandit</button></div></label>
         <label class="field">Camera
           <select id="camera"><option value="">Default (robot camera with the real robot, else config/eepy.yaml)</option><option value="auto">auto</option>
             <option value="robot">robot</option><option value="laptop">laptop</option><option value="fake">fake (no camera)</option></select></label>
@@ -567,7 +600,8 @@ $("dc-kind").onchange = () => {
 $("dc-kind").onchange();
 $("dc-run").onclick = async () => {
   const k = $("dc-kind").value, btn = $("dc-run");
-  const body = k === "session" ? { kind: k, session: $("dc-session").value } : { kind: k, spec: $("dc-spec").value };
+  const body = k === "session" ? { kind: k, session: $("dc-session").value }
+    : { kind: k, spec: $("dc-spec").value, bandit: $("dc-bandit").checked, evenings: Number($("dc-evenings").value) };
   btn.disabled = true; $("dc-out").innerHTML = '<p class="hint">Running…</p>';
   try {
     const r = await (await fetch("/api/decisions/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
@@ -575,17 +609,83 @@ $("dc-run").onclick = async () => {
     const outside = r.rows.filter((x) => x.inside === false).length;
     $("dc-out").innerHTML = `<p class="rw-sum"><b>${r.rows.length}</b> decisions · <b>${outside}</b> outside the allowed set
         <span class="hint"> · chosen = filled, orange outline = most intrusive</span></p>
+      <div class="hint">${esc(r.title)}</div>
       <table class="rw-table"><tr><th>time</th><th>state</th><th>chosen</th><th>allowed set</th><th>outcome</th></tr>` +
       r.rows.map((x) => `<tr><td style="font-variant-numeric:tabular-nums">${Math.floor(x.t / 60)}:${String(Math.round(x.t % 60)).padStart(2, "0")}</td>
         <td>${esc(String(x.state).replace("_", " "))}${x.confidence != null ? " " + Math.round(x.confidence * 100) + " %" : ""}</td>
         <td>${esc(x.chosen)}${x.inside === false ? ' <b class="rw-neg">OUTSIDE</b>' : ""}</td>
         <td class="wrap">${x.allowed ? x.allowed.map((a) => `<span class="dc-chip${a === x.chosen ? " chosen" : ""}${x.most_intrusive.includes(a) ? " hot" : ""}">${esc(a)}</span>`).join("")
-          : `<span class="hint">${x.policy === "wind_down_timer" ? "the wind-down timer, not a policy choice" : "(not logged)"}</span>`}${x.ignored && x.ignored.length ? `<div class="hint">ignored this episode: level ${x.ignored.join(", ")}</div>` : ""}</td>
+          : `<span class="hint">${x.policy === "wind_down_timer" ? "the wind-down timer, not a policy choice" : "(not logged)"}</span>`}${x.bandit ? `<div class="hint">bandit (${esc(x.bandit.bucket)}, chance ${Math.round(x.bandit.propensity * 100)} %): drew ${Object.entries(x.bandit.samples).map(([w, v]) => `${esc(w)} ${v >= 0 ? "+" : ""}${v.toFixed(2)}`).join(" · ")}</div>` : ""}${x.ignored && x.ignored.length ? `<div class="hint">ignored this episode: level ${x.ignored.join(", ")}</div>` : ""}</td>
         <td class="wrap">${esc(String(x.outcome || "open").replace("_", " "))}</td></tr>`).join("") + "</table>" +
       `<div class="hint" style="margin-top:10px">Same in a terminal: <code>${esc(r.command)}</code></div>`;
   } catch (e) { $("dc-out").innerHTML = '<div class="warnbox">The launcher is not answering.</div>'; }
   finally { btn.disabled = false; }
 };
+
+// ---- bandit (A24) ----
+const BD_NAMES = { refocus_early: "Distracted, early in the work", refocus_late: "Distracted, after 45+ min of work",
+                   bedtime_early: "Drowsy, before 23:00", bedtime_late: "Drowsy, late", ambiguous: "Distracted or drowsy" };
+async function banditCall(body) {
+  const r = await fetch("/api/bandit/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return r.json();
+}
+function bdBar(a) {
+  const x = (v) => Math.max(0, Math.min(100, (v + 1) * 50));
+  const lo = x(a.mean - a.sd), hi = x(a.mean + a.sd);
+  return `<div style="display:grid;grid-template-columns:200px 1fr 130px;gap:8px;align-items:center;margin:3px 0">
+    <span>${esc(a.words)}</span>
+    <span style="position:relative;height:12px;border-radius:6px;background:var(--surface-2)">
+      <i style="position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)"></i>
+      ${a.arm === "wait" ? "" : `<i style="position:absolute;top:3px;height:6px;border-radius:3px;left:${lo}%;width:${hi - lo}%;background:color-mix(in srgb, var(--accent) 35%, transparent)"></i>`}
+      <i style="position:absolute;top:1px;width:3px;height:10px;margin-left:-1px;left:${x(a.mean)}%;background:${a.arm === "wait" ? "var(--muted)" : "var(--accent)"}"></i></span>
+    <span class="hint">${a.mean >= 0 ? "+" : ""}${a.mean.toFixed(2)}${a.arm === "wait" ? " (fixed)" : ` · ${Math.round(a.n)} tries`}</span></div>`;
+}
+async function banditList() {
+  const d = await banditCall({ kind: "list" });
+  if (!d.ok) return;
+  $("bd-who").innerHTML = d.participants.length ? d.participants.map((p) => `<option value="${esc(p.participant)}">${esc(p.participant)} · ${p.updates} updates</option>`).join("")
+    : '<option value="">(nobody yet: run an HMM + bandit session)</option>';
+}
+async function banditShow() {
+  const who = $("bd-new").value.trim() || $("bd-who").value;
+  if (!who) { $("bd-view").innerHTML = '<p class="hint">Pick or type a participant code.</p>'; return; }
+  $("bd-view").innerHTML = '<p class="hint">Loading…</p>';
+  const d = await banditCall({ kind: "show", participant: who });
+  if (!d.ok) { $("bd-view").innerHTML = `<div class="warnbox">${esc(d.message)}</div>`; return; }
+  $("bd-view").innerHTML = `<p class="rw-sum"><b>${esc(d.participant)}</b> · ${d.updates} updates · model ${esc(d.model)}</p>` +
+    Object.entries(d.buckets).map(([b, arms]) => `<h4 style="margin:14px 0 4px">${BD_NAMES[b] || b}</h4>${arms.map(bdBar).join("")}` +
+      (d.sentences[b] ? `<div class="hint" style="margin-top:4px">${esc(d.sentences[b])}</div>` : "")).join("") +
+    `<div class="hint" style="margin-top:10px">Same in a terminal: <code>${esc(d.command)}</code></div>`;
+}
+$("bd-show").onclick = banditShow;
+$("bd-reset").onclick = async () => {
+  const who = $("bd-new").value.trim() || $("bd-who").value;
+  if (!who || !confirm(`Forget everything the bandit learned for ${who}? This cannot be undone.`)) return;
+  const d = await banditCall({ kind: "reset", participant: who });
+  $("bd-view").innerHTML = `<p class="hint">${esc(d.ok ? d.message : d.message)}</p>`;
+  banditList();
+};
+$("bd-smoke").onclick = async () => {
+  const btn = $("bd-smoke"); btn.disabled = true; $("bd-smoke-out").innerHTML = '<p class="hint">Running… (about 10 s per 30 evenings per persona)</p>';
+  try {
+    const d = await banditCall({ kind: "smoke", sessions: Number($("bd-sessions").value), persona: $("bd-persona").value });
+    if (!d.ok) { $("bd-smoke-out").innerHTML = `<div class="warnbox">${esc(d.message)}</div>`; return; }
+    $("bd-smoke-out").innerHTML = d.personas.map((p) => {
+      const row = (n, x) => `<tr><td>${n}</td><td class="num">${fmtReward(x.total)}</td><td class="num">${fmtReward(x.per_evening)}</td>
+        <td class="num">${x.nudges}</td><td class="num">${x.false_nudges}</td></tr>`;
+      const learned = Object.entries(p.learned).filter(([, l]) => l.tries).map(([b, l]) => `<tr><td>${BD_NAMES[b] || b}</td>
+        <td class="num">${l.favourite ?? "–"}</td><td class="num">${l.best ?? "–"}</td>
+        <td>${l.found === true ? '<span class="rw-pos">found it</span>' : l.found === false ? '<span class="rw-neg">not yet</span>' : "–"}</td>
+        <td class="hint">${Math.round(l.tries)} tries</td></tr>`).join("");
+      return `<h4 style="margin:16px 0 2px">${esc(p.persona)}</h4><div class="hint">${esc(p.description)}</div>
+        <table class="rw-table rw-group"><tr><th></th><th class="num">total</th><th class="num">per evening</th><th class="num">nudges</th><th class="num">false</th></tr>
+        ${row("fixed escalation", p.fixed)}${row("bandit", p.bandit)}</table>
+        <table class="rw-table"><tr><th>situation</th><th class="num">its favourite level</th><th class="num">the best level</th><th></th><th></th></tr>${learned}</table>`;
+    }).join("") + `<div class="hint" style="margin-top:10px">Same in a terminal: <code>${esc(d.command)}</code></div>`;
+  } catch (e) { $("bd-smoke-out").innerHTML = '<div class="warnbox">The launcher is not answering.</div>'; }
+  finally { btn.disabled = false; }
+};
+document.querySelector('nav button[data-tab="bandit"]').addEventListener("click", banditList);
 
 refresh(); pollLogs();
 setInterval(refresh, 1000);

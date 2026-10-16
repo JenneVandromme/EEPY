@@ -199,6 +199,10 @@ def _handler(launcher: Launcher):
                     message = launcher.stop_all()
                 elif path == "/api/settings":
                     message = launcher.update_settings(body)
+                elif path == "/api/bandit/run":            # A24: posteriors, reset, smoke simulation
+                    from . import bandit
+                    self._json(bandit.run(body))
+                    return
                 elif path == "/api/decisions/run":         # A23: the decision log with the allowed sets
                     from . import decisions
                     self._json(decisions.run(body))

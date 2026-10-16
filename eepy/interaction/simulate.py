@@ -240,7 +240,7 @@ def _clock(seconds: float) -> str:
 
 
 def run_scenario(scenario: Scenario, config: Any = None, library: Any = None,
-                 step: float = 1.0) -> Tuple[Recorder, Any, EscalationEngine]:
+                 step: float = 1.0, policy: Any = None) -> Tuple[Recorder, Any, EscalationEngine]:
     from eepy.behaviors.loader import load_library
 
     from .actuator import SimActuator
@@ -251,7 +251,8 @@ def run_scenario(scenario: Scenario, config: Any = None, library: Any = None,
     clock = VirtualClock()
     actuator = SimActuator(library, clock)
     recorder = Recorder()
-    engine = EscalationEngine(config, make_policy(config), actuator, recorder)
+    engine = EscalationEngine(config, policy or make_policy(config), actuator, recorder,
+                              hour=lambda t: (21.0 + t / 3600.0) % 24.0)
     engine.session_started(0.0)
     t = 0.0
     belief = scenario.uses_belief
@@ -281,7 +282,7 @@ def run_scenario(scenario: Scenario, config: Any = None, library: Any = None,
 
 
 def run_estimates(estimates: List[Dict[str, Any]], replies: List[Tuple[float, str]],
-                  config: Any = None, library: Any = None) -> Tuple[Recorder, Any, EscalationEngine]:
+                  config: Any = None, library: Any = None, policy: Any = None) -> Tuple[Recorder, Any, EscalationEngine]:
     """Over a recorded session: estimates as dicts with t, state, reason, pending, calibrated."""
     from eepy.behaviors.loader import load_library
 
@@ -293,7 +294,7 @@ def run_estimates(estimates: List[Dict[str, Any]], replies: List[Tuple[float, st
     clock = VirtualClock(estimates[0]["t"] if estimates else 0.0)
     actuator = SimActuator(library, clock)
     recorder = Recorder()
-    engine = EscalationEngine(config, make_policy(config), actuator, recorder)
+    engine = EscalationEngine(config, policy or make_policy(config), actuator, recorder)
     engine.session_started(clock.now)
     pending = sorted(replies)
     for estimate in estimates:

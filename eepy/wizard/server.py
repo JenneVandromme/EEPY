@@ -60,7 +60,7 @@ from eepy.logs.clock import monotonic as shared_clock
 from eepy.logs.schema import IMPLEMENTED_MODES
 
 # The modes where the robot nudges on its own, and the state estimator each acts on.
-AUTONOMY_MODES = {"rules": "rules", "hmm": "hmm"}
+AUTONOMY_MODES = {"rules": "rules", "hmm": "hmm", "hmm_bandit": "hmm"}   # mode -> the estimator it acts on
 from eepy.logs.session import SessionError
 
 from .config import CONFIG_PATH, ConfigError, Panel, PanelConfig, build_panel, load_config
@@ -275,6 +275,15 @@ class Wizard:
         fields["t_decision"] = fields.pop("t")
         fields.pop("session", None)
         self._note("nudge_reward", source, **fields)
+        policy = getattr(self.autonomy, "policy", None)
+        if hasattr(policy, "observe"):                  # A24: the bandit learns from each reward
+            try:
+                used = policy.observe(event)
+                if used:
+                    self._note("bandit_update", "auto", decision_id=event.decision_id, reward=event.reward,
+                               participant=policy.participant, updates=policy.data.get("updates"))
+            except Exception as exc:  # noqa: BLE001 -- learning must never stop the session
+                self._error(f"The bandit could not learn from nudge {event.decision_id}: {exc}")
 
     def _wizard_nudge(self, behavior: str, intensity: float, pressed: float) -> None:
         """An operator's play of a ladder behaviour is a nudge too (source=wizard), with the
@@ -515,6 +524,14 @@ class Wizard:
             self._note("mode_not_implemented", "system", mode=self.mode)
         self._offer_calibration(participant)
         if self.autonomy is not None:
+            policy = self.autonomy.policy
+            if hasattr(policy, "start"):                  # A24: this participant's posteriors
+                policy.start(participant)
+            info = {"name": policy.name, "setting": self.autonomy.config.policy}
+            if policy.name == "bandit":
+                info.update(bandit=policy.config.as_dict(), file=str(policy.store.path(policy.participant)),
+                            updates_before=policy.data.get("updates", 0))
+            self.sessions.set_meta("policy", info)
             self.autonomy.session_started(shared_clock())
         self.panel_version += 1
         return record
@@ -970,15 +987,22 @@ class Wizard:
         except EscalationConfigError as exc:
             self._error(f"The {self.mode} mode cannot nudge: the escalation config has a problem.\n{exc}")
             return
+        try:
+            policy = make_policy(config, self.mode)        # hmm_bandit + policy auto: the bandit (A24)
+        except Exception as exc:  # noqa: BLE001 -- a broken bandit config: the fixed escalation plays
+            from eepy.interaction.policy import FixedEscalation
+            self._error(f"The bandit cannot start, so the fixed escalation plays instead:\n{exc}")
+            policy = FixedEscalation(config)
         actuator = PlayerActuator(lambda: self.player, on_error=self._error, library=lambda: self.library)
         from eepy.explanations.build import Explainer
 
         ex = self.explanations
         self.autonomy = EscalationEngine(
-            config, make_policy(config), actuator,
+            config, policy, actuator,
             log=lambda event_type, t, **fields: self._note(event_type, "auto", t=t, **fields),
             idle=self.panel.idle, explanations=ex.enabled,
-            explainer=Explainer(ex.top_k, ex.window_min_seconds, ex.window_max_seconds))
+            explainer=Explainer(ex.top_k, ex.window_min_seconds, ex.window_max_seconds),
+            hour=lambda now: round(time.localtime().tm_hour + time.localtime().tm_min / 60.0, 2))
         self._autonomy_thread = threading.Thread(target=self._autonomy_loop, args=(config.tick_seconds,),
                                                  name="eepy-autonomy", daemon=True)
         self._autonomy_running = True

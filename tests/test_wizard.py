@@ -456,8 +456,12 @@ def test_the_mode_is_shown_and_recorded(make, files):
     assert lines(files)[0]["mode"] == "wizard"
 
 
-def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files):
-    _, client = make(mode="hmm_bandit")       # (rules since A14, hmm since A16; the bandit is not yet)
+def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files, monkeypatch):
+    # Every mode is built since A24; the mechanism stays, for the next one: pretend the bandit is not.
+    from eepy.wizard import server as srv
+    monkeypatch.setattr(srv, "IMPLEMENTED_MODES", frozenset({"wizard", "rules", "hmm"}))
+    monkeypatch.setattr(srv, "AUTONOMY_MODES", {"rules": "rules", "hmm": "hmm"})
+    _, client = make(mode="hmm_bandit")
     status = client.get("/api/state").json()["status"]
     assert status["mode"] == "hmm_bandit" and not status["mode_implemented"]
     assert "no controller" in status["last_error"]["message"]
@@ -971,3 +975,30 @@ def test_rewards_live_in_the_panel_equal_the_offline_tool(make, files, quick_bel
     assert sorted(key(r["decision_id"], r["outcome"], r.get("reward")) for r in logged) == \
         sorted(key(e.decision_id, e.outcome, e.reward) for e in offline)
     assert info["wizard_nudges"] == 1
+
+
+def test_hmm_bandit_mode_chooses_learns_and_shows_its_bars(make, files, quick_belief, monkeypatch):
+    """A24: in the hmm_bandit mode the bandit chooses (inside the allowed set), learns from the
+    reward, saves the participant's posteriors, and the panel status carries the bars."""
+    from eepy.logs import session as session_mod
+
+    monkeypatch.setattr(session_mod, "DATA_DIR", files["data"] / "sessions")   # data/bandit next to it
+    wizard, _ = make(mode="hmm_bandit")
+    assert wizard.mode_implemented and wizard.autonomy.policy.name == "bandit"
+    wizard.start_session("P45")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10
+    assert _until(lambda: wizard._state_report(_belief(0.95)) or _recent(wizard, "nudge_decision"))
+    decision = _recent(wizard, "nudge_decision")[0]
+    assert decision["policy"] == "bandit" and decision["chosen_in_allowed"] is True
+    assert decision["bandit"]["bucket"] == "refocus_early" and 0 < decision["propensity"] <= 1
+    bars = wizard.status()["autonomy"]["bandit"]
+    assert bars["chosen"] and {r["arm"] for r in bars["arms"]} >= {"wait"}
+    wizard.annotate("user_accepted")                    # the participant says OK: a reward
+    assert _recent(wizard, "bandit_update")
+    wizard.end_session()
+    saved = json.loads((files["data"] / "bandit" / "P45.json").read_text())
+    assert saved["updates"] >= 1 and "refocus_early" in saved["evidence"]
+    (folder,) = [p for p in files["data"].iterdir() if p.is_dir() and p.name != "bandit"]
+    meta = json.loads((folder / "meta.json").read_text())
+    assert meta["policy"]["name"] == "bandit" and meta["policy"]["setting"] == "auto"

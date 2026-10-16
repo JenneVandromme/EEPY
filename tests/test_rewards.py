@@ -176,8 +176,15 @@ def test_operator_nudge_replies_and_focus_at_the_press():
     assert got[-1].outcome == "snoozed" and got[-1].reward == 0.1
     tr.on_record({"type": "wizard_nudge", "t_mono": 50.0, "ladder": "bedtime", "level": 3, "behavior": "b",
                   "reaction_window": 90, "context": {}})
-    tr.on_record({"type": "session_end", "t_mono": 60.0})
-    assert got[-1].outcome == "success" and got[-1].how == "bed"
+    tr.on_record({"type": "session_end", "t_mono": 60.0})       # still at the desk: no verdict
+    assert got[-1].outcome == "censored" and got[-1].reward is None
+    tr.on_record({"type": "session_start", "t_mono": 100.0, "session": "S2"})
+    tr.on_state(100.0, "drowsy")
+    tr.on_record({"type": "wizard_nudge", "t_mono": 110.0, "ladder": "bedtime", "level": 3, "behavior": "b",
+                  "reaction_window": 90, "context": {}})
+    tr.on_state(130.0, "absent")                                 # they left ...
+    tr.on_record({"type": "session_end", "t_mono": 150.0})       # ... then the session ended: went to bed
+    assert got[-1].outcome == "success" and got[-1].how == "bed" and got[-1].latency == 20.0
 
 
 def test_overlap_only_the_newest_nudge_counts():

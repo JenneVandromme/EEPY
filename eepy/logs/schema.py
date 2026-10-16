@@ -34,7 +34,7 @@ SOURCES: FrozenSet[str] = frozenset({
 # The experimental conditions. "wizard": the operator only; "rules": the state rules
 # (A13) and the fixed escalation (A14) act on their own. The HMM modes come later.
 MODES: Tuple[str, ...] = ("wizard", "rules", "hmm", "hmm_bandit")
-IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard", "rules", "hmm"})   # rules: A13 + A14; hmm: A16 + A14
+IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard", "rules", "hmm", "hmm_bandit"})   # rules: A13 + A14; hmm: A16 + A14; hmm_bandit: + A24
 
 
 @dataclass(frozen=True)
@@ -176,6 +176,9 @@ EVENT_TYPES: Dict[str, EventType] = {
                               "What a nudge was worth to the bandit (A22, config/rewards.yaml): the "
                               "action, the outcome, the latency, the recovery discount, the reward "
                               "(null: censored, excluded) and the decision-time context."),
+    "bandit_update": EventType("autonomy", ("decision_id",),
+                               "The bandit (A24) learned from a nudge's reward: the participant and how "
+                               "many updates its posteriors have had (data/bandit/<participant>.json)."),
     "nudge_outcome": EventType("autonomy", ("decision_id", "outcome"),
                                "What came of one nudge_decision (by decision_id), exactly once: "
                                "success, no_reaction, dismissed, snoozed, interrupted_focus or "

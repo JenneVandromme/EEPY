@@ -75,3 +75,23 @@ when the robot moves.
    `bedtime_attentive` so behaviours leave more room upward.
 4. Longer term: make perception correct gaze (and nod detection) for the robot's head pose, so the
    robot may re-aim freely without breaking the calibration.
+
+## Open ends from A20–A24 (2026-10-15)
+
+- **The designers' intrusiveness ranking (B8)** is not in the repo. Until it is, the level order
+  stands in for it: `actions.intrusiveness` in `config/escalation.yaml` (A23) and the prior means
+  in `config/bandit.yaml` (A24) should follow it once it exists.
+- **Explanation lines (C6):** the designers write `explain_<type>` lines in `behaviors/lines.yaml`
+  (docs/EXPLANATION_CATALOG.md). Until then EEPY uses its default sentences. Be careful with a
+  numeric nodding sentence: a false head-drop detection would be spoken as fact.
+- **A "no nudge" baseline for the rewards:** a user who would have recovered anyway still credits
+  the nudge when the belief trend before the decision didn't show it (A22). Waiting has a fixed
+  value in the bandit (A24) because it has no outcome. A randomised "not yet" or a learned
+  baseline would fix both.
+- **Personas from D10:** the smoke simulation's personas (`eepy/bandit/personas.yaml`) are made
+  up; D10's personas.csv should replace them.
+- **Off-policy evaluation:** propensities are logged with every decision, but nothing uses them
+  yet (A25/A26).
+- **Real data:** every reward, decision and bandit number so far comes from test sessions (P99)
+  and simulations. P99_hmm_5 contains about a minute of fake-camera rows (17:54–17:55 on
+  2026-10-15): leave it out of any analysis.
