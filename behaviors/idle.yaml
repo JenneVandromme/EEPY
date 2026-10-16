@@ -7,7 +7,8 @@
 #  Design Principles (Industrial & Interaction Design):
 #    1. Calm presence: Micro-motions (subtle breathing) keep the robot alive
 #       without grabbing attention away from work.
-#    2. Studying along: Looking down at notes establishes shared activity.
+#    2. Eyes on the student: the idle never looks down at the notes. The
+#       camera sits in the head, so looking down would lose the face.
 #    3. Approving nod: Positive reinforcement when the user resumes work,
 #       acknowledging effort non-verbally.
 #
@@ -21,32 +22,16 @@ behaviors:
   - name: study_buddy_idle
     group: idle
     description: >
-      Quiet company. A slow breathing motion, and every few cycles it glances
-      down at the notes and lets its gaze drift across the page, as if reading
-      along. Must be boring to watch -- if you notice it, it is too big.
+      Quiet company. Only a slow breathing motion. Must be boring to watch --
+      if you notice it, it is too big.
+    # No glance down at the notes any more (2026-10-15): the camera sits in the
+    # head, so every glance tipped it 20 degrees down, the face left the picture
+    # and perception read the student as looking away (or absent).
     loop: forever          # runs until the player stops it
     intensity: 0.7         # deliberately under 1.0: calmer than written
     keyframes:
-      # Slow breathing: the head rises a few millimetres and settles again
       - use: breathe_in
       - use: breathe_out
-      - use: breathe_in
-      - use: breathe_out
-      # Studying along: look down at the notes...
-      - use: glance_at_notes
-      # ...and scan a line of the page: a few degrees one way, then the other
-      # (relative: offsets from the notes glance, so it follows that target)
-      - head: { yaw: 3 }
-        relative: true
-        duration: 0.7
-        easing: minjerk
-      - head: { yaw: -6 }
-        relative: true
-        duration: 1.2
-        easing: minjerk
-        hold: 0.8
-      # ...then smoothly back to level
-      - use: return_to_neutral
 
   - name: approving_nod
     group: idle
