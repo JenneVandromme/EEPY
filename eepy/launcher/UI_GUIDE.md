@@ -3,17 +3,32 @@
 Branch di prova: **`try/launcher-ui`**, creato da `origin/F_ContextualBandit` (commit `cdcc692`),
 cioè la versione più completa del launcher (tab Decisions, Bandit, Rewards inclusi).
 
-Questa copia del repository è **separata** dal progetto principale (`../EEPY`): ha la sua
-cartella `.git`, quindi niente di quello che fai qui tocca i branch del progetto. Il **push è
-disattivato** (`git remote -v` mostra `PUSH-DISABLED-trial-branch`), così nulla finisce su GitHub
-per sbaglio.
+È un branch **dentro il progetto `EEPY`**, separato dagli altri: le modifiche fatte qui restano
+qui finché nessuno fa un merge. Il **push di questo branch è bloccato**
+(`git config branch.try/launcher-ui.pushRemote` punta a un remote che non esiste), così nulla
+finisce su GitHub per sbaglio.
+
+### Entrare e uscire senza portarsi dietro modifiche
+
+Git sposta le modifiche **non salvate** da un branch all'altro. Prima di ogni cambio,
+`git status` deve dire "nothing to commit".
+
+```bash
+# entrare (dal tuo branch di lavoro)
+git stash                       # mette da parte il lavoro non salvato
+git checkout try/launcher-ui
+
+# uscire (dal branch di prova)
+git add -A && git commit -m "UI: ..."   # salva i passi della UI qui
+git checkout feature/probe-questions    # o il branch da cui eri partito
+git stash pop                           # riprende il lavoro messo da parte
+```
 
 ---
 
 ## 1. Avviare e vedere le modifiche
 
 ```bash
-cd ~/Desktop/Tu-E/Embodying-intelligent-behavior-in-social-context/EEPY-launcher-ui
 python3 launch.py                 # apre http://127.0.0.1:8090
 ```
 
@@ -25,9 +40,9 @@ python3 launch.py                 # apre http://127.0.0.1:8090
 - Per provare la UI **senza robot né camera**: tab Developer → Robot **dry run**, poi
   Start all. Il panel parte comunque e le card mostrano stati veri.
 
-Gli ambienti sono già pronti in questa cartella: `.venv-robot` è un collegamento a quello del
-progetto principale (viene solo usato, non modificato) e `.venv-vision` è locale a questa copia.
-Git li ignora (`.git/info/exclude`).
+Simulatore e panel usano `.venv-robot`, che c'è già. Vision usa `.venv-vision`: se manca, la sua
+card lo dice, ma per lavorare sulla UI non serve (basta il dry run). Il launcher scrive
+`.launcher.json` e le sessioni in `data/`: Git li ignora, non entrano in nessun branch.
 
 ---
 
@@ -189,7 +204,7 @@ Osservazioni fatte provando il launcher; sono idee da valutare, non difetti acce
 
 ---
 
-## 8. Git in questa copia
+## 8. Git in questo branch
 
 ```bash
 git status                                    # cosa hai cambiato
@@ -202,6 +217,6 @@ Per aggiornare la base con le novità del team: `git fetch origin`, poi
 `git rebase origin/F_ContextualBandit` (o il branch del launcher che nel frattempo è entrato in
 `main`).
 
-Se un giorno vuoi proporre le modifiche al team, riattiva il push consapevolmente
-(`git remote set-url --push origin git@github.com:JenneVandromme/EEPY.git`) e apri una PR.
+Se un giorno vuoi proporre le modifiche al team, sblocca il push consapevolmente
+(`git config --unset branch.try/launcher-ui.pushRemote`) e apri una PR.
 Fino ad allora tutto resta su questo computer.
