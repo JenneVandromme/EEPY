@@ -1,0 +1,78 @@
+/* EEPY launcher: a calmer layer on top of the design system (the design system files stay untouched).
+   The bright accents (cyan, green, violet, glows) are toned down in BOTH modes so they sit evenly
+   on the black or the white background, and every page shares the same background. */
+
+/* Dark */
+:root, [data-theme="dark"] {
+  --time-focus-start: #7fa8c9;
+  --time-focus: #4f7cc4;
+  --accent-blue: #5a92cf;
+  --success: #4caf72;
+  --energy-high: #79b893;
+  --energy-low: #c97a58;
+  --energy-mid: #cfae5c;
+  --time-sleep: #a690cf;
+  --time-break: #a98d4e;
+  --time-pin: #d6b46a;
+  --error: #d65a55;
+  --atmosphere-glow: #22325e;
+  --atmosphere-mid: #1c2541;
+  --glow-focus: 0 0 0 1px rgba(127, 168, 201, 0.28);
+}
+
+/* Light: the same calm accents, a warm neutral background, slightly stronger card edges */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --time-focus-start: #8fb0cf;
+    --time-focus: #4a72b5;
+    --accent-blue: #2f6aa8;
+    --success: #3f8a60;
+    --energy-high: #4e9670;
+    --energy-low: #bf6d4c;
+    --energy-mid: #c29a3c;
+    --time-sleep: #8a76b6;
+    --time-break: #a3833c;
+    --time-pin: #d2ae58;
+    --error: #bd453f;
+    --atmosphere-glow: #e4e7ee;
+    --atmosphere-mid: #eeeff2;
+    --atmosphere-deep: #f4f3f0;
+    --hairline-soft: #e3e1dc;
+    --glow-focus: 0 0 0 1px rgba(74, 114, 181, 0.22);
+  }
+}
+[data-theme="light"] {
+  --time-focus-start: #8fb0cf;
+  --time-focus: #4a72b5;
+  --accent-blue: #2f6aa8;
+  --success: #3f8a60;
+  --energy-high: #4e9670;
+  --energy-low: #bf6d4c;
+  --energy-mid: #c29a3c;
+  --time-sleep: #8a76b6;
+  --time-break: #a3833c;
+  --time-pin: #d2ae58;
+  --error: #bd453f;
+  --atmosphere-glow: #e4e7ee;
+  --atmosphere-mid: #eeeff2;
+  --atmosphere-deep: #f4f3f0;
+  --hairline-soft: #e3e1dc;
+  --glow-focus: 0 0 0 1px rgba(74, 114, 181, 0.22);
+}
+
+/* One background for every page, in both modes */
+.eepy-page {
+  background:
+    radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 26%, transparent), transparent 70%),
+    radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 28%, transparent), transparent 70%),
+    var(--canvas);
+}
+
+/* The appearance switch (Home) */
+.appear { display: inline-flex; align-items: center; gap: var(--space-sm); }
+.appear__seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-pill); background: var(--surface-2); border: 1px solid var(--hairline); }
+.appear__opt { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .2s ease, color .2s ease, box-shadow .2s ease; }
+.appear__opt:hover { color: var(--ink); }
+.appear__opt.is-on { background: var(--surface-1); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 0 0 1px var(--hairline-strong); }
+.appear__opt:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .appear__opt { transition: none; } }

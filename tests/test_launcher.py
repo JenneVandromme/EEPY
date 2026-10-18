@@ -247,6 +247,8 @@ def test_the_page_and_the_api(tmp_path):
 
     try:
         assert b"EEPY" in urllib.request.urlopen(base + "/").read()
+        assert b"EEPY" in urllib.request.urlopen(base + "/v5").read()          # the new UI, next to the old one
+        assert b"window.icon" in urllib.request.urlopen(base + "/v5/ds/icons.js").read()
         status = json.load(urllib.request.urlopen(base + "/api/status"))
         assert status["needed"] == ["panel", "vision"] and status["parts"]["panel"]["state"] == "stopped"
         assert post("/api/start", {"part": "panel"})["ok"]
@@ -261,3 +263,13 @@ def test_the_page_and_the_api(tmp_path):
     finally:
         launcher.stop_all()
         server.shutdown()
+
+
+def test_the_v5_page_serves_only_its_own_files():
+    from eepy.launcher.__main__ import v5_file
+
+    assert v5_file("/v5/") is not None and v5_file("/v5/").name == "index.html"
+    assert v5_file("/v5/app.js") is not None
+    assert v5_file("/v5/../__main__.py") is None          # outside static/v5
+    assert v5_file("/v5/../index.html") is None           # the old page is served at / only
+    assert v5_file("/v5/nothing-here.js") is None
