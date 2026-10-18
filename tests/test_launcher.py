@@ -273,3 +273,199 @@ def test_the_v5_page_serves_only_its_own_files():
     assert v5_file("/v5/../__main__.py") is None          # outside static/v5
     assert v5_file("/v5/../index.html") is None           # the old page is served at / only
     assert v5_file("/v5/nothing-here.js") is None
+
+
+# --- the /v5 page's own calls (v5api.py) ----------------------------------------------
+
+class FakeServer:
+    """A tiny HTTP server that answers with the canned replies and remembers each request."""
+
+    def __init__(self, replies):
+        from http.server import BaseHTTPRequestHandler
+
+        self.requests = []
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _answer(self, method):
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length)) if length else None
+                outer.requests.append((method, self.path, body))
+                code, data = replies.get((method, self.path), (404, {"detail": "Not Found"}))
+                raw = json.dumps(data).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def do_GET(self):
+                self._answer("GET")
+
+            def do_POST(self):
+                self._answer("POST")
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_v5_passes_the_panel_calls_through_unchanged():
+    from eepy.launcher import v5api
+
+    panel = FakeServer({("GET", "/api/state"): (200, {"status": {"connected": True}, "seq": 3}),
+                        ("POST", "/api/play"): (200, {"ok": True}),
+                        ("POST", "/api/session/end"): (409, {"ok": False, "message": "No session is running."}),
+                        ("POST", "/api/annotate"): (422, {"detail": [{"msg": "Field required"}]})})
+    settings = Settings(backend="dry", panel_port=panel.port)
+    try:
+        assert v5api.panel(settings, "GET", "state") == (200, {"status": {"connected": True}, "seq": 3})
+        body = {"behavior": "refocus_curious", "intensity": 0.7, "via": "key"}
+        assert v5api.panel(settings, "POST", "play", body) == (200, {"ok": True})
+        assert panel.requests[-1] == ("POST", "/api/play", body)                      # unchanged
+        assert v5api.panel(settings, "POST", "session/end", {}) == (409, {"ok": False, "message": "No session is running."})
+        assert v5api.panel(settings, "POST", "annotate", {}) == (422, {"ok": False, "message": "Field required"})
+        seen = len(panel.requests)
+        assert v5api.panel(settings, "POST", "shutdown", {})[0] == 404                # not on the list: never sent
+        assert v5api.panel(settings, "GET", "play")[0] == 404                          # POST-only call
+        assert v5api.panel(settings, "GET", "../state")[0] == 404
+        assert len(panel.requests) == seen
+    finally:
+        panel.close()
+    code, data = v5api.panel(settings, "GET", "state")                                 # the panel is gone
+    assert code == 502 and "isn't answering" in data["message"]
+
+
+def test_v5_sets_the_robot_volume_through_its_daemon(monkeypatch):
+    from eepy.launcher import v5api
+
+    assert v5api.volume(Settings(backend="dry"), "GET")[0] == 409                     # no robot, no speaker
+    daemon = FakeServer({("GET", "/api/volume/current"): (200, {"volume": 40, "platform": "macOS", "device": "x"}),
+                         ("POST", "/api/volume/set"): (200, {"volume": 60, "platform": "macOS", "device": "x"})})
+    monkeypatch.setattr(v5api, "DAEMON_PORT", daemon.port)
+    try:
+        code, data = v5api.volume(Settings(backend="sim"), "GET")
+        assert code == 200 and data["volume"] == 40 and data["simulator"]
+        code, data = v5api.volume(Settings(backend="sim"), "POST", {"volume": 60})
+        assert code == 200 and data["volume"] == 60 and daemon.requests[-1] == ("POST", "/api/volume/set", {"volume": 60})
+        seen = len(daemon.requests)
+        assert v5api.volume(Settings(backend="sim"), "POST", {"volume": 150})[0] == 400
+        assert v5api.volume(Settings(backend="sim"), "POST", {"volume": "loud"})[0] == 400
+        assert len(daemon.requests) == seen
+    finally:
+        daemon.close()
+    assert v5api.volume(Settings(backend="sim"), "GET")[0] == 502
+
+
+def write_session(root, name, share=0.5, extra_events=(), desk_s=100, cut_last_line=False):
+    """A recorded session as the panel and the vision process write it (docs/DATA_GUIDE.md)."""
+    folder = root / name
+    folder.mkdir(parents=True)
+    t0 = 500.0
+    events = [{"t_mono": t0, "t_wall": "2026-10-16T21:00:00+02:00", "type": "session_start", "participant": name.split("_")[1], "mode": "hmm"}]
+    events += [dict(e, t_mono=t0 + e["t_mono"]) for e in extra_events]
+    events.append({"t_mono": t0 + desk_s + 20, "t_wall": "", "type": "session_end", "reason": "operator"})
+    text = "".join(json.dumps(e) + "\n" for e in events)
+    (folder / "events.jsonl").write_text(text + ('{"t_mono": 9' if cut_last_line else ""))
+    focused = round(desk_s * share)
+    rows = ["t_mono,frame,state,p_focused,confidence,estimator"]
+    rows += [f"{t0 + i},{i},focused,0.9,0.8,hmm" for i in range(focused)]
+    rows += [f"{t0 + i},{i},distracted,0.2,0.7,hmm" for i in range(focused, desk_s)]
+    rows += [f"{t0 + i},{i},absent,,,hmm" for i in range(desk_s, desk_s + 20)]          # away: left out of the share
+    (folder / "state.csv").write_text("\n".join(rows) + "\n")
+    (folder / "meta.json").write_text(json.dumps({"participant": name.split("_")[1], "mode": "hmm", "calibration": {"result": "new"}}))
+    return folder
+
+
+def test_v5_reads_a_recorded_session(tmp_path):
+    from eepy.launcher import v5api
+
+    write_session(tmp_path, "2026-10-16_P05_hmm", share=0.75, cut_last_line=True, extra_events=[
+        {"t_mono": 30, "type": "nudge_decision", "decision_id": "d1", "ladder": "refocus", "level": 1,
+         "behavior": "refocus_joint_attention", "tone": "hedged", "reason": "distracted", "propensity": 0.5,
+         "context": {"probs": {"focused": 0.2, "distracted": 0.8}, "confidence": 0.8, "evidence": ["gaze off work"]},
+         "explanation": {"sentence": "They looked away, so I glanced at the notes.", "contrast": {"text": "Not spoken yet."}}},
+        {"t_mono": 50, "type": "nudge_outcome", "decision_id": "d1", "outcome": "success", "seconds": 12, "how": "focus"},
+        {"t_mono": 60, "type": "wizard_nudge", "ladder": "bedtime", "level": 2, "behavior": "bedtime_attentive"},
+        {"t_mono": 70, "type": "nudge_reward", "source": "wizard", "decision_id": "w1", "outcome": "dismissed", "latency": 4},
+        {"t_mono": 80, "type": "annotation", "marker": "yawn"},
+        {"t_mono": 90, "type": "note", "text": "a sip of water"},
+        {"t_mono": 100, "type": "escalation", "what": "goodnight"},
+        {"t_mono": 110, "type": "escalation", "what": "went_to_bed"},
+    ])
+    (tmp_path / "not-a-session").mkdir()                                                # no events.jsonl: skipped
+    [s] = v5api.sessions(tmp_path)
+    assert s["participant"] == "P05" and s["mode"] == "hmm" and s["clock"] == "21:00" and s["end_clock"] == "21:02"
+    assert s["duration_s"] == 120 and s["ended"] and s["ending"] == "rest"
+    assert s["nudges"] == 1 and s["by_hand"] == 1 and s["outcomes"] == {"success": 1, "dismissed": 1}
+    assert s["focused_share"] == 0.75 and s["desk_s"] == 100                            # the 20 s away left out
+    assert s["strip"][0]["state"] == "focused" and s["marks_at"] == [30, 60]
+    assert v5api.sessions(tmp_path, "P06") == []
+
+    d = v5api.detail(tmp_path, "2026-10-16_P05_hmm")
+    eepy, you = d["moments"]
+    assert eepy["by"] == "eepy" and eepy["outcome"] == "success" and eepy["seconds"] == 12 and eepy["clock"] == "21:00"
+    assert eepy["sentence"].startswith("They looked away") and eepy["contrast"] == "Not spoken yet." and eepy["evidence"] == ["gaze off work"]
+    assert you["by"] == "you" and you["outcome"] == "dismissed" and you["seconds"] == 4               # matched by w1
+    assert d["marks"] == [{"t": 80, "clock": "21:01", "marker": "yawn"}] and d["notes"][0]["text"] == "a sip of water"
+    assert d["curve"] and all(0 <= p <= 1 for _, p in d["curve"])
+    assert [r["state"] for r in d["strip"]] == ["focused", "distracted", "absent"]
+    for bad in ("", "../2026-10-16_P05_hmm", "nope", "/etc/passwd", "not-a-session"):
+        assert v5api.detail(tmp_path, bad) is None
+
+
+def test_v5_time_won_back_needs_four_sessions(tmp_path):
+    from eepy.launcher import v5api
+
+    for day, share in ((10, 0.5), (11, 0.4), (12, 0.6)):
+        write_session(tmp_path, f"2026-10-{day}_P05_hmm", share=share, desk_s=600)
+    assert v5api.progress(tmp_path, "P05") == {"participant": "P05", "enough": False, "sessions": 3}
+    write_session(tmp_path, "2026-10-14_P05_hmm", share=0.8, desk_s=600)
+    write_session(tmp_path, "2026-10-15_P07_hmm", share=0.1, desk_s=600)                            # someone else
+    p = v5api.progress(tmp_path, "P05")
+    assert p["enough"] and p["first_share"] == 0.5 and p["latest_share"] == 0.8
+    assert p["gain_points"] == 30 and p["minutes_more"] == 3            # 30 points of 10 minutes at the desk
+
+
+def test_the_v5_routes(tmp_path, monkeypatch):
+    from eepy.launcher import v5api
+
+    write_session(tmp_path, "2026-10-16_P05_hmm")
+    monkeypatch.setattr(v5api, "SESSIONS", tmp_path)
+    launcher = make_launcher(backend="dry")
+    launcher.settings.panel_port = free_port()                                          # no panel there
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(launcher))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def call(path, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(base + path, data=data, method="POST" if data else "GET",
+                                         headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, json.load(response)
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.load(exc)
+
+    try:
+        code, data = call("/api/v5/sessions?participant=P05")
+        assert code == 200 and [s["name"] for s in data["sessions"]] == ["2026-10-16_P05_hmm"]
+        assert call("/api/v5/session?name=2026-10-16_P05_hmm")[1]["participant"] == "P05"
+        assert call("/api/v5/session?name=..%2Fsecret")[0] == 404
+        assert call("/api/v5/progress?participant=P05")[1]["enough"] is False
+        assert call("/api/v5/panel/state")[0] == 502                                    # the panel is not running
+        assert call("/api/v5/panel/play", {"behavior": "x", "intensity": 0.5})[0] == 502
+        assert call("/api/v5/panel/nope", {})[0] == 404
+        assert call("/api/v5/volume")[0] == 409                                         # dry: no speaker
+        assert call("/api/v5/whatever", {})[0] == 404
+        assert call("/api/v5/panel/play", [1, 2])[0] == 400                             # not a JSON object
+    finally:
+        server.shutdown()

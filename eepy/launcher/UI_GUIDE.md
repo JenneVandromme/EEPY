@@ -55,7 +55,9 @@ card lo dice, ma per lavorare sulla UI non serve (basta il dry run). Il launcher
 | `eepy/launcher/parts.py` | I tre programmi (sim, panel, vision): comandi, stati, porte, impostazioni. |
 | `eepy/launcher/bandit.py`, `decisions.py`, `rewards.py` | Backend dei tab Bandit, Decisions, Rewards. |
 | `eepy/launcher/README.md` | Cosa fa il launcher, dal punto di vista dell'utente. |
-| `tests/test_launcher.py` | Test (17). Controllano la logica e l'API, non l'aspetto. |
+| `tests/test_launcher.py` | Test (23). Controllano la logica e l'API, non l'aspetto. |
+| `eepy/launcher/static/v5/` | La **pagina nuova** (`/v5`): `index.html`, `app.js`, `app.css`, `ds/` (design system) e `img/`. Vedi la sezione 9. |
+| `eepy/launcher/v5api.py` | Il backend della pagina nuova: passa le chiamate al panel, il volume del robot, legge le sessioni registrate. |
 
 ---
 
@@ -220,3 +222,26 @@ Per aggiornare la base con le novità del team: `git fetch origin`, poi
 Se un giorno vuoi proporre le modifiche al team, sblocca il push consapevolmente
 (`git config --unset branch.try/launcher-ui.pushRemote`) e apri una PR.
 Fino ad allora tutto resta su questo computer.
+
+---
+
+## 9. La pagina nuova: `/v5`
+
+`python3 launch.py`, poi **http://127.0.0.1:8090/v5**. La pagina vecchia su `/` resta com'era.
+
+- **File:** `static/v5/index.html` (la cornice), `app.js` (tutte le schermate, route con `#/...`),
+  `app.css`, `ds/` (token, `launcher-calm.css`, `bundle.css` senza Google Fonts, `icons.js`
+  estratto da `bundle.js`, che richiede React e non si usa) e `img/`. Nessun build step: basta
+  ricaricare la pagina.
+- **Schermate:** `#/` Home, `#/setup`, `#/starting`, `#/desk` (desk check), `#/control`,
+  `#/done/<sessione>`, `#/sessions`, `#/story/<sessione>`, `#/learned`, `#/advanced`.
+- **API in più** (solo `v5api.py`, libreria standard):
+  - `GET/POST /api/v5/panel/<chiamata>`: passa al panel (porta `panel_port`) solo le sue chiamate
+    elencate in `PANEL_GET` / `PANEL_POST`, senza cambiarle. Panel spento: 502.
+  - `GET/POST /api/v5/volume`: il volume del robot dal suo daemon (con dry run: 409).
+  - `GET /api/v5/sessions?participant=`, `/api/v5/session?name=`, `/api/v5/progress?participant=`:
+    leggono `data/sessions/` (events.jsonl, state.csv, meta.json). Non scrivono niente.
+- **Provare senza robot né camera:** Set up → No robot, un codice tipo P99, Start session.
+  Il panel parte, la sessione si apre, il desk check si salta ("Skip the check") e il control
+  panel funziona (le mosse vengono registrate, il robot non c'è). Le schermate di analisi usano le
+  sessioni in `data/sessions/`.

@@ -82,3 +82,25 @@ Mixing is fine: a program started in a terminal shows as purple, and **Start all
 
 The MuJoCo simulator opens in its own window: to show it in a presentation, share the
 whole screen rather than the browser tab.
+
+## The new page (trial): http://127.0.0.1:8090/v5
+
+On the `try/launcher-ui` branch the launcher also serves a new page at **/v5**, built from the
+EEPY design system. The page at **/** above stays as it is. The new page goes through a session
+step by step:
+
+| Screen | What it does |
+|---|---|
+| **Home** | A greeting, **Start a session**, **Same as last time**, and day/night (Auto / Light / Dark). |
+| **Set up** | Participant code, which robot (no robot / simulator / real), who decides (the four modes), and a self-check with the install commands for anything missing. |
+| **Waking up** | Starts the programs in order (like Start all), then opens the participant's session in the panel. If one does not start, it says which one and shows the end of its log. |
+| **Desk check** | The panel's calibration: reuse the last one, check now (face, gaze dots full screen, one minute of work), or skip with a reason. |
+| **Control panel** | What EEPY thinks right now, what it is doing (hold it back / let it continue), the ladders with their keys, lines and free text with gentle/direct tone, the robot's volume, markers, notes, the session log, and the Live HMM. **Stop EEPY** (Esc or Space) stops moves and voice; **End session** (red) asks first. |
+| **Wrap up** | How the session ended, time, focus, nudges and what worked, and the time won back against the first three sessions. |
+| **Analyze** | **Sessions** (every session with its states, per participant), **Session story** (focus curve, every moment with why it happened and what came of it), **What I learned** (the bandit per situation, and Forget). |
+| **Advanced tools** | The programs, the settings, start/stop all, the terminal commands, and all their output. |
+
+The page talks only to the launcher. The launcher passes a fixed list of the panel's own calls
+through (`/api/v5/panel/...`), reads the robot's volume from its daemon, and reads the
+recorded sessions in `data/sessions/` without writing anything (`v5api.py`, standard library
+only). Nothing in the panel or the vision program changes.
