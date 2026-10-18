@@ -366,10 +366,6 @@
       return '<li class="' + (now ? "is-now" : "") + (isBad ? " is-bad" : "") + '"' + (up || now || isBad ? "" : ' style="color: var(--ink-muted);"') + ">" + mark + PART_NAMES[p.name] + "</li>";
     }).join("") + "</ol>";
     var frac = w.list.length ? w.done / w.list.length : 0;
-    var ring = '<div class="ring"><svg width="260" height="260" viewBox="0 0 260 260" aria-hidden="true"><circle cx="130" cy="130" r="120" fill="none" style="stroke: var(--time-track);" stroke-width="6"></circle>'
-      + '<circle cx="130" cy="130" r="120" fill="none" style="stroke: ' + (w.failed ? "var(--error)" : "var(--time-focus)") + ';" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + Math.max(8, frac * 754).toFixed(0) + ' 754" transform="rotate(-90 130 130)"></circle></svg>'
-      + (status.busy ? '<svg class="spin" width="260" height="260" viewBox="0 0 260 260" aria-hidden="true"><circle cx="130" cy="130" r="120" fill="none" style="stroke: var(--time-focus-start);" stroke-width="6" stroke-linecap="round" stroke-dasharray="60 694"></circle></svg>' : "")
-      + '<img class="' + (w.failed ? "" : "bob") + '" src="img/eepy-builder.svg" alt="EEPY in a builder\'s hat"></div>';
     var title, text, extra = "", buttons;
     if (w.failed) {
       title = { vision: "I couldn't open my eyes.", panel: "My control panel didn't start.", sim: "My body didn't start." }[w.bad] || "Something didn't start.";
@@ -420,11 +416,30 @@
       text = esc(status.step || "I'm starting everything myself.");
       buttons = '<span class="caption muted">If something won\'t start, I\'ll tell you right here what to do.</span>';
     }
-    main.innerHTML = '<section class="wake">' + ring
-      + '<div style="display: flex; flex-direction: column; align-items: center; gap: var(--space-xs);">'
-      + '<span class="caption eyebrow"' + (w.failed ? ' style="color: var(--error);"' : "") + ">Run a session · step 2 of 3 · waking up</span>"
-      + '<h1 class="display-md" aria-live="polite">' + title + '</h1><span class="body-lg muted" style="max-width: 560px;">' + text + "</span></div>"
-      + pills + extra + buttons + "</section>";
+    // Built once, then only what changed is updated: redrawing the ring every second restarted its
+    // spin (and EEPY's bob) each time, so the loading looked jerky.
+    if (!$("#wake")) {
+      main.innerHTML = '<section class="wake" id="wake"><div class="ring">'
+        + '<svg width="260" height="260" viewBox="0 0 260 260" aria-hidden="true"><circle cx="130" cy="130" r="120" fill="none" style="stroke: var(--time-track);" stroke-width="6"></circle>'
+        + '<circle id="ring-done" class="ring__done" cx="130" cy="130" r="120" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="8 754" transform="rotate(-90 130 130)"></circle></svg>'
+        + '<svg id="ring-spin" class="spin" width="260" height="260" viewBox="0 0 260 260" aria-hidden="true"><circle cx="130" cy="130" r="120" fill="none" style="stroke: var(--time-focus-start);" stroke-width="6" stroke-linecap="round" stroke-dasharray="90 664"></circle></svg>'
+        + '<img id="ring-img" class="bob" src="img/eepy-builder.svg" alt="EEPY in a builder\'s hat"></div>'
+        + '<div style="display: flex; flex-direction: column; align-items: center; gap: var(--space-xs);">'
+        + '<span class="caption eyebrow" id="wake-eyebrow">Run a session · step 2 of 3 · waking up</span>'
+        + '<h1 class="display-md" aria-live="polite" id="wake-title"></h1><span class="body-lg muted" style="max-width: 560px;" id="wake-text"></span></div>'
+        + '<div id="wake-pills"></div><div id="wake-extra" class="wake__extra"></div><div id="wake-buttons" class="wake__extra"></div></section>';
+    }
+    var done = $("#ring-done");
+    done.setAttribute("stroke-dasharray", Math.max(8, frac * 754).toFixed(0) + " 754");
+    done.style.stroke = w.failed ? "var(--error)" : "var(--time-focus)";
+    $("#ring-spin").style.opacity = status.busy || ask.busy ? "1" : "0";
+    $("#ring-img").classList.toggle("bob", !w.failed);
+    $("#wake-eyebrow").style.color = w.failed ? "var(--error)" : "";
+    setHTML($("#wake-title"), title);
+    setHTML($("#wake-text"), text);
+    setHTML($("#wake-pills"), pills);
+    setHTML($("#wake-extra"), extra);
+    setHTML($("#wake-buttons"), buttons);
   }
 
   function fetchLog(part) {
