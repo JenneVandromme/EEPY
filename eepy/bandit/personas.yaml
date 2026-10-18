@@ -1,0 +1,40 @@
+# ===========================================================================
+#  personas.yaml -- simulated users with HIDDEN preferences, for the bandit's
+#  smoke simulation (A24: python -m eepy.bandit.smoke, or the launcher's Bandit tab).
+#
+#  THESE NUMBERS ARE MADE UP. They give the bandit a known right answer to find;
+#  they say nothing about real people. (D10's personas.csv would replace them.)
+#
+#  Per ladder and level, when the user is in that state and gets that nudge:
+#    comply   the chance it works (back to focus / goes to bed)
+#    snooze   the chance they ask for more time (spoken levels)
+#    dismiss  the chance they say no (spoken levels)
+#  bedtime_late: the bedtime table after 23:00 (when it differs).
+#  best: the level the bandit should learn to prefer, per bucket (for the report).
+# ===========================================================================
+
+personas:
+  glance_responder:
+    description: wordless nudges work; being spoken to annoys
+    refocus:   {1: {comply: 0.55}, 2: {comply: 0.45}, 3: {comply: 0.10, dismiss: 0.45}, 4: {comply: 0.15, dismiss: 0.35}}
+    bedtime:   {1: {comply: 0.25}, 2: {comply: 0.30}, 3: {comply: 0.08, dismiss: 0.40}, 4: {comply: 0.10, snooze: 0.2, dismiss: 0.4}, 5: {comply: 0.3}}
+    best: {refocus_early: 1, refocus_late: 1, bedtime_early: 2, bedtime_late: 2}
+
+  needs_words:
+    description: ignores wordless nudges; a spoken check works
+    refocus:   {1: {comply: 0.03}, 2: {comply: 0.05}, 3: {comply: 0.65}, 4: {comply: 0.35}}
+    bedtime:   {1: {comply: 0.02}, 2: {comply: 0.04}, 3: {comply: 0.55, snooze: 0.1}, 4: {comply: 0.30, snooze: 0.25}, 5: {comply: 0.5}}
+    best: {refocus_early: 3, refocus_late: 3, bedtime_early: 3, bedtime_late: 3}
+
+  break_taker:
+    description: only a real break gets them back
+    refocus:   {1: {comply: 0.04}, 2: {comply: 0.06}, 3: {comply: 0.10, dismiss: 0.15}, 4: {comply: 0.80}}
+    bedtime:   {1: {comply: 0.05}, 2: {comply: 0.10}, 3: {comply: 0.25, snooze: 0.1}, 4: {comply: 0.35, snooze: 0.2}, 5: {comply: 0.5}}
+    best: {refocus_early: 4, refocus_late: 4, bedtime_early: 4, bedtime_late: 4}
+
+  late_sleeper:
+    description: before 23:00 bedtime nudges are brushed off; after 23:00 a spoken check sends them to bed, but negotiating annoys
+    refocus:   {1: {comply: 0.20}, 2: {comply: 0.30}, 3: {comply: 0.45}, 4: {comply: 0.50}}
+    bedtime:   {1: {comply: 0.02}, 2: {comply: 0.03}, 3: {comply: 0.05, dismiss: 0.30}, 4: {comply: 0.05, dismiss: 0.50}, 5: {comply: 0.1, dismiss: 0.3}}
+    bedtime_late: {1: {comply: 0.10}, 2: {comply: 0.20}, 3: {comply: 0.75}, 4: {comply: 0.10, dismiss: 0.60}, 5: {comply: 0.4}}
+    best: {refocus_early: 4, refocus_late: 4, bedtime_early: 1, bedtime_late: 3}

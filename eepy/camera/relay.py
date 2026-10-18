@@ -25,6 +25,12 @@ PROTOCOL (one request per line; the connection stays open):
     POSE\\n   -> {"ok": true, "yaw": .., "pitch": .., "roll": .., "body_yaw": .., "t": ..}
                 ({"ok": false} when no pose is known)
     STATUS\\n -> {"ok": true, "camera": "real"|null, "frames": .., "clients": .., ...}
+    USER {"yaw": .., "pitch": ..}\\n -> {"ok": true}   (vision -> panel: where the student's
+                face is, relative to the robot's gaze; USER null when there is no face)
+    SAY "line_id"\\n -> {"ok": .., "spoken": ..}  (vision -> panel: speak a line, A12)
+    POLL\\n   -> {"ok": true, "command": {...} | null}  (panel -> vision commands, A12)
+    CALIB {...}\\n -> {"ok": true}   (vision -> panel: calibration progress, A12)
+    STATE {...}\\n -> {"ok": true}   (vision -> panel: the estimated user state, A13)
 
 Python 3.9, standard library only (the SDK is imported only by main()).
 """
@@ -72,10 +78,20 @@ class CameraRelay:
 
     def __init__(self, port: int, frame_fn: Optional[FrameFn] = None,
                  pose_fn: Optional[PoseFn] = None, fps: float = 15.0,
-                 label: Union[None, str, Callable[[], Optional[str]]] = None) -> None:
+                 label: Union[None, str, Callable[[], Optional[str]]] = None,
+                 user_fn: Optional[Callable[[Optional[Dict[str, float]]], None]] = None,
+                 say_fn: Optional[Callable[[str], bool]] = None,
+                 command_fn: Optional[Callable[[], Optional[Dict[str, Any]]]] = None,
+                 calib_fn: Optional[Callable[[Dict[str, Any]], None]] = None,
+                 state_fn: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
         self.port = port
         self.frame_fn = frame_fn
         self.pose_fn = pose_fn
+        self.user_fn = user_fn      # receives "where the student's face is" from the vision process
+        # The calibration (A12): the vision process asks the panel to SPEAK a line,
+        # POLLs it for commands ("calibrate", "reuse"...) and reports progress (CALIB).
+        self.say_fn, self.command_fn, self.calib_fn = say_fn, command_fn, calib_fn
+        self.state_fn = state_fn    # the user state (A13), for the panel's status bar
         self.fps = fps
         self._label = label if frame_fn is not None else None
         self._grabs: Deque[float] = deque(maxlen=64)
@@ -100,7 +116,7 @@ class CameraRelay:
                 relay._client(+1)
                 try:
                     for raw in self.rfile:
-                        header, payload = relay._answer(raw.strip().upper())
+                        header, payload = relay._answer(raw.strip())
                         self.wfile.write(json.dumps(header).encode() + b"\n" + payload)
                         self.wfile.flush()
                 except (ConnectionError, OSError):
@@ -192,7 +208,25 @@ class CameraRelay:
                         self._error = str(exc) or type(exc).__name__
             self._stop.wait(max(0.0, period - (monotonic() - started)))
 
-    def _answer(self, command: bytes) -> Tuple[Dict[str, Any], bytes]:
+    def _answer(self, line: bytes) -> Tuple[Dict[str, Any], bytes]:
+        word, _, argument = line.partition(b" ")
+        command = word.upper()
+        if command == b"USER":
+            return self._user(argument)
+        if command == b"SAY":
+            return self._call(self.say_fn, argument, lambda fn, value: {"spoken": bool(fn(str(value)))})
+        if command == b"POLL":
+            command_value = None
+            if self.command_fn is not None:
+                try:
+                    command_value = self.command_fn()
+                except Exception:  # noqa: BLE001
+                    log.exception("The command source failed")
+            return {"ok": True, "command": command_value}, b""
+        if command == b"CALIB":
+            return self._call(self.calib_fn, argument, lambda fn, value: fn(dict(value)) or {})
+        if command == b"STATE":
+            return self._call(self.state_fn, argument, lambda fn, value: fn(dict(value)) or {})
         if command == b"FRAME":
             with self._lock:
                 jpeg, t, index = self._jpeg, self._t, self._index
@@ -210,6 +244,34 @@ class CameraRelay:
         if command == b"STATUS":
             return self.status(), b""
         return {"ok": False, "error": f"unknown request {command[:20]!r}"}, b""
+
+
+    def _call(self, fn: Optional[Callable[..., Any]], argument: bytes,
+              use: Callable[[Callable[..., Any], Any], Dict[str, Any]]) -> Tuple[Dict[str, Any], bytes]:
+        """A JSON argument handed to a panel-side callback; {"ok": false} when there is none."""
+        if fn is None:
+            return {"ok": False, "error": "not available here"}, b""
+        try:
+            value = json.loads(argument or b"null")
+            return dict(use(fn, value), ok=True), b""
+        except Exception as exc:  # noqa: BLE001 -- the panel must never crash on a message
+            log.warning("Relay message failed: %s", exc)
+            return {"ok": False, "error": str(exc)[:200]}, b""
+
+    def _user(self, argument: bytes) -> Tuple[Dict[str, Any], bytes]:
+        """USER {"yaw": .., "pitch": ..} -- the student's face, as head angles
+        relative to the robot's current gaze (or USER null: no face)."""
+        try:
+            value = json.loads(argument or b"null")
+            offset = None if value is None else {"yaw": float(value["yaw"]), "pitch": float(value["pitch"])}
+        except (ValueError, KeyError, TypeError):
+            return {"ok": False, "error": "USER needs {\"yaw\": .., \"pitch\": ..} or null"}, b""
+        if self.user_fn is not None:
+            try:
+                self.user_fn(offset)
+            except Exception:  # noqa: BLE001 -- a bad receiver must not break the relay
+                log.exception("The user-target receiver failed")
+        return {"ok": True}, b""
 
 
 class RelayClient:
@@ -257,6 +319,28 @@ class RelayClient:
 
     def status(self) -> Dict[str, Any]:
         return self.request("STATUS")[0]
+
+    def send_user(self, offset: Optional[Dict[str, float]]) -> None:
+        """Tell the panel where the student's face is (None: no face)."""
+        self.request("USER " + json.dumps(offset))
+
+    def say(self, line_id: str) -> bool:
+        """Ask the panel to speak a line (robot voice). False when it could not."""
+        header, _ = self.request("SAY " + json.dumps(line_id))
+        return bool(header.get("ok") and header.get("spoken"))
+
+    def poll(self) -> Optional[Dict[str, Any]]:
+        """A command from the panel for the vision process, or None."""
+        header, _ = self.request("POLL")
+        return header.get("command") if header.get("ok") else None
+
+    def report(self, progress: Dict[str, Any]) -> None:
+        """Calibration progress / result, for the panel's status indicator."""
+        self.request("CALIB " + json.dumps(progress))
+
+    def send_state(self, state: Dict[str, Any]) -> None:
+        """The estimated user state (A13), for the panel's status bar."""
+        self.request("STATE " + json.dumps(state))
 
     def close(self) -> None:
         for thing in (self._file, self._sock):

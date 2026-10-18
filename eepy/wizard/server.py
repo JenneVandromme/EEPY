@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import logging
 import threading
 import time
@@ -57,6 +58,9 @@ from eepy.logs import log as central_log
 from eepy.logs.check import clear_stale_pointer, stale_pointer
 from eepy.logs.clock import monotonic as shared_clock
 from eepy.logs.schema import IMPLEMENTED_MODES
+
+# The modes where the robot nudges on its own, and the state estimator each acts on.
+AUTONOMY_MODES = {"rules": "rules", "hmm": "hmm", "hmm_bandit": "hmm"}   # mode -> the estimator it acts on
 from eepy.logs.session import SessionError
 
 from .config import CONFIG_PATH, ConfigError, Panel, PanelConfig, build_panel, load_config
@@ -103,8 +107,17 @@ class Wizard:
         speech_callback: Callable[[str, str], None] | None = None,
         speaker_factory: Callable[[], Any] | None = None,
         camera_relay: tuple[int, float] | None = None,
+        calibration_store: Any = None,
+        session_prior: Path | None = None,
+        explanations: Any = None,
     ) -> None:
+        from eepy.settings import Explanations
+
+        self.rewards: Any = None                 # A22: a RewardTracker during a session
+        self._nudges_session = 0
         self.backend_factory = backend_factory
+        # A20: explanations after nudges (an experimental condition, recorded in meta.json)
+        self.explanations = explanations if explanations is not None else Explanations()
         self.backend_name = backend_name
         self.behaviors_dir = Path(behaviors_dir)
         self.sounds_dir = Path(sounds_dir)
@@ -115,6 +128,10 @@ class Wizard:
         self.speaker_factory = speaker_factory
         self.mode = mode
         self.mode_implemented = mode in IMPLEMENTED_MODES
+        # --session-prior FILE.json (HMM, A16): read at each session start, written to prior.json.
+        self.session_prior_path = Path(session_prior) if session_prior is not None else None
+        self._session_started_at = -1e9
+        self._estimator_warned = False
         # The central logger, unless a test passes its own.
         self.sessions = session_log if session_log is not None else central_log
         self.clock = self.sessions.clock
@@ -164,10 +181,44 @@ class Wizard:
             self._error(f'Mode "{mode}" has no controller yet, so nothing decides on its own: '
                         "the robot only does what you press. Sessions are still recorded "
                         f'as mode "{mode}".')
+        # The rules and hmm modes (A14, A16): the robot nudges on its own, from the state
+        # the vision process sends. eepy/interaction/README.md.
+        self.autonomy: Any = None
+        self._autonomy_thread: threading.Thread | None = None
+        if mode in AUTONOMY_MODES:
+            self._start_autonomy()
 
         # The camera relay: the robot's camera and head pose, for the vision
         # process, on 127.0.0.1 only (eepy/camera/relay.py). (port, fps); None
         # in tests. A busy port is a warning, not a reason to refuse to start.
+        # "look_at: user" follows the real student when the vision process reports
+        # the face (relay USER message); otherwise the default from _blocks.yaml.
+        # One provider for the panel's lifetime, handed to every player it creates.
+        from eepy.behaviors.pose import Pose
+        from eepy.behaviors.targets import StaticTargetProvider, TrackingTargetProvider
+
+        self._static_targets = StaticTargetProvider(lambda: self.library)
+        self.user_target = TrackingTargetProvider(
+            self._static_targets,
+            pose=lambda: self.player.pose if self.player is not None else Pose())
+        # The robot's resting direction, aimed at the participant's face (see aim()).
+        # None: straight ahead, as before. Kept across reconnects and sessions.
+        self.base: Any = None
+        self.aim_state: dict = {"state": "none"}
+        self._aim_thread: threading.Thread | None = None
+        self._off_since: float | None = None          # the face off-centre since (automatic aim)
+        self._last_auto_aim = -1e9
+        # The calibration step of a session (A12). It runs IN the vision process (that
+        # program has the camera); the panel queues commands for it, speaks its lines
+        # and shows its progress. See eepy/perception/calibration/remote.py.
+        self.calibration: dict = {"state": "none"}
+        self.calibration_store = calibration_store          # None: data/calibration/
+        self._calibration_commands: deque = deque()
+        self._vision_seen = -1e9
+        # The participant's state as the vision process estimates it (A13): shown in
+        # the status bar. A14's escalation will act on it here.
+        self.user_state: dict | None = None
+        self._user_state_seen = -1e9
         self.camera_relay = None
         if camera_relay is not None:
             self._start_camera_relay(*camera_relay)
@@ -188,7 +239,70 @@ class Wizard:
         """Log an event (saved if a session is running) and show it on the page."""
         record = self.sessions.event(kind, source, t_mono=t, **data)
         self._push(record)
+        if self.rewards is not None and record.get("saved"):
+            if kind in ("nudge_decision", "wizard_nudge"):
+                self._nudges_session += 1
+            self.rewards.on_record(record)           # A22: the same events the offline tool reads
         return record
+
+    # ------------------------------------------------------------- rewards (A22)
+
+    def _start_rewards(self, record: dict) -> None:
+        """A RewardTracker per session: every logged event and user state goes in, a
+        nudge_reward event comes out per nudge (eepy/bandit/rewards.py)."""
+        from eepy.bandit.context import FocusTrend
+        from eepy.bandit.rewards import RewardConfigError, RewardTracker, load_config
+
+        self.rewards, self._nudges_session = None, 0
+        self._focus_trend = FocusTrend()
+        try:
+            config = load_config()
+        except RewardConfigError as exc:
+            self._error(f"Rewards are off this session: config/rewards.yaml has a problem.\n{exc}")
+            return
+        try:
+            from eepy.interaction.config import load as load_escalation
+            escalation = load_escalation()
+        except Exception:  # noqa: BLE001 -- no reaction windows: operator nudges only end with the session
+            escalation = None
+        self._reward_escalation = escalation
+        self.rewards = RewardTracker(config, escalation, emit=self._log_reward)
+        self.rewards.on_record(record)
+
+    def _log_reward(self, event: Any) -> None:
+        fields = event.as_dict()
+        source = fields.pop("source")
+        fields["t_decision"] = fields.pop("t")
+        fields.pop("session", None)
+        self._note("nudge_reward", source, **fields)
+        policy = getattr(self.autonomy, "policy", None)
+        if hasattr(policy, "observe"):                  # A24: the bandit learns from each reward
+            try:
+                used = policy.observe(event)
+                if used:
+                    self._note("bandit_update", "auto", decision_id=event.decision_id, reward=event.reward,
+                               participant=policy.participant, updates=policy.data.get("updates"))
+            except Exception as exc:  # noqa: BLE001 -- learning must never stop the session
+                self._error(f"The bandit could not learn from nudge {event.decision_id}: {exc}")
+
+    def _wizard_nudge(self, behavior: str, intensity: float, pressed: float) -> None:
+        """An operator's play of a ladder behaviour is a nudge too (source=wizard), with the
+        context at the press: only what was known then."""
+        b = self.library.behaviors.get(behavior)
+        if self.rewards is None or b is None or b.ladder is None or not b.level:
+            return
+        est = dict(self.user_state or {})
+        window = None
+        esc = getattr(self, "_reward_escalation", None)
+        if esc is not None and b.ladder in esc.ladders:
+            window = esc.ladders[b.ladder].reaction.get(b.level)
+        context = {k: est.get(k) for k in ("state", "probs", "confidence", "uncertainty", "most_likely",
+                                           "calibrated", "estimator", "pending")}
+        context.update(focused_trend_20s=self._focus_trend.trend(pressed), ladder=b.ladder, level=None,
+                       session_seconds=round(pressed - self._session_started_at, 1),
+                       nudges_session=self._nudges_session)
+        self._note("wizard_nudge", "wizard", t=pressed, ladder=b.ladder, level=b.level, behavior=behavior,
+                   intensity=round(intensity, 3), reaction_window=window, context=context)
 
     def _error(self, message: str) -> None:
         self.last_error = {"message": message, "wall": self.clock.wall(shared_clock())}
@@ -223,9 +337,12 @@ class Wizard:
             speaker = self.speaker_factory() if self.speaker_factory else None
             player = BehaviorPlayer(backend, behaviors_dir=self.behaviors_dir,
                                     sounds_dir=self.sounds_dir, speaker=speaker,
-                                    speech_callback=self.speech_callback)
+                                    speech_callback=self.speech_callback,
+                                    targets=self.user_target)
             unsubscribe = player.events.subscribe(self._on_event)
             player.start()
+            if self.base is not None:                 # a reconnect keeps the aim
+                player.set_base(self.base)
         except Exception as exc:  # noqa: BLE001 -- shown to the operator
             with self._conn_lock:
                 self.player = None
@@ -334,6 +451,9 @@ class Wizard:
             raise WizardError(str(exc)) from None
         self._note("wizard_command", "wizard", t=pressed, action="play", behavior=behavior,
                    intensity=round(intensity, 3), via=via)
+        self._wizard_nudge(behavior, intensity, pressed)
+        if self.autonomy is not None:
+            self.autonomy.operator_played(behavior, pressed)
 
     def stop(self, via: str = "click") -> None:
         # Deliberately no lock and no connection check: STOP must never wait
@@ -364,14 +484,20 @@ class Wizard:
             raise WizardError(str(exc)) from None
         self._note("wizard_command", "wizard", t=pressed, action="say", line_id=line_id,
                    text=text, tone=tone, via=via)
+        if self.autonomy is not None:
+            self.autonomy.operator_played(line_id or "free text", pressed)
         return spoken
 
     def annotate(self, marker: str, via: str = "key") -> dict:
         markers = {m.id: m for m in self.config.markers}
         if marker not in markers:
             raise WizardError(f'There is no marker called "{marker}".')
-        return self._note("annotation", "wizard", marker=marker,
-                          label=markers[marker].label, via=via)
+        record = self._note("annotation", "wizard", marker=marker,
+                            label=markers[marker].label, via=via)
+        if self.autonomy is not None and marker in self.REPLY_MARKERS:
+            # The participant's answer steers the escalation (later speech does, A28).
+            record = dict(record, autonomy=self.autonomy.reply(self.REPLY_MARKERS[marker], record["t_mono"]))
+        return record
 
     def note(self, text: str) -> dict:
         text = (text or "").strip()
@@ -380,26 +506,49 @@ class Wizard:
         return self._note("note", "wizard", text=text)
 
     def start_session(self, participant: str, notes: str | None = None) -> dict:
+        prior = self._read_session_prior()
         try:
             record = self.sessions.start(
                 participant, mode=self.mode, backend=self.backend_name, notes=notes,
                 intensity_default=self.config.default_intensity,
                 behaviors=sorted(self.library.behaviors),
-                markers=[m.id for m in self.config.markers])
+                markers=[m.id for m in self.config.markers], prior=prior,
+                explanations=self.explanations.model_dump())
         except SessionError as exc:
             raise WizardError(str(exc)) from None
+        self._session_started_at = shared_clock()
+        self._estimator_warned = False
         self._push(record)
+        self._start_rewards(record)
         if not self.mode_implemented:
             self._note("mode_not_implemented", "system", mode=self.mode)
+        self._offer_calibration(participant)
+        if self.autonomy is not None:
+            policy = self.autonomy.policy
+            if hasattr(policy, "start"):                  # A24: this participant's posteriors
+                policy.start(participant)
+            info = {"name": policy.name, "setting": self.autonomy.config.policy}
+            if policy.name == "bandit":
+                info.update(bandit=policy.config.as_dict(), file=str(policy.store.path(policy.participant)),
+                            updates_before=policy.data.get("updates", 0))
+            self.sessions.set_meta("policy", info)
+            self.autonomy.session_started(shared_clock())
         self.panel_version += 1
         return record
 
     def end_session(self, reason: str = "operator", notes: str | None = None) -> dict:
+        if self.autonomy is not None and self.sessions.active:
+            self.autonomy.session_ended(shared_clock(), f"session ended ({reason})")
+        if self.rewards is not None and self.sessions.active:
+            self.rewards.finish(shared_clock())         # the open nudges get their reward, in the session
+        self.rewards = None
         try:
             record = self.sessions.end(reason, notes=(notes or "").strip() or None)
         except SessionError as exc:
             raise WizardError(str(exc)) from None
         self._push(record)
+        self.calibration = {"state": "none"}
+        self._calibration_commands.clear()
         self.panel_version += 1
         return record
 
@@ -463,12 +612,435 @@ class Wizard:
             return mini.media.get_frame_jpeg() if mini is not None else None
 
         relay = CameraRelay(port, frame_fn=frame, pose_fn=pose, fps=fps,
-                            label=lambda: "real" if self._robot_camera_client() is not None else None)
+                            label=lambda: "real" if self._robot_camera_client() is not None else None,
+                            user_fn=self._on_user, say_fn=self._calibration_say,
+                            command_fn=self._next_calibration_command,
+                            calib_fn=self._calibration_report, state_fn=self._state_report)
         try:
             self.camera_relay = relay.start()
         except RelayPortBusy as exc:
             self._error(f"The camera relay could not start, so the vision process gets no robot "
                         f"camera or head position from this panel.\n{exc}")
+
+    # --------------------------------------------------------------- calibration
+
+    def _calibration_setup(self) -> str:
+        return "robot" if self.backend_name == "real" else "laptop"
+
+    def _offer_calibration(self, participant: str) -> None:
+        """After Start session: is there a recent calibration to reuse?"""
+        try:
+            from eepy.perception.calibration import recent
+            from eepy.perception.gaze.calibration import CalibrationStore
+
+            store = self.calibration_store or CalibrationStore()
+            found = recent(store, participant, self._calibration_setup())
+        except Exception:  # noqa: BLE001 -- an unreadable file must not block a session
+            log.exception("Could not look for an earlier calibration")
+            found = None
+        self.calibration = {"state": "pending", "user": participant, "reuse": found}
+
+    def calibration_command(self, action: str, reason: str | None = None,
+                            parts: list | None = None, via: str = "click") -> dict:
+        """The operator pressed Calibrate / Reuse / Skip / Stop."""
+        if not self.sessions.active:
+            raise WizardError("Start a session first: the calibration belongs to a participant.")
+        if action not in ("calibrate", "reuse", "skip", "stop"):
+            raise WizardError(f'"{action}" is not a calibration action.')
+        user = self.calibration.get("user") or self.sessions.participant
+        self._note("wizard_command", "wizard", action=f"calibration_{action}", via=via)
+        if action == "skip":
+            # Handled here: it needs no camera, and must be logged even without a vision process.
+            reason = (reason or "").strip() or "skipped by the operator"
+            self.calibration = {"state": "skipped", "user": user, "reason": reason}
+            self.sessions.event("calibration", "wizard", result="skipped", user=user,
+                                setup=self._calibration_setup(), reason=reason[:300])
+            self.sessions.set_meta("calibration", {"result": "skipped", "reason": reason[:300]})
+            if self.autonomy is not None:
+                self.autonomy.calibration("skipped", shared_clock())
+            return self.calibration
+        if action == "reuse" and not self.calibration.get("reuse"):
+            raise WizardError("There is no recent calibration to reuse for this participant.")
+        if action == "reuse":
+            self._restore_aim(user)
+        if action == "calibrate" and self._aim_first():
+            # Aim at the face first, so the calibration is taken from the robot's new view;
+            # the command goes to the vision process when the aim is done (or gave up).
+            command = {"command": action, "user": user, **({"parts": list(parts)} if parts else {})}
+            self.calibration = dict(self.calibration, state="requested",
+                                    message="aiming at the participant first")
+            self.aim(then=command)
+            return self.calibration
+        command = {"command": action, "user": user}
+        if parts:
+            command["parts"] = list(parts)
+        self._calibration_commands.append(command)
+        if action != "stop":
+            self.calibration = dict(self.calibration, state="requested", message="")
+        return self.calibration
+
+    # ------------------------------------------------------- aiming at the participant
+
+    def _on_user(self, offset: dict | None) -> None:
+        """The vision process reports where the face is (relay USER, ~5 a second)."""
+        self.user_target.observe(offset)
+        try:
+            self._maybe_auto_aim()
+        except Exception:  # noqa: BLE001 -- aiming must never break the face reports
+            log.exception("Automatic aim failed")
+
+    def _maybe_auto_aim(self) -> None:
+        """Aim by itself: the face has been more than aim.tolerance_deg from where the
+        robot rests for aim.auto_after_s, while no behaviour plays (the idle may) and no
+        calibration runs; at most every aim.auto_min_gap_s."""
+        cfg = self.config.aim
+        player = self.player
+        if (not cfg.enabled or not cfg.auto or player is None or player.error is not None
+                or (self._aim_thread is not None and self._aim_thread.is_alive())
+                or self.calibration.get("state") in ("requested", "running") or player.is_playing()):
+            self._off_since = None
+            return
+        face = self.user_target.current()
+        if face is None:
+            self._off_since = None
+            return
+        yaw0 = float(self.base.yaw or 0.0) if self.base is not None else 0.0
+        pitch0 = float(self.base.pitch or 0.0) if self.base is not None else 0.0
+        if max(abs(face[0] - yaw0), abs(face[1] - pitch0)) <= cfg.tolerance_deg or (
+                self.aim_state.get("state") == "limited" and self._same_limit(face)):
+            self._off_since = None
+            return
+        now = time.monotonic()
+        if self._off_since is None:
+            self._off_since = now
+            return
+        if now - self._off_since < cfg.auto_after_s or now - self._last_auto_aim < cfg.auto_min_gap_s:
+            return
+        self._off_since, self._last_auto_aim = None, now
+        self.aim()
+
+    def _same_limit(self, face: tuple) -> bool:
+        """Already aimed as far as is safe toward about this face: don't try again and again."""
+        last = self.aim_state.get("face")
+        return last is not None and max(abs(face[0] - last[0]), abs(face[1] - last[1])) <= self.config.aim.tolerance_deg
+
+    def _aim_first(self) -> bool:
+        cfg = self.config.aim
+        return (cfg.enabled and cfg.on_calibrate and self.player is not None
+                and self.player.error is None and self.user_target.tracking)
+
+    def aim(self, then: dict | None = None) -> dict:
+        """Point the robot's resting direction at the participant's face: centred,
+        within aim.tolerance_deg, and never further than every behaviour can still
+        play safely from. Runs in the background (a few seconds); `then` is a
+        calibration command to queue when it is done. Returns the aim state."""
+        cfg = self.config.aim
+        if not cfg.enabled:
+            self.aim_state = {"state": "off", "message": "aiming is switched off (config/wizard_panel.yaml, aim)"}
+            if then is not None:
+                self._calibration_commands.append(then)
+            return self.aim_state
+        if self.player is None or self.player.error is not None:
+            raise WizardError("The robot is not connected.")
+        if self._aim_thread is not None and self._aim_thread.is_alive():
+            return self.aim_state
+        self.aim_state = {"state": "aiming", "message": "looking for the face..."}
+        self._aim_thread = threading.Thread(target=self._aim_run, args=(then,), name="eepy-aim", daemon=True)
+        self._aim_thread.start()
+        return self.aim_state
+
+    def reset_aim(self) -> dict:
+        """Straight ahead again."""
+        self._apply_base(None, reason="reset")
+        self.aim_state = {"state": "none", "message": "resting straight ahead"}
+        return self.aim_state
+
+    def _aim_run(self, then: dict | None) -> None:
+        from eepy.behaviors.schema import HeadPose
+
+        cfg = self.config.aim
+        moved = False
+        try:
+            limited = False
+            for _ in range(cfg.rounds):
+                face = self.user_target.current()
+                if face is None:
+                    self.aim_state = {"state": "no_face", "message": "no face seen: is the vision program "
+                                      "running (python -m eepy.perception) and the participant in view?"}
+                    return
+                yaw0 = float(self.base.yaw or 0.0) if self.base is not None else 0.0
+                pitch0 = float(self.base.pitch or 0.0) if self.base is not None else 0.0
+                off = (face[0] - yaw0, face[1] - pitch0)
+                if max(abs(off[0]), abs(off[1])) <= cfg.tolerance_deg:
+                    self.aim_state = self._aimed_state(off, limited)
+                    return
+                want = HeadPose(yaw=max(-cfg.yaw_limit_deg, min(cfg.yaw_limit_deg, face[0])),
+                                pitch=max(-cfg.up_limit_deg, min(cfg.down_limit_deg, face[1])))
+                safe, limited = self._safe_base(want)
+                if (abs(float(safe.yaw or 0) - yaw0) < 0.5 and abs(float(safe.pitch or 0) - pitch0) < 0.5):
+                    self.aim_state = self._aimed_state(off, True)      # as far as it can go
+                    return
+                self._apply_base(safe, reason="aim", face_offset=[round(off[0], 1), round(off[1], 1)],
+                                 limited=limited)
+                moved = True
+                time.sleep(cfg.settle_s)
+            face = self.user_target.current()
+            off = (0.0, 0.0) if face is None or self.base is None else (
+                face[0] - float(self.base.yaw or 0), face[1] - float(self.base.pitch or 0))
+            self.aim_state = self._aimed_state(off, limited)
+        except Exception as exc:  # noqa: BLE001 -- shown to the operator, never stops the panel
+            log.exception("Aiming failed")
+            self.aim_state = {"state": "failed", "message": str(exc)}
+        finally:
+            face = self.user_target.current()
+            if face is not None:
+                self.aim_state["face"] = [round(face[0], 1), round(face[1], 1)]
+            if (self.aim_state.get("state") in ("aimed", "limited") and then is None
+                    and self.calibration.get("state") in ("done", "reused") and moved):
+                self.aim_state["message"] += ("; the robot's view changed after the calibration: "
+                                              "calibrate again if looking away is not detected well")
+            if self.aim_state.get("state") in ("aimed", "limited"):
+                self._save_aim()
+            if then is not None:
+                self._calibration_commands.append(then)
+
+    def _aimed_state(self, off: tuple, limited: bool) -> dict:
+        yaw = float(self.base.yaw or 0.0) if self.base is not None else 0.0
+        pitch = float(self.base.pitch or 0.0) if self.base is not None else 0.0
+        tol = self.config.aim.tolerance_deg
+        state = {"state": "aimed", "yaw": round(yaw, 1), "pitch": round(pitch, 1),
+                 "face_offset": [round(off[0], 1), round(off[1], 1)]}
+        where = f"resting at yaw {yaw:+.0f}°, pitch {pitch:+.0f}°"
+        if max(abs(off[0]), abs(off[1])) <= tol:
+            state["message"] = f"aimed at the face ({where}; face within {tol:g}°)"
+            return state
+        side = ("above" if off[1] < 0 else "below") if abs(off[1]) >= abs(off[0]) else "beside"
+        state.update(state="limited", message=(
+            f"{where}: as far as every behaviour can still play safely. The face is still "
+            f"{max(abs(off[0]), abs(off[1])):.0f}° {side} the centre"
+            + (": raise the robot a little (e.g. a book under it)" if side == "above" else "")
+            if limited else f"{where}; the face is still {max(abs(off[0]), abs(off[1])):.0f}° off the centre"))
+        return state
+
+    def _safe_base(self, want: Any) -> tuple:
+        """The resting direction closest to `want`, on the way from straight ahead, from
+        which every behaviour still passes the safety checks. (base, limited)."""
+        from eepy.behaviors.schema import HeadPose
+
+        player = self.player
+        if not player.check_base(want):
+            return want, False
+        low, high = 0.0, 1.0                           # straight ahead is always safe
+        for _ in range(12):
+            mid = (low + high) / 2
+            cand = HeadPose(yaw=float(want.yaw or 0) * mid, pitch=float(want.pitch or 0) * mid)
+            if player.check_base(cand):
+                high = mid
+            else:
+                low = mid
+        # Rounded TOWARD straight ahead (0.1 degree), so rounding never leaves the safe side.
+        def trunc(x: float) -> float:
+            return math.trunc(x * 10) / 10
+
+        return HeadPose(yaw=trunc(float(want.yaw or 0) * low), pitch=trunc(float(want.pitch or 0) * low)), True
+
+    def _apply_base(self, base: Any, reason: str, **extra: Any) -> None:
+        self.base = base
+        if base is None:
+            self._static_targets.clear("user")
+        else:
+            self._static_targets.set("user", base)         # no face for a moment: still look at them
+        player = self.player
+        if player is not None and player.error is None:
+            player.set_base(base)
+        self._note("robot_base", "wizard", reason=reason,          # saved when a session runs
+                   yaw=None if base is None else round(float(base.yaw or 0), 1),
+                   pitch=None if base is None else round(float(base.pitch or 0), 1), **extra)
+
+    def _calibration_file(self) -> Any:
+        from eepy.perception.gaze.calibration import CalibrationStore
+
+        return self.calibration_store or CalibrationStore()
+
+    def _save_aim(self) -> None:
+        """Kept with the participant's calibration, so Reuse restores it."""
+        user = self.calibration.get("user") or (self.sessions.participant if self.sessions.active else None)
+        if user is None or self.base is None:
+            return
+        try:
+            self._calibration_file().save_section(user, self._calibration_setup(), "robot_base", {
+                "yaw": round(float(self.base.yaw or 0), 1), "pitch": round(float(self.base.pitch or 0), 1),
+                "taken_at": time.strftime("%Y-%m-%d %H:%M")})
+        except Exception:  # noqa: BLE001 -- the aim still works this session
+            log.exception("Could not save the aim")
+
+    def _restore_aim(self, user: str) -> None:
+        from eepy.behaviors.schema import HeadPose
+
+        try:
+            saved = self._calibration_file().section(user, self._calibration_setup(), "robot_base")
+        except Exception:  # noqa: BLE001
+            log.exception("Could not read the saved aim")
+            return
+        if not saved or self.player is None or self.player.error is not None:
+            return
+        base = HeadPose(yaw=float(saved.get("yaw", 0)), pitch=float(saved.get("pitch", 0)))
+        if self.player.check_base(base):               # behaviours changed since: do not use it
+            self.aim_state = {"state": "none", "message": "the saved aim is no longer safe for every "
+                              "behaviour: aim again"}
+            return
+        self._apply_base(base, reason="reuse")
+        self.aim_state = {"state": "aimed", "yaw": base.yaw, "pitch": base.pitch,
+                          "message": f"aim restored from the calibration (yaw {base.yaw:+.0f}°, pitch {base.pitch:+.0f}°)"}
+
+    def _next_calibration_command(self) -> dict | None:
+        """The vision process asks (twice a second): anything for me?"""
+        self._vision_seen = time.monotonic()
+        return self._calibration_commands.popleft() if self._calibration_commands else None
+
+    def _calibration_say(self, line_id: str) -> bool:
+        """The vision process asks to speak a calibration line (robot voice)."""
+        player = self.player
+        if player is None or player.error is not None:
+            return False
+        try:
+            player.say(line_id, tone="hedged", source="system")
+            return True
+        except PlayerError as exc:
+            log.warning("Could not speak %s: %s", line_id, exc)
+            return False
+
+    def _calibration_report(self, progress: dict) -> None:
+        """Progress or the result from the vision process."""
+        state = progress.get("state")
+        self.calibration = dict(self.calibration, **progress)
+        if self.autonomy is not None and state:
+            self.autonomy.calibration(str(state), shared_clock())
+        if state in ("done", "failed", "reused", "stopped") and self.sessions.active:
+            summary = {k: progress.get(k) for k in ("taken_at", "late_evening", "message", "age_days")
+                       if progress.get(k) not in (None, "")}
+            summary["result"] = {"done": "new"}.get(state, state)
+            if progress.get("values"):
+                summary["values"] = progress["values"]
+            try:
+                self.sessions.set_meta("calibration", summary)
+            except SessionError:
+                pass
+
+    def _read_session_prior(self) -> dict | None:
+        """The --session-prior file, read at each session start. A problem is shown and
+        recorded as {"_error": ...}, so the fall-back to the hand-set values is visible."""
+        if self.session_prior_path is None:
+            return None
+        try:
+            data = json.loads(self.session_prior_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("it is not a JSON object ({...})")
+            return data
+        except (OSError, ValueError) as exc:
+            problem = f"{self.session_prior_path}: {exc}"
+            self._error(f"The session prior cannot be used, so the HMM starts from its hand-set values:\n{problem}")
+            return {"_error": problem}
+
+    def _state_report(self, estimate: dict) -> None:
+        """The vision process's newest state estimate (about once a second). In a session of
+        the rules or hmm mode, only an estimate from the matching estimator reaches the
+        escalation; a mismatch (after a 3-s grace at the session start, while the vision
+        program switches) is reported once per session, and autonomy waits."""
+        self.user_state = estimate
+        self._user_state_seen = time.monotonic()
+        if self.rewards is not None and estimate.get("t") is not None:
+            t = float(estimate["t"])
+            self._focus_trend.add(estimate, t)
+            self.rewards.on_state(t, estimate.get("state"))      # judges the operator's open nudge
+        if self.autonomy is None:
+            return
+        expected = AUTONOMY_MODES.get(self.mode)
+        sent = estimate.get("estimator") or "rules"          # older vision programs: always the rules
+        if expected is not None and self.sessions.active and sent != expected:
+            if shared_clock() - self._session_started_at < 3.0:
+                return
+            if not self._estimator_warned:
+                self._error(f'Mode "{self.mode}" acts on the {expected} estimate, but the vision program '
+                            f'sends the {sent} one. Restart it (python -m eepy.perception) '
+                            "or check its --estimator option (see the vision terminal for why the HMM did "
+                            "not start). Autonomy waits until then.")
+                self._estimator_warned = True
+            return                     # not fed: the engine goes stale -> unknown -> nothing happens
+        self.autonomy.on_state(estimate, shared_clock())
+
+    # ------------------------------------------------------------- autonomy (A14)
+
+    REPLY_MARKERS = {"user_accepted": "accepted", "user_snoozed": "snoozed",
+                     "user_dismissed": "dismissed"}
+
+    def _start_autonomy(self) -> None:
+        from eepy.interaction.actuator import PlayerActuator
+        from eepy.interaction.config import EscalationConfigError, check_library
+        from eepy.interaction.config import load as load_escalation
+        from eepy.interaction.engine import EscalationEngine
+        from eepy.interaction.policy import make_policy
+
+        try:
+            config = load_escalation()
+            check_library(config, self.library)
+        except EscalationConfigError as exc:
+            self._error(f"The {self.mode} mode cannot nudge: the escalation config has a problem.\n{exc}")
+            return
+        try:
+            policy = make_policy(config, self.mode)        # hmm_bandit + policy auto: the bandit (A24)
+        except Exception as exc:  # noqa: BLE001 -- a broken bandit config: the fixed escalation plays
+            from eepy.interaction.policy import FixedEscalation
+            self._error(f"The bandit cannot start, so the fixed escalation plays instead:\n{exc}")
+            policy = FixedEscalation(config)
+        actuator = PlayerActuator(lambda: self.player, on_error=self._error, library=lambda: self.library)
+        from eepy.explanations.build import Explainer
+
+        ex = self.explanations
+        self.autonomy = EscalationEngine(
+            config, policy, actuator,
+            log=lambda event_type, t, **fields: self._note(event_type, "auto", t=t, **fields),
+            idle=self.panel.idle, explanations=ex.enabled,
+            explainer=Explainer(ex.top_k, ex.window_min_seconds, ex.window_max_seconds),
+            hour=lambda now: round(time.localtime().tm_hour + time.localtime().tm_min / 60.0, 2))
+        self._autonomy_thread = threading.Thread(target=self._autonomy_loop, args=(config.tick_seconds,),
+                                                 name="eepy-autonomy", daemon=True)
+        self._autonomy_running = True
+        self._autonomy_thread.start()
+
+    def _autonomy_loop(self, period: float) -> None:
+        while getattr(self, "_autonomy_running", False):
+            try:
+                self.autonomy.tick(shared_clock())
+            except Exception as exc:  # noqa: BLE001 -- shown, and the loop goes on
+                log.exception("The escalation failed")
+                self._error(f"The escalation hit a bug (it carries on): {exc}")
+                time.sleep(5)
+            time.sleep(period)
+
+    def set_autonomy_paused(self, paused: bool, via: str = "click") -> dict:
+        if self.autonomy is None:
+            raise WizardError("Autonomy only runs in the rules and hmm modes (start the panel with "
+                              "--mode rules or --mode hmm).")
+        self._note("wizard_command", "wizard", action="autonomy_pause" if paused else "autonomy_resume", via=via)
+        self.autonomy.set_paused(paused, shared_clock())
+        return self.autonomy.status(shared_clock())
+
+    def autonomy_status(self) -> dict | None:
+        return None if self.autonomy is None else self.autonomy.status(shared_clock())
+
+    def state_status(self) -> dict | None:
+        """The state for the status bar; `fresh` False when the vision process went quiet."""
+        if self.user_state is None:
+            return None
+        out = dict(self.user_state, fresh=time.monotonic() - self._user_state_seen < 3.0)
+        expected = AUTONOMY_MODES.get(self.mode)
+        if expected is not None:
+            out["expected_estimator"] = expected
+        return out
+
+    def calibration_status(self) -> dict:
+        return dict(self.calibration, vision_connected=time.monotonic() - self._vision_seen < 3.0)
 
     def _robot_camera_client(self) -> Any:
         """The SDK client, when connected to the REAL robot -- the only backend
@@ -486,10 +1058,12 @@ class Wizard:
         status = relay.status()
         return {"port": status["port"], "robot_camera": bool(status["camera"]),
                 "fps": status["fps"], "viewers": status["clients"], "error": status["error"],
-                "source": "robot" if self.backend_name == "real" else "laptop"}
+                "source": "robot" if self.backend_name == "real" else "laptop",
+                "tracking_user": self.user_target.tracking}
 
     def shutdown(self) -> None:
         self._watching = False
+        self._autonomy_running = False
         if self.camera_relay is not None:
             self.camera_relay.stop()
             self.camera_relay = None
@@ -520,6 +1094,12 @@ class Wizard:
             "session": self.sessions.status(),
             "panel_version": self.panel_version,
             "camera": self.camera_status(),
+            "calibration": self.calibration_status(),
+            "aim": dict(self.aim_state, enabled=self.config.aim.enabled,
+                        base=None if self.base is None else
+                        {"yaw": round(float(self.base.yaw or 0), 1), "pitch": round(float(self.base.pitch or 0), 1)}),
+            "user_state": self.state_status(),
+            "autonomy": self.autonomy_status(),
         }
 
     def log_since(self, seq: int) -> tuple[int, list[dict]]:
@@ -592,6 +1172,22 @@ class EndIn(BaseModel):
     notes: str | None = None
 
 
+class AutonomyIn(BaseModel):
+    paused: bool
+    via: str = "click"
+
+
+class AimIn(BaseModel):
+    action: str = "aim"                 # aim | reset
+
+
+class CalibrationIn(BaseModel):
+    action: str                      # calibrate, reuse, skip, stop
+    reason: str | None = None
+    parts: list[str] | None = None
+    via: str = "click"
+
+
 def _ok(**extra: Any) -> dict:
     return {"ok": True, **extra}
 
@@ -639,7 +1235,11 @@ def create_app(wizard: Wizard) -> FastAPI:
     @app.post("/api/annotate")
     def annotate(body: AnnotateIn):
         record = wizard.annotate(body.marker, body.via)
-        return _ok(saved=record["saved"], t=record["t_mono"])
+        return _ok(saved=record["saved"], t=record["t_mono"], autonomy=record.get("autonomy"))
+
+    @app.post("/api/autonomy")
+    def autonomy(body: AutonomyIn):
+        return _ok(autonomy=wizard.set_autonomy_paused(body.paused, body.via))
 
     @app.post("/api/note")
     def note(body: TextIn):
@@ -649,6 +1249,16 @@ def create_app(wizard: Wizard) -> FastAPI:
     @app.post("/api/session/start")
     def session_start(body: ParticipantIn):
         return _ok(session=wizard.start_session(body.participant, body.notes)["session"])
+
+    @app.post("/api/aim")
+    def aim(body: AimIn):
+        if body.action not in ("aim", "reset"):
+            raise WizardError(f'"{body.action}" is not an aim action (aim or reset).')
+        return _ok(aim=wizard.reset_aim() if body.action == "reset" else wizard.aim())
+
+    @app.post("/api/calibration")
+    def calibration(body: CalibrationIn):
+        return _ok(calibration=wizard.calibration_command(body.action, body.reason, body.parts, body.via))
 
     @app.post("/api/session/end")
     def session_end(body: EndIn | None = None):
@@ -719,5 +1329,5 @@ def make_wizard(backend: str | None, robot_host: str | None, settings: Any = Non
     camera = settings.camera_config
     kwargs.setdefault("camera_relay", (camera.relay_port, camera.fps))
     return Wizard(lambda: make_backend(name, robot_host=robot_host),
-                  backend_name=name, mode=settings.mode,
+                  backend_name=name, mode=settings.mode, explanations=settings.explanations,
                   speaker_factory=lambda: make_speaker(settings.speech), **kwargs)

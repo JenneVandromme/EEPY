@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ · EEPY explanation</title>
+<!--
+  EEPY's explanation viewer (A16): how the HMM came to its decisions, second by second.
+  Written by `python -m eepy.state.explain`; the data is inside this file (nothing is
+  loaded from the internet). Guide: docs/EXPLANATION_VIEWER.md.
+-->
+<style>
+  :root {
+    --bg: #f4f2ee; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dedad3; --soft: #ecebe7;
+    --accent: #2f5bd3; --ok: #1f8a4c; --warn: #b26a00; --bad: #c62828;
+    --s-focused: #1f8a4c; --s-distracted: #c98a00; --s-drowsy: #d9771e; --s-very: #c62828;
+    --s-absent: #8d8d93; --s-unknown: #b9b9be; --marker: #b0306b; --robot: #2f5bd3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17171a; --panel: #212125; --ink: #ececef; --muted: #a0a0a8; --line: #34343a; --soft: #2e2e34;
+      --accent: #6e92ff; --ok: #4cc785; --warn: #e0a040; --bad: #ef6b6b;
+      --s-focused: #4cc785; --s-distracted: #e0b040; --s-drowsy: #e8913e; --s-very: #ef6b6b;
+      --s-absent: #77777f; --s-unknown: #55555c; --marker: #ec6fa8; --robot: #6e92ff;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17171a; --panel: #212125; --ink: #ececef; --muted: #a0a0a8; --line: #34343a; --soft: #2e2e34;
+    --accent: #6e92ff; --ok: #4cc785; --warn: #e0a040; --bad: #ef6b6b;
+    --s-focused: #4cc785; --s-distracted: #e0b040; --s-drowsy: #e8913e; --s-very: #ef6b6b;
+    --s-absent: #77777f; --s-unknown: #55555c; --marker: #ec6fa8; --robot: #6e92ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 14px 16px 6px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .muted { color: var(--muted); }
+  .notes { margin: 6px 0 0; padding: 0; list-style: none; }
+  .notes li { border-left: 3px solid var(--warn); padding: 2px 8px; margin: 4px 0; font-size: 13px; }
+  main { padding: 0 16px 24px; max-width: 1500px; margin: 0 auto; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .pipeline { display: grid; grid-template-columns: minmax(300px, 1.6fr) 18px minmax(250px, 1.1fr) 18px
+              minmax(150px, .8fr) 18px minmax(170px, .9fr) 18px minmax(170px, .9fr); align-items: stretch; gap: 0; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+  .col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  .col { min-width: 0; }
+  .group { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+  .group-title { font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
+  .sign { display: grid; grid-template-columns: 1fr 186px; gap: 6px; align-items: center; padding: 2px 0; }
+  .sign .name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sign .val { color: var(--muted); font-size: 11.5px; display: block; overflow: hidden; text-overflow: ellipsis; }
+  .sign.off { opacity: .45; }
+  .bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .bar { position: relative; height: 12px; background: var(--soft); border-radius: 3px; overflow: hidden; }
+  .bar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
+  .bar i { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; }
+  .bars-head { display: grid; grid-template-columns: 1fr 186px; gap: 6px; font-size: 10.5px; color: var(--muted); }
+  .bars-head span { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; }
+  .belief svg { width: 100%; height: auto; display: block; }
+  .chip { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 16px;
+          color: #fff; background: var(--s-unknown); }
+  .big { font-size: 26px; font-weight: 700; margin: 6px 0 2px; }
+  .small { font-size: 12px; }
+  .gate { position: relative; height: 18px; background: var(--soft); border-radius: 4px; margin: 24px 0 20px; }
+  .gate .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+  .gate .tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .gate .tick span { position: absolute; top: 22px; left: -14px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .verdict { font-weight: 700; font-size: 15px; }
+  .verdict.yes { color: var(--ok); } .verdict.no { color: var(--warn); } .verdict.na { color: var(--muted); }
+  .lit { animation: lit 1.2s ease-out; }
+  @keyframes lit { 0% { box-shadow: 0 0 0 4px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .why { margin-top: 10px; }
+  .why li { margin: 2px 0; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 6px; }
+  button, select { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line);
+                   background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  #clock { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 9em; }
+  .timeline { position: relative; }
+  #tl { width: 100%; height: 300px; display: block; cursor: crosshair; touch-action: none; }
+  #tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line);
+         border-radius: 6px; padding: 6px 8px; font-size: 12px; max-width: 340px; display: none; z-index: 2;
+         box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .events { margin-top: 8px; max-height: 160px; overflow: auto; font-size: 12.5px; }
+  .events div { padding: 2px 0; cursor: pointer; } .events div:hover { color: var(--accent); }
+  .events .now { font-weight: 700; }
+  @media (max-width: 1100px) {
+    .pipeline { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); height: 18px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <div class="muted" id="sub"></div>
+  <ul class="notes" id="notes"></ul>
+</header>
+<main>
+  <div class="card">
+    <div class="pipeline">
+      <section class="col" id="c-signs"><h2>1 · Signs from the camera</h2>
+        <div class="bars-head"><span></span><span><em>focused</em><em>distracted</em><em>sleepy</em></span></div>
+        <div id="signs"></div></section>
+      <div class="arrow">→</div>
+      <section class="col belief" id="c-belief"><h2>2 · Belief (the HMM)</h2><div id="belief"></div></section>
+      <div class="arrow">→</div>
+      <section class="col" id="c-shown"><h2>3 · Shown state</h2><div id="shown"></div></section>
+      <div class="arrow">→</div>
+      <section class="col" id="c-gate"><h2>4 · Sure enough to act?</h2><div id="gate"></div></section>
+      <div class="arrow">→</div>
+      <section class="col" id="c-robot"><h2>5 · The robot</h2><div id="robot"></div></section>
+    </div>
+    <div class="why"><b>Why</b> <span class="muted small">(the reasons the panel showed)</span><ul id="why"></ul></div>
+  </div>
+
+  <div class="controls">
+    <button id="play" title="play / pause (space)">▶ play</button>
+    <select id="speed" title="playback speed">
+      <option value="0.25">¼× slow motion</option><option value="0.5">½×</option><option value="1" selected>1× real time</option>
+      <option value="2">2×</option><option value="5">5×</option><option value="10">10×</option><option value="30">30×</option>
+    </select>
+    <button id="back" title="one second back (←; shift: 10 s)">◀ 1 s</button>
+    <button id="fwd" title="one second on (→; shift: 10 s)">1 s ▶</button>
+    <button id="next" title="the next change or event (n)">next change ⏭</button>
+    <span id="clock"></span>
+    <span class="muted small">Click or drag the timeline to jump. Keys: space, ← →, n.</span>
+  </div>
+  <div class="card timeline">
+    <canvas id="tl" aria-label="timeline of the belief, the shown states, markers and robot actions"></canvas>
+    <div id="tip"></div>
+    <div class="legend">
+      <span><b style="background:var(--s-focused)"></b>focused</span>
+      <span><b style="background:var(--s-distracted)"></b>distracted</span>
+      <span><b style="background:var(--s-drowsy)"></b>drowsy</span>
+      <span><b style="background:var(--s-very)"></b>very drowsy</span>
+      <span><b style="background:var(--s-absent)"></b>absent</span>
+      <span><b style="background:var(--s-unknown)"></b>unknown</span>
+      <span>— confidence  · · · acts from</span>
+      <span><b style="background:var(--marker)"></b>operator marker / demo part</span>
+      <span><b style="background:var(--robot)"></b>robot nudge (amber band: held back by the gate)</span>
+    </div>
+    <div class="events" id="events"></div>
+  </div>
+</main>
+<script>
+"use strict";
+let DATA = /*__DATA__*/null;
+const LIVE = /*__LIVE__*/false;          // served by python -m eepy.perception.live: data arrives every second
+if (!DATA) DATA = { meta: { title: "Live", notes: [], parts: [], params: { path: "", version: "", source: "" }, thresholds: {} },
+                    features: [], groups: {}, rates: [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]], steps: [], events: [] };
+let S = DATA.steps, M = DATA.meta, F = DATA.features, EV = DATA.events;
+const HIDDEN = ["focused", "distracted", "drowsy", "very_drowsy"];
+const FAM = ["focused", "distracted", "sleepy"];
+const FAM_PHRASE = ["focus", "distraction", "drowsiness"];
+const STATE_VAR = { focused: "--s-focused", distracted: "--s-distracted", drowsy: "--s-drowsy",
+                    very_drowsy: "--s-very", absent: "--s-absent", unknown: "--s-unknown" };
+const FAM_VAR = ["--s-focused", "--s-distracted", "--s-drowsy"];
+const GROUP_TITLE = { eye_closure: "eye signs", yawning: "yawning", gaze: "looking away" };
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pct = (p) => p === null || p === undefined ? "–" : `${Math.round(p * 100)} %`;
+const nice = (s) => (s || "").replace("_", " ");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clock = (t) => { t = Math.max(0, Math.round(t)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+
+// --- header ---------------------------------------------------------------------------------------
+function renderHeader() {
+$("title").textContent = LIVE ? "EEPY live: the HMM as it decides" : (M.title || "EEPY explanation");
+$("notes").innerHTML = "";
+const sub = [];
+if (M.session) sub.push(`session ${M.session}`);
+if (M.mode) sub.push(`mode ${M.mode}`);
+sub.push(`HMM: ${M.params.path} v${M.params.version} (${M.params.source.replace("_", "-")})`);
+if (M.prior && M.prior.source && M.prior.source !== "default") sub.push(`prior: ${M.prior.source}`);
+sub.push(`${S.length} seconds`);
+$("sub").textContent = sub.join(" · ");
+for (const n of M.notes || []) { const li = document.createElement("li"); li.textContent = n; $("notes").appendChild(li); }
+}
+renderHeader();
+
+// --- helpers over the data -------------------------------------------------------------------------
+let T0 = S.length ? S[0].t : 0, T1 = S.length ? S[S.length - 1].t : 1;
+function stepAt(t) {               // the newest step at or before t
+  let lo = 0, hi = S.length - 1;
+  if (t <= S[0].t) return 0;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (S[mid].t <= t) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+let nudges = [], outcomes = {}, roles = [], gateSpans = [];
+function derive() {
+nudges = EV.filter((e) => e.kind === "nudge");
+outcomes = Object.fromEntries(EV.filter((e) => e.kind === "outcome").map((e) => [e.id, e]));
+roles = EV.filter((e) => e.kind === "role");
+gateSpans = [];                      // [start, end, text] from the logged gate waits
+{ let open = null;
+  for (const e of EV) {
+    if (e.kind === "gate_wait") { if (!open) open = e; }
+    else if (e.kind === "gate_end" && open) { gateSpans.push([open.t, e.t, open.text, e.text]); open = null; } }
+  if (open) gateSpans.push([open.t, T1, open.text, "until the end"]); }
+}
+derive();
+const familyOf = (state) => state === "focused" ? 0 : state === "distracted" ? 1 : (state === "drowsy" || state === "very_drowsy") ? 2 : -1;
+const ladderOf = (state) => state === "distracted" ? "refocus" : (state === "drowsy" || state === "very_drowsy") ? "bedtime" : null;
+
+// --- 1 · signs ------------------------------------------------------------------------------------
+function renderSigns(st) {
+  const byId = {};
+  for (const e of st.ev) byId[F[e[0]].id] = e;
+  const groups = [];
+  const order = ["eye_closure", "yawning", null, "gaze"];
+  for (const g of order) {
+    const members = F.filter((f) => f.group === g && f.enabled);
+    if (!members.length) continue;
+    const valid = members.filter((f) => byId[f.id]);
+    const rho = g ? DATA.groups[g] : 0;
+    const n = valid.length, neff = n ? n / (1 + (n - 1) * rho) : 0;
+    let title = g ? `${GROUP_TITLE[g] || g}: ${n} of ${members.length} usable` + (n > 1 ? ` · together they count as ${neff.toFixed(2)} signs, not ${n}` : "")
+                  : "head";
+    let rows = "";
+    for (const f of members) {
+      const e = byId[f.id];
+      if (e) {
+        const push = e[2], maxAbs = 3;               // nats per window; square root so small pushes stay visible
+        const bars = push.map((v, k) => {
+          const w = Math.sqrt(Math.min(Math.abs(v), maxAbs) / maxAbs) * 50;
+          const col = v > 0 ? css(FAM_VAR[k]) : css("--muted");
+          const left = v > 0 ? 50 : 50 - w;
+          return `<div class="bar" title="${FAM[k]}: ${v > 0 ? "+" : ""}${v.toFixed(2)} nats per window"><i style="left:${left}%;width:${w}%;background:${col}"></i></div>`;
+        }).join("");
+        rows += `<div class="sign" title="${esc(signSentence(f, e))}"><span class="name">${esc(f.label)}<span class="val">${esc(e[4])}</span></span><div class="bars">${bars}</div></div>`;
+      } else {
+        const why = st.sk[f.id];
+        if (!why && f.id.startsWith("au_")) continue;           // action units off: nothing to say
+        rows += `<div class="sign off"><span class="name">${esc(f.label)}<span class="val">${esc(why ? "not used: " + why : "no value this second")}</span></span><div></div></div>`;
+      }
+    }
+    if (rows) groups.push(`<div class="group"><div class="group-title">${esc(title)}</div>${rows}</div>`);
+  }
+  $("signs").innerHTML = groups.join("") || `<div class="muted">No signs this second: ${esc(st.s === "absent" ? "nobody at the desk" : "no usable camera data")}.</div>`;
+}
+function signSentence(f, e) {
+  const push = e[2], sup = e[1];
+  const step = e[3].map((v) => (v > 0 ? "+" : "") + v.toFixed(3)).join(" / ");
+  let words;
+  if (sup >= 0) {
+    const sorted = [...push].sort((a, b) => b - a);
+    const s = push[sup] - sorted[1];
+    words = `${s < 0.5 ? "slightly suggests" : s < 1.5 ? "suggests" : s < 3 ? "clearly suggests" : "strongly suggests"} ${FAM_PHRASE[sup]}`;
+  } else {
+    const lo = push.indexOf(Math.min(...push));
+    words = push.filter((v) => v === push[lo]).length === 1 && Math.max(...push) - push[lo] > 1e-6
+      ? `speaks against ${FAM_PHRASE[lo]}` : "says nothing about the state";
+  }
+  return `${f.label} (${e[4]}) ${words}.\nPer full window (nats; focused / distracted / sleepy): ${push.map((v) => v.toFixed(2)).join(" / ")}`
+       + `\nThis second it moved the belief by: ${step}` + (e[5] ? "\n(no news: never shown as a reason for an alarm state)" : "")
+       + `\nEvidence time: counts once per ${f.tau} s`;
+}
+
+// --- 2 · belief ------------------------------------------------------------------------------------
+const POS4 = { focused: [70, 62], distracted: [230, 62], drowsy: [70, 196], very_drowsy: [230, 196] };
+function layout() {          // the hidden states: 4 in a square, or a drowsiness ladder along the bottom
+  const names = (M.hidden && st0ph()) ? M.hidden : HIDDEN;
+  if (names.length === 4) return { names, pos: names.map((s) => POS4[s] || [150, 130]), R: 36 };
+  const ladder = names.filter((s, i) => (M.reports || [])[i] !== "distracted" && s !== "focused");
+  const pos = names.map((s) => s === "focused" ? [60, 62] : s === "distracted" ? [240, 62]
+    : [55 + ladder.indexOf(s) * (190 / Math.max(1, ladder.length - 1)), 196]);
+  return { names, pos, R: 29 };
+}
+function st0ph() { return S.length && S[0].ph; }
+function renderBelief(st, prev) {
+  const LY = layout(), R = LY.R;
+  const probs = st.ph && LY.names.length !== 4 ? st.ph : st.p, pprev = prev ? (prev.ph && LY.names.length !== 4 ? prev.ph : prev.p) : null;
+  const POS = Object.fromEntries(LY.names.map((s, i) => [s, LY.pos[i]]));
+  let svg = `<svg viewBox="0 0 300 276" role="img" aria-label="belief over the four states">
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="${css("--muted")}"/></marker></defs>`;
+  // transitions (static): width by rate per hour
+  const N = LY.names.length;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (i === j || !DATA.rates[i] || DATA.rates[i].length !== N) continue;
+    const rate = DATA.rates[i][j]; if (rate <= 0.2) continue;              // hide the very rare ones
+    const [x1, y1] = LY.pos[i], [x2, y2] = LY.pos[j];
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
+    const ox = -uy * 9, oy = ux * 9;                                   // offset: the two directions apart
+    const sx = x1 + ux * (R + 3) + ox, sy = y1 + uy * (R + 3) + oy, ex = x2 - ux * (R + 6) + ox, ey = y2 - uy * (R + 6) + oy;
+    const w = 0.6 + 0.8 * Math.log10(1 + rate);
+    svg += `<line x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" stroke="${css("--muted")}" stroke-opacity=".55" stroke-width="${w}" marker-end="url(#ah)"><title>${nice(LY.names[i])} → ${nice(LY.names[j])}: about ${rate} times an hour</title></line>`;
+  }
+  LY.names.forEach((s, k) => {
+    const [x, y] = POS[s], p = probs[k];
+    const shownAs = (M.reports && LY.names.length !== 4) ? M.reports[k] : s;
+    const col = css(STATE_VAR[s] || (s === "tired" ? "--s-focused" : STATE_VAR[shownAs] || "--s-unknown"));
+    const level = y + R - 2 * R * p;
+    const shown = st.s === s || (shownAs !== s && st.s === shownAs && probs[k] > probs[LY.names.indexOf(shownAs)]);
+    const ml = st.ml === s;
+    const dp = pprev ? p - pprev[k] : 0;
+    svg += `<clipPath id="cp${k}"><circle cx="${x}" cy="${y}" r="${R}"/></clipPath>
+      <circle cx="${x}" cy="${y}" r="${R}" fill="${css("--soft")}" ${st.up ? "" : 'fill-opacity=".6"'}/>
+      <rect x="${x - R}" y="${level}" width="${2 * R}" height="${2 * R}" fill="${col}" fill-opacity="${(st.up ? 0.9 : 0.4) * (s === "tired" ? 0.55 : 1)}" clip-path="url(#cp${k})"/>
+      <circle cx="${x}" cy="${y}" r="${R}" fill="none" stroke="${shown ? css("--ink") : css("--line")}" stroke-width="${shown ? 4 : 1.5}"/>
+      <text x="${x}" y="${y + 6}" text-anchor="middle" font-size="17" font-weight="700" fill="${css("--ink")}">${Math.round(p * 100)}%</text>
+      <text x="${x}" y="${y < 120 ? y - R - 8 : y + R + 17}" text-anchor="middle" font-size="12.5" fill="${css("--ink")}">${nice(s)}${ml ? " ★" : ""}</text>${shownAs !== s ? `<text x="${x}" y="${y + R + 30}" text-anchor="middle" font-size="10.5" fill="${css("--muted")}">shown as ${nice(shownAs)}</text>` : ""}`;
+    if (Math.abs(dp) >= 0.005)
+      svg += `<text x="${x + R + 4}" y="${y + 4}" font-size="11" fill="${dp > 0 ? css("--ok") : css("--bad")}">${dp > 0 ? "▲" : "▼"}${Math.abs(dp * 100).toFixed(0)}</text>`;
+  });
+  svg += "</svg>";
+  const status = st.up ? "updated with this second's signs" : "on hold: the belief only drifts (no usable signs)";
+  const lvl = st.lvl === null || st.lvl === undefined ? "" : ` · drowsiness level <b>${st.lvl.toFixed(2)}</b> (0 alert, 1 very drowsy)`;
+  $("belief").innerHTML = svg + `<div class="small muted">★ most likely · thick ring: shown state · ▲▼ change this second<br>
+    uncertainty ${st.u === null ? "–" : st.u.toFixed(2)} (0 sure, 1 no idea)${lvl} · ${status}</div>`;
+}
+
+// --- 3 · shown state --------------------------------------------------------------------------------
+function renderShown(st, changed) {
+  const col = css(STATE_VAR[st.s] || "--s-unknown");
+  const fam = familyOf(st.s);
+  let txt = `<span class="chip ${changed ? "lit" : ""}" style="background:${col}">${nice(st.s)}</span>`;
+  if (fam >= 0) txt += `<div class="big">${pct(st.c)}</div><div class="small muted">sure it is ${FAM_PHRASE[fam]} (P of the ${FAM[fam]} family)</div>`;
+  if (st.pend) txt += `<div class="small" style="margin-top:6px">→ <b>${nice(st.pend)}</b> is becoming more likely</div>`;
+  txt += `<div class="small muted" style="margin-top:8px">Switches when another family reaches ${pct(M.switch)}, or when this one falls below ${pct(1 - M.switch)}.</div>`;
+  if (st.rules) txt += `<div class="small" style="margin-top:8px">The rules said: <b>${nice(st.rules)}</b></div>`;
+  $("shown").innerHTML = txt;
+}
+
+// --- 4 · the confidence gate ----------------------------------------------------------------------
+function renderGate(st, changed) {
+  const ladder = ladderOf(st.s);
+  const th = M.thresholds || {};
+  const act = ladder && th.act ? th.act[ladder] : null;
+  let html = "";
+  if (!ladder) {
+    const why = st.s === "focused" ? "focused: nothing to act on" : st.s === "absent" ? "nobody there: the robot waits" : "no usable data: the robot waits";
+    html = `<div class="verdict na">—</div><div class="small muted">${why}</div>`;
+  } else if (act === null || act === undefined || st.c === null) {
+    html = `<div class="verdict na">no gate</div><div class="small muted">No confidence threshold in this session's escalation config.</div>`;
+  } else {
+    const ok = st.c >= act;
+    const col = ok ? css("--ok") : css("--warn");
+    html = `<div class="gate"><div class="fill" style="width:${st.c * 100}%;background:${col}"></div>
+      <div class="tick" style="left:${act * 100}%"><span>acts ${pct(act)}</span></div>
+      ${th.direct ? `<div class="tick" style="left:${th.direct * 100}%;opacity:.5"><span style="top:-18px">direct ${pct(th.direct)}</span></div>` : ""}</div>
+      <div class="verdict ${ok ? "yes" : "no"} ${changed ? "lit" : ""}">${ok ? "✓ sure enough" : "✗ not sure enough"}</div>
+      <div class="small muted">${nice(st.s)} ${pct(st.c)} ${ok ? "≥" : "<"} ${pct(act)} for the ${ladder} ladder${ok && th.direct ? (st.c >= th.direct ? "; the firm tone is allowed" : "; tone stays hedged (< " + pct(th.direct) + ")") : ""}</div>`;
+    if (th.source === "today") html += `<div class="small" style="margin-top:6px">With today's thresholds: this session had no confidence gate (recorded before A16 or not in the hmm mode).</div>`;
+  }
+  const span = gateSpans.find((g) => g[0] <= st.t && st.t < g[1]);
+  if (span) html += `<div class="small" style="margin-top:8px">Logged: <b>${esc(span[2])}</b> since ${clock(span[0])}</div>`;
+  const dec = [...EV].reverse().find((e) => e.decision && e.t <= st.t);     // belief decisions (A19)
+  if (dec && !span) html += `<div class="small" style="margin-top:8px">Belief decision (${clock(dec.t)}): <b>${esc(dec.text)}</b>`
+    + `${(dec.evidence || []).length ? `<br><span class="muted">because: ${esc(dec.evidence.join("; "))}</span>` : ""}</div>`;
+  $("gate").innerHTML = html;
+}
+
+// --- 5 · the robot ------------------------------------------------------------------------------------
+function renderRobot(st) {
+  const role = [...roles].reverse().find((e) => e.t <= st.t);
+  const last = [...nudges].reverse().find((e) => e.t <= st.t);
+  let html = `<div>Role: <b>${role ? nice(role.role) : "–"}</b></div>`;
+  if (!EV.some((e) => e.kind === "nudge" || e.kind === "role")) {
+    html += `<div class="small muted" style="margin-top:6px">No robot actions in this recording.</div>`;
+  }
+  if (last) {
+    const fresh = st.t - last.t < 1.5;
+    const out = outcomes[last.id];
+    const outText = out && out.t <= st.t ? `→ ${nice(out.outcome)} (${clock(out.t)})` : out ? "waiting for a reaction" : "";
+    html += `<div class="${fresh ? "lit" : ""}" style="margin-top:8px;padding:6px;border-radius:6px;border:1px solid var(--line)">
+      <div class="small muted">last nudge, ${clock(last.t)}${fresh ? " — now" : ""}</div>
+      <div><b>${esc(last.ladder)} level ${last.level}</b> (${esc(last.tone)})</div>
+      <div class="small">${esc(last.text.split(": ").slice(1).join(": "))}</div>
+      ${last.confidence !== undefined && last.confidence !== null ? `<div class="small muted">decided at ${pct(last.confidence)}</div>` : ""}
+      <div class="small">${esc(outText)}</div></div>`;
+  }
+  $("robot").innerHTML = html;
+}
+
+// --- the timeline ----------------------------------------------------------------------------------
+const canvas = $("tl"), ctx = canvas.getContext("2d");
+const PAD = { l: 92, r: 12 };
+const ROWS = { parts: [4, 18], belief: [22, 150], hmm: [158, 172], rules: [176, 190], marks: [198, 222], robot: [228, 262], axis: [272, 290] };
+let W = 0, H = 300, pxr = 1;
+const xOf = (t) => PAD.l + (t - T0) / Math.max(1, T1 - T0) * (W - PAD.l - PAD.r);
+const tOf = (x) => T0 + (x - PAD.l) / (W - PAD.l - PAD.r) * Math.max(1, T1 - T0);
+let base = null;                 // the static part, drawn once per size/theme
+function drawBase() {
+  pxr = window.devicePixelRatio || 1;
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = W * pxr; canvas.height = H * pxr;
+  const off = document.createElement("canvas"); off.width = canvas.width; off.height = canvas.height;
+  const c = off.getContext("2d"); c.scale(pxr, pxr);
+  c.font = "11.5px -apple-system, Segoe UI, sans-serif"; c.textBaseline = "middle";
+  const label = (txt, row) => { c.fillStyle = css("--muted"); c.fillText(txt, 6, (row[0] + row[1]) / 2); };
+  // stacked belief
+  const [b0, b1] = ROWS.belief, bh = b1 - b0;
+  const cols = HIDDEN.map((s) => css(STATE_VAR[s]));
+  for (let k = 3; k >= 0; k--) {
+    c.beginPath(); c.moveTo(xOf(S[0].t), b1);
+    for (const st of S) { let cum = 0; for (let j = 0; j <= k; j++) cum += st.p[j]; c.lineTo(xOf(st.t), b1 - cum * bh); }
+    c.lineTo(xOf(S[S.length - 1].t), b1); c.closePath(); c.fillStyle = cols[k]; c.globalAlpha = 0.85; c.fill(); c.globalAlpha = 1;
+  }
+  // greyed where the belief only drifted
+  c.fillStyle = css("--bg");
+  for (let i = 0; i < S.length - 1; i++) if (!S[i].up) { c.globalAlpha = 0.55; c.fillRect(xOf(S[i].t), b0, xOf(S[i + 1].t) - xOf(S[i].t) + 0.5, bh); }
+  c.globalAlpha = 1;
+  // confidence line + threshold
+  const act = (M.thresholds && M.thresholds.act) ? Math.min(...Object.values(M.thresholds.act).concat([2])) : null;
+  if (act !== null && act <= 1) {
+    c.setLineDash([2, 3]); c.strokeStyle = css("--ink"); c.globalAlpha = .6; c.beginPath();
+    c.moveTo(PAD.l, b1 - act * bh); c.lineTo(W - PAD.r, b1 - act * bh); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  }
+  c.strokeStyle = css("--ink"); c.lineWidth = 1.3; c.beginPath(); let started = false;
+  for (const st of S) {
+    if (st.c === null || familyOf(st.s) < 0) { started = false; continue; }
+    const x = xOf(st.t), y = b1 - st.c * bh;
+    if (!started) { c.moveTo(x, y); started = true; } else c.lineTo(x, y);
+  }
+  c.stroke(); c.lineWidth = 1;
+  label("belief", ROWS.belief);
+  // state strips
+  const strip = (key, row) => {
+    for (let i = 0; i < S.length; i++) {
+      const st = S[i], s = st[key]; if (!s) continue;
+      const x = xOf(st.t), x2 = i + 1 < S.length ? xOf(S[i + 1].t) : W - PAD.r;
+      c.fillStyle = css(STATE_VAR[s] || "--s-unknown"); c.fillRect(x, row[0], x2 - x + 0.6, row[1] - row[0]);
+    }
+  };
+  strip("s", ROWS.hmm); label("HMM shows", ROWS.hmm);
+  if (S.some((s) => s.rules)) { strip("rules", ROWS.rules); label("rules show", ROWS.rules); }
+  // parts (demo)
+  for (const p of M.parts || []) {
+    c.fillStyle = css("--muted"); c.fillText(p.text, xOf(p.t) + 3, (ROWS.parts[0] + ROWS.parts[1]) / 2);
+    c.fillRect(xOf(p.t), ROWS.parts[0], 1, ROWS.robot[1] - ROWS.parts[0]);
+  }
+  // markers and robot
+  label("markers", ROWS.marks); label("robot", ROWS.robot);
+  for (const e of EV) {
+    const x = xOf(e.t);
+    if (x < PAD.l || x > W - PAD.r) continue;
+    if (e.kind === "marker" || e.kind === "operator") {
+      c.fillStyle = css("--marker"); c.beginPath(); c.moveTo(x, ROWS.marks[0]); c.lineTo(x - 5, ROWS.marks[1] - 4); c.lineTo(x + 5, ROWS.marks[1] - 4); c.fill();
+    } else if (e.kind === "nudge") {
+      c.fillStyle = css("--robot"); c.beginPath(); c.arc(x, (ROWS.robot[0] + ROWS.robot[1]) / 2, 5, 0, 7); c.fill();
+    } else if (e.kind === "outcome") {
+      c.fillStyle = e.outcome === "success" ? css("--ok") : css("--muted");
+      c.fillRect(x - 1, ROWS.robot[1] - 8, 3, 8);
+    }
+  }
+  for (const g of gateSpans) {
+    c.fillStyle = css("--warn"); c.globalAlpha = .35;
+    c.fillRect(xOf(g[0]), ROWS.robot[0], Math.max(2, xOf(g[1]) - xOf(g[0])), 6); c.globalAlpha = 1;
+  }
+  // axis
+  c.fillStyle = css("--muted");
+  const span = T1 - T0, stepS = [5, 10, 15, 30, 60, 120, 300, 600].find((v) => span / v <= 12) || 1200;
+  for (let t = Math.ceil(T0 / stepS) * stepS; t <= T1; t += stepS) {
+    const x = xOf(t); c.fillRect(x, ROWS.axis[0] - 4, 1, 4); c.fillText(clock(t), x - 14, ROWS.axis[0] + 8); }
+  base = off;
+}
+function drawTimeline() {
+  if (!base) drawBase();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(base, 0, 0);
+  ctx.setTransform(pxr, 0, 0, pxr, 0, 0);
+  const x = xOf(now);
+  ctx.fillStyle = css("--accent"); ctx.fillRect(x - 1, 0, 2, ROWS.axis[0]);
+}
+
+// --- events list -------------------------------------------------------------------------------------
+function renderEvents(t) {
+  const box = $("events");
+  if (!box.dataset.built) {
+    box.innerHTML = EV.map((e, i) => `<div data-i="${i}" data-t="${e.t}"><span class="muted">${clock(e.t)}</span> ${esc(e.text)}</div>`).join("")
+      || `<span class="muted">No markers or robot actions recorded.</span>`;
+    box.dataset.built = "1";
+    box.addEventListener("click", (ev) => { const d = ev.target.closest("[data-t]"); if (d) seek(parseFloat(d.dataset.t)); });
+  }
+  let cur = -1;
+  EV.forEach((e, i) => { if (e.t <= t) cur = i; });
+  box.querySelectorAll("[data-i]").forEach((d) => d.classList.toggle("now", +d.dataset.i === cur));
+}
+
+// --- state and playback ------------------------------------------------------------------------------
+let now = T0, playing = false, lastFrame = 0, shownIndex = -1;
+function render() {
+  const i = stepAt(now), st = S[i], prev = i ? S[i - 1] : null;
+  if (i !== shownIndex) {
+    const changed = prev && prev.s !== st.s;
+    const gateChanged = prev && ladderOf(st.s) && M.thresholds && M.thresholds.act && prev.c !== null && st.c !== null &&
+      ((prev.c >= M.thresholds.act[ladderOf(st.s)]) !== (st.c >= M.thresholds.act[ladderOf(st.s)]));
+    renderSigns(st); renderBelief(st, prev); renderShown(st, changed); renderGate(st, gateChanged || changed); renderRobot(st);
+    $("why").innerHTML = st.r.map((r) => `<li>${esc(r)}</li>`).join("") || "<li class='muted'>–</li>";
+    renderEvents(now);
+    shownIndex = i;
+  }
+  $("clock").textContent = `${clock(now)} / ${clock(T1)}`;
+  drawTimeline();
+}
+function seek(t) { now = Math.min(T1, Math.max(T0, t)); render(); }
+function frame(ts) {
+  if (!playing) return;
+  if (lastFrame) now += (ts - lastFrame) / 1000 * parseFloat($("speed").value);
+  lastFrame = ts;
+  if (now >= T1) { now = T1; setPlaying(false); }
+  render();
+  requestAnimationFrame(frame);
+}
+function setPlaying(on) {
+  playing = on; lastFrame = 0; $("play").textContent = on ? "⏸ pause" : "▶ play";
+  if (on) { if (now >= T1) now = T0; requestAnimationFrame(frame); }
+}
+function nextChange() {
+  const i = stepAt(now);
+  const evNext = EV.map((e) => e.t).filter((t) => t > now + 0.01);
+  let tState = null;
+  for (let j = i + 1; j < S.length; j++) if (S[j].s !== S[i].s || S[j].rules !== S[i].rules) { tState = S[j].t; break; }
+  const cands = evNext.concat(tState === null ? [] : [tState]);
+  if (cands.length) seek(Math.min(...cands));
+}
+$("play").onclick = () => setPlaying(!playing);
+$("back").onclick = (e) => seek(now - (e.shiftKey ? 10 : 1));
+$("fwd").onclick = (e) => seek(now + (e.shiftKey ? 10 : 1));
+$("next").onclick = nextChange;
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "SELECT") return;
+  if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+  else if (e.key === "ArrowLeft") seek(now - (e.shiftKey ? 10 : 1));
+  else if (e.key === "ArrowRight") seek(now + (e.shiftKey ? 10 : 1));
+  else if (e.key === "n") nextChange();
+});
+let dragging = false;
+canvas.addEventListener("pointerdown", (e) => { dragging = true; canvas.setPointerCapture(e.pointerId); seek(tOf(e.offsetX)); });
+canvas.addEventListener("pointermove", (e) => {
+  if (dragging) seek(tOf(e.offsetX));
+  const t = tOf(e.offsetX), tip = $("tip");
+  if (e.offsetX < PAD.l || t > T1) { tip.style.display = "none"; return; }
+  const st = S[stepAt(t)];
+  const near = EV.filter((ev) => Math.abs(ev.t - t) < Math.max(1.5, (T1 - T0) / 200));
+  const gate = gateSpans.find((g) => g[0] <= t && t < g[1]);
+  tip.innerHTML = `<b>${clock(t)}</b> · HMM <b>${nice(st.s)}</b>${st.c !== null && familyOf(st.s) >= 0 ? " " + pct(st.c) : ""}`
+    + (st.rules ? ` · rules ${nice(st.rules)}` : "") + "<br>"
+    + HIDDEN.map((s, k) => `${nice(s)} ${pct(st.p[k])}`).join(" · ")
+    + near.map((ev) => `<br>• ${esc(ev.text)}`).join("") + (gate ? `<br>• ${esc(gate[2])}` : "");
+  tip.style.display = "block";
+  tip.style.left = Math.min(e.offsetX + 14, canvas.clientWidth - 350) + "px"; tip.style.top = (e.offsetY + 14) + "px";
+});
+canvas.addEventListener("pointerup", () => { dragging = false; });
+canvas.addEventListener("pointerleave", () => { $("tip").style.display = "none"; });
+window.addEventListener("resize", () => { base = null; render(); });
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { base = null; shownIndex = -1; render(); });
+// --- live mode: poll the vision program ---------------------------------------------------------
+let follow = true;
+if (LIVE) {
+  const panel = document.createElement("div");
+  panel.className = "card"; panel.style.marginBottom = "10px";
+  panel.innerHTML = `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+    <img id="cam" alt="camera" style="width:360px;max-width:100%;border-radius:8px;background:var(--soft)">
+    <div style="flex:1;min-width:260px"><div id="banner" style="font-size:16px;font-weight:700"></div>
+      <div id="bannertext" class="muted"></div><div id="now" style="margin:8px 0"></div>
+      <div id="raw" class="small" style="columns:2;column-gap:20px"></div></div></div>`;
+  document.querySelector("main").prepend(panel);
+  const liveBtn = document.createElement("button"); liveBtn.id = "golive"; liveBtn.textContent = "● live";
+  $("next").after(liveBtn);
+  liveBtn.onclick = () => { follow = true; seek(T1); };
+  $("play").style.display = "none";
+  const stopFollow = () => { follow = false; };
+  $("back").addEventListener("click", stopFollow); canvas.addEventListener("pointerdown", stopFollow);
+  document.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") stopFollow(); });
+  let RUN = 0;
+  setInterval(() => { $("cam").src = "/frame.jpg?" + Date.now(); }, 300);
+  async function poll() {
+    try {
+      const r = await fetch("/data?since=" + S.length + "&run=" + RUN); const d = await r.json();
+      if (d.run !== undefined && d.run !== RUN) {        // a new session: the timeline starts over
+        RUN = d.run; S.length = 0; follow = true; T0 = 0; T1 = 1; shownIndex = -1;
+      }
+      if (!F.length) { DATA.features = F = d.features; DATA.groups = d.groups; DATA.rates = d.rates;
+                       DATA.meta = M = Object.assign(d.meta, { title: "Live" }); renderHeader(); }
+      for (const st of d.steps) S.push(st);
+      EV = DATA.events = d.events;
+      if (S.length) { T0 = S[0].t; T1 = Math.max(S[S.length - 1].t, T0 + 1); derive(); base = null; }
+      renderHeader();
+      const lv = d.live || {}, b = lv.banner || {};
+      $("banner").textContent = b.part ? `${b.part}${b.left ? " · " + clock(b.left) + " left" : ""}` : "Free run";
+      $("bannertext").textContent = b.text || "Work as usual; the page shows what the camera and the HMM make of it.";
+      $("now").innerHTML = `face: <b>${lv.face ? "yes" : "no"}</b> · eyes judged now: <b>${lv.eyes_judged ? "yes" : "no (not looking forward)"}</b>`
+        + ` · eye closure now: <b>${lv.eye_closure == null ? "–" : Math.round(lv.eye_closure * 100) + " %"}</b>`
+        + ` · gaze: <b>${nice(lv.zone || "–")}</b> · calibrated: <b>${lv.calibrated ? "yes" : "no"}</b>`;
+      const last = S[S.length - 1];
+      if (last && last.raw) $("raw").innerHTML = Object.entries(last.raw).map(([k, v]) =>
+        `<div><span class="muted">${esc(k)}</span> ${esc(typeof v === "number" ? Math.round(v * 1000) / 1000 : v)}</div>`).join("");
+      if (S.length) { if (follow) now = T1; shownIndex = -1; render(); }
+    } catch (e) { $("banner").textContent = "No connection to the live program (stopped?)"; }
+    setTimeout(poll, 1000);
+  }
+  poll();
+} else if (S.length) render(); else document.querySelector("main").innerHTML = "<p>No steps in this file.</p>";
+</script>
+</body>
+</html>

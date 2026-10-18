@@ -233,6 +233,19 @@ Two more settings in `.env` are worth knowing:
 
 ## 2. Running / testing things
 
+### Everything at once: the launcher
+
+```bash
+python3 launch.py                          # no virtualenv needed
+```
+
+One page (http://127.0.0.1:8090) that starts the simulator, the Wizard panel
+and the vision program in the right order, shows whether each one is up and
+what it prints, and has the panel and the live HMM page in tabs. Pick dry /
+simulator / real robot and the mode on its **Developer** tab. It runs the same
+commands as below, so they keep working as a fallback; the Developer tab shows
+each one, ready to copy. See [eepy/launcher/README.md](eepy/launcher/README.md).
+
 Each time you come back to work on this, you need to **activate** the
 right environment first (Step 2/3 commands above, minus the `pip install`
 part — you only install once, but you activate every session).
@@ -287,6 +300,16 @@ python -m eepy.perception.selftest    # guided, ~1 minute: blink, yawn, nod, loo
 
 It prints PASS or CHECK per step and how long each frame takes to analyse.
 
+**Calibration (each participant, start of a session, ~2 minutes):** from the Wizard
+panel's **Calibration** card, or `python -m eepy.perception.calibrate --user P03`. It
+learns the person's normal face, so thresholds fit them. What to do and what the
+messages mean: [`eepy/perception/calibration/README.md`](eepy/perception/calibration/README.md).
+
+**Gaze on the work area:** calibrate each person's screen and notes once
+(about a minute), then the preview shows ON WORK / AWAY:
+`python -m eepy.perception.calibrate_gaze --user P03`. Details:
+[`eepy/perception/gaze/README.md`](eepy/perception/gaze/README.md).
+
 **Optional: action units** (frown, squint, eyes closed, jaw drop... with
 Py-Feat). An extra install of ~3 GB (Python 3.11+, a GPU recommended), never
 required:
@@ -298,6 +321,33 @@ plain words, is in [`eepy/perception/README.md`](eepy/perception/README.md).
 
 **Testing the face features properly?** Follow the step-by-step tutorial for
 macOS, Windows and Linux: [eepy/perception/README.md → Tutorial: test the face features](eepy/perception/README.md#tutorial-test-the-face-features-about-10-minutes).
+
+### Test the user state (focused, distracted, drowsy…)
+
+From the face features, EEPY decides once a second whether the participant is
+**focused, distracted, drowsy, very drowsy, absent** or **unknown**, with the
+reason. The Wizard panel's status bar and the preview show it. The rules and
+their numbers are in `config/state_rules.yaml`.
+
+```bash
+source .venv-vision/bin/activate      # Windows: .venv-vision\Scripts\Activate.ps1
+python -m eepy.perception.selftest --states --no-aus   # guided, ~3 minutes: work, phone, sleepy, leave
+python -m eepy.state.replay latest                     # the states of a recorded session, no camera
+```
+
+Every state and rule in plain words, how to change a threshold, and the replay:
+[`eepy/state/README.md`](eepy/state/README.md).
+
+### Simulate what the robot would do (no camera, no robot)
+
+```bash
+source .venv-robot/bin/activate       # Windows: .venv-robot\Scripts\Activate.ps1
+python -m eepy.interaction.simulate --list          # built-in scenarios
+python -m eepy.interaction.simulate phone_break     # or: "focused 5m, distracted 2m, focused 3m"
+```
+
+It prints every nudge, ladder level and outcome over time. The timings are in
+`config/escalation.yaml`; the guide is [`eepy/interaction/README.md`](eepy/interaction/README.md).
 
 ### Test the robot connection
 
@@ -349,6 +399,49 @@ python robot/test_connection.py --robot-host 192.168.1.50
 (replace with the robot's actual IP — ask whoever set it up, or put it in
 `.env` as `REACHY_MINI_HOST` so you don't need the flag every time).
 
+### Make the robot follow your eyes (eye gaze)
+
+`robot/eye_gaze_follow.py` turns the robot's head to look into your eyes: it
+aims at the point between your eyes, copies how your head is tilted, and turns
+the body to catch up when the head stays turned for 2 seconds. Copied from
+BURTRAM, a standalone script: it is **not** part of the panel or the
+escalation yet. Don't run it together with the panel or `python -m
+eepy.perception`: they would fight over the camera and the head.
+
+It runs in **`.venv-vision`** (it needs mediapipe), and moves the robot over the
+daemon's web API instead of the robot library, which lives in the other venv.
+A window shows what the camera sees; **Q** or **Esc** in that window (or
+Ctrl+C in the terminal) stops it, and the head glides back to neutral.
+
+**With the simulator and your laptop webcam:** start the simulator (Terminal 1,
+as in "Test the robot connection" above), then:
+
+```bash
+source .venv-vision/bin/activate       # Windows: .venv-vision\Scripts\Activate.ps1
+python robot/eye_gaze_follow.py --sim --camera 0
+```
+
+The blue rectangle in the window is roughly what the robot's own camera would
+see from where its head points.
+
+**With the real robot:** its camera is read through the robot library, so that
+part runs in `.venv-robot`, in a second terminal:
+
+```bash
+# Terminal 1
+source .venv-robot/bin/activate        # Windows: .venv-robot\Scripts\Activate.ps1
+python robot/eye_gaze_camera_relay.py --robot-host 192.168.50.95
+
+# Terminal 2
+source .venv-vision/bin/activate       # Windows: .venv-vision\Scripts\Activate.ps1
+python robot/eye_gaze_follow.py --robot-host 192.168.50.95
+```
+
+If the head turns away from you instead of toward you, add `--invert-yaw`
+(left/right) or `--invert-pitch` (up/down). `--smoothing` (default 0.15) and
+`--max-head-speed` (default 150 °/s) make it calmer or quicker; `--help` lists
+everything. Every movement goes through `robot/safety_limits.py` first.
+
 ### Talk to EEPY (Gemini API)
 
 `robot/conversation.py` lets you actually talk to the robot: it listens
@@ -395,7 +488,9 @@ EEPY/
 │   ├── connection.py      # shared "how do I reach the robot?" helper (sim/USB/wireless)
 │   ├── test_connection.py # sanity check — can we connect and move the robot?
 │   ├── greetings.py       # a scripted greeting sequence
-│   └── conversation.py    # talk to the robot via Gemini (STT + reply + TTS)
+│   ├── conversation.py    # talk to the robot via Gemini (STT + reply + TTS)
+│   ├── eye_gaze_follow.py # the head follows your eyes (from BURTRAM; runs in .venv-vision, REST)
+│   └── eye_gaze_camera_relay.py  # real robot only: hands its camera frames to eye_gaze_follow.py
 ├── behaviors/             # WHAT the robot does, as editable YAML — see docs/BEHAVIORS_GUIDE.md
 │   ├── _blocks.yaml       # shared building blocks + named gaze targets
 │   ├── idle.yaml          # quiet background presence
@@ -409,14 +504,32 @@ EEPY/
 ├── eepy/speech/           # the robot's voice (text-to-speech) — how it works: eepy/speech/README.md
 ├── eepy/camera/           # the camera stream for perception — how it works: eepy/camera/README.md
 ├── eepy/perception/       # face features: blinks, yawns, nods, PERCLOS — what they mean: eepy/perception/README.md
+├── eepy/state/            # the user's state (focused, drowsy, …) from those features — eepy/state/README.md
+├── eepy/interaction/      # the escalation: when to nudge, what may be played (A23), the policy — eepy/interaction/README.md
+├── eepy/explanations/     # why EEPY nudged: the evidence catalog and the Explanation per decision (A20) — docs/A20_EXPLANATIONS.md
+├── eepy/bandit/           # rewards per nudge (A22), the contextual bandit (A24), simulated users — eepy/bandit/README.md
+├── eepy/launcher/         # one page to start, watch and test everything: python3 launch.py — eepy/launcher/README.md
 ├── config/
 │   ├── eepy.yaml          # system settings: the MODE (experimental condition), data folder, privacy, camera, face features
+│   ├── state_rules.yaml   # the threshold rules: features -> focused / distracted / drowsy / ... (eepy/state/README.md)
+│   ├── escalation.yaml    # when the robot nudges (timings, guards, belief decisions), what it may play (actions:), the policy switch
+│   ├── rewards.yaml       # what each nudge outcome is worth to the bandit (docs/A22_REWARDS.md)
+│   ├── bandit.yaml        # the contextual bandit: model, priors, situations, waiting (docs/A24_BANDIT.md)
 │   └── wizard_panel.yaml  # the panel's keys, markers and defaults
 ├── data/sessions/         # every recorded session (gitignored: participant data)
+├── data/calibration/      # per-person calibrations: gaze zones + baseline (gitignored; numbers only)
+├── data/bandit/           # what the bandit learned per participant (gitignored; numbers only)
+├── data/rewards/          # reward tables built by the launcher / python -m eepy.bandit.rewards (gitignored)
 ├── docs/
+│   ├── HOW_EEPY_DECIDES.md    # START HERE for the system: camera -> state -> when -> what -> which -> outcome -> reward
 │   ├── BEHAVIORS_GUIDE.md # how to write a behaviour — start here for design work
 │   ├── WIZARD_PANEL_GUIDE.md  # how to run a session with the Wizard panel
-│   └── DATA_GUIDE.md      # where session data is, and how to load it
+│   ├── DATA_GUIDE.md      # where session data is, and how to load it
+│   ├── A16_HMM_DECISIONS.md, A19_BELIEF_DECISIONS.md, A20_EXPLANATIONS.md, A22_REWARDS.md,
+│   │   A23_ALLOWED_ACTIONS.md, A24_BANDIT.md   # one per task: what was built, why, results, limits
+│   ├── EXPLANATION_CATALOG.md # the evidence types and placeholders for explanation lines (generated)
+│   ├── EXPLANATION_VIEWER.md, SYNTHETIC_DATASET.md   # the HMM's replay page; testing on simulated users
+│   └── TODO.md            # parked problems and open ends
 ├── tests/                 # pytest: python -m pytest tests/
 ├── models/                # trained model weights go here (gitignored, see models/README.md)
 ├── requirements-vision.txt
@@ -445,11 +558,24 @@ head can physically reach a pose and how fast it moves. Details in
 | You want to… | Read |
 |---|---|
 | set up your computer, or run the sanity checks | this README |
+| **understand how EEPY decides, end to end, and where each part lives** | [docs/HOW_EEPY_DECIDES.md](docs/HOW_EEPY_DECIDES.md) |
+| start and test everything from one page | [eepy/launcher/README.md](eepy/launcher/README.md) |
 | edit or add a behaviour, and watch it in the simulator | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md) |
 | run a session with the Wizard-of-Oz panel | [docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md) |
 | find, check or analyse recorded sessions | [docs/DATA_GUIDE.md](docs/DATA_GUIDE.md) |
 | check the camera | [eepy/camera/README.md](eepy/camera/README.md) |
 | understand the face values (blinks, PERCLOS, …), or work on perception | [eepy/perception/README.md](eepy/perception/README.md) |
+| understand the user states and their reasons, or change a threshold | [eepy/state/README.md](eepy/state/README.md) |
+| see why the HMM decided what it did, second by second (a page per session, a demo, or live) | [docs/EXPLANATION_VIEWER.md](docs/EXPLANATION_VIEWER.md) |
+| train and compare HMM versions on simulated users | [docs/SYNTHETIC_DATASET.md](docs/SYNTHETIC_DATASET.md) |
+| understand when the robot nudges on its own (rules and hmm modes), or change its timings | [eepy/interaction/README.md](eepy/interaction/README.md) |
+| why the hmm mode decides on the whole belief, and how it compares to the rules | [docs/A19_BELIEF_DECISIONS.md](docs/A19_BELIEF_DECISIONS.md) |
+| how EEPY explains each nudge ("your eyes were closed 34 % of the last minute"), and how faithful that is | [docs/A20_EXPLANATIONS.md](docs/A20_EXPLANATIONS.md) |
+| write explanation lines (the evidence types and their placeholders) | [docs/EXPLANATION_CATALOG.md](docs/EXPLANATION_CATALOG.md) |
+| how each nudge becomes a training example for the bandit (rewards), and build the table | [docs/A22_REWARDS.md](docs/A22_REWARDS.md) |
+| what the robot (and the bandit) may do in each state, and why | [docs/A23_ALLOWED_ACTIONS.md](docs/A23_ALLOWED_ACTIONS.md) |
+| how the bandit learns which nudge works for whom (model, priors, results) | [docs/A24_BANDIT.md](docs/A24_BANDIT.md) |
+| open problems we parked (e.g. keeping the face in the robot camera's view) | [docs/TODO.md](docs/TODO.md) |
 | replace or add a sound | [sounds/README.md](sounds/README.md) |
 | choose the robot's voice | [docs/BEHAVIORS_GUIDE.md](docs/BEHAVIORS_GUIDE.md#choosing-the-robots-voice) |
 | understand how the behaviour system and player are built, and why | [eepy/behaviors/README.md](eepy/behaviors/README.md) |
@@ -497,6 +623,15 @@ network. See **[docs/WIZARD_PANEL_GUIDE.md](docs/WIZARD_PANEL_GUIDE.md)**.
 
 Every session is saved in `data/sessions/`, under the **mode** — the
 experimental condition — set in `config/eepy.yaml` (or `--mode wizard|rules|hmm|hmm_bandit`).
+In the **rules** and **hmm** modes the robot nudges on its own (the user state plus
+the escalation ladders; in the hmm mode the robot decides on the HMM's whole belief:
+evidence that adds up, waiting when unsure, the gentler option when unclear
+([docs/A19_BELIEF_DECISIONS.md](docs/A19_BELIEF_DECISIONS.md))); the panel's **Pause autonomy** hands
+control back to you. The vision program (`python -m eepy.perception`) follows the
+session's mode by itself (`--estimator auto`). How the HMM works and how to read
+its belief: [eepy/state/README.md](eepy/state/README.md#the-hmm-a-belief-instead-of-a-verdict).
+When it nudges and why, and how to try the timings without a camera:
+[eepy/interaction/README.md](eepy/interaction/README.md).
 To look at the data:
 
 ```bash

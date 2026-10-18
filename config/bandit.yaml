@@ -1,0 +1,67 @@
+# ===========================================================================
+#  bandit.yaml -- the contextual bandit that chooses WHICH nudge (A24).
+#
+#  Used only in the hmm_bandit mode (config/eepy.yaml, or --mode hmm_bandit),
+#  and only while config/escalation.yaml says `policy: auto`. With
+#  `policy: fixed` the fixed escalation plays instead, in every mode.
+#
+#  WHEN to nudge stays A19's belief decisions; WHAT is allowed stays A23's
+#  allowed_actions (config/escalation.yaml `actions:`). The bandit only picks
+#  inside that set, and learns from A22's rewards (config/rewards.yaml).
+#
+#  Design and reasoning: docs/A24_BANDIT.md. Try it: the launcher's Bandit tab.
+# ===========================================================================
+
+model: beta          # beta: one Beta posterior per (situation, action) -- the default
+                     # linear: a Bayesian linear model per action on the continuous context (experimental)
+
+arms: levels         # levels: the bandit picks the ladder level; the tone follows A19's confidence rule
+                     # levels_and_tone: the tone is part of the choice too (twice the arms: needs more data)
+
+# The cold start: what an untrained bandit believes, as if it had seen `strength` nudges of each kind.
+prior:
+  strength: 8        # weak: about 8 observations; a few real outcomes soon outweigh it
+  mean:              # the expected reward (-1..+1) per level, gentle first (the level order stands in
+    1: 0.6           #   for the designers' intrusiveness ranking, B8): with A23's allowed sets this makes
+    2: 0.25          #   the untrained bandit climb 1 -> 2 -> 3 -> 4 like the fixed escalation, mostly
+    3: 0.0           #   (about 3 choices in 4; tests/test_bandit.py checks it)
+    4: -0.2
+    goodnight: -0.2  #   goodnight early (very drowsy, sure): cautious
+  population: false  # true: a new participant starts from everyone's pooled experience, scaled back to `strength`
+
+# "Wait" (do not nudge now) gives no outcome to learn from, so it has a fixed value. The bandit
+# only waits when it has LEARNED that every allowed action here does worse than this.
+wait:
+  value: -0.7        # far below every prior mean: an untrained bandit (almost) never vetoes the escalation,
+                     # and ignored nudges (-0.1) never silence it -- only nudges that mostly BACKFIRE here
+                     # (dismissed -0.5, interrupted focus -1.0) make waiting the better choice
+  hold_seconds: 30   # after a wait, ask again only after this long (no dice roll every half second)
+
+learn_from_wizard: false  # the operator's own nudges (source wizard) were not the bandit's choice
+discount: 1.0             # 1.0: remember everything; e.g. 0.98: old evidence fades a little at each update
+
+# The situations the bandit learns separately (few, so each gets enough data):
+#   refocus_early / refocus_late     distracted; late after `late_work_minutes` of work since the start / last break
+#   bedtime_early / bedtime_late     drowsy or very drowsy; late from `late_hour` (local time) until 05:00
+#   ambiguous                        A19's "distracted or drowsy, unclear which"
+buckets:
+  late_work_minutes: 45   # as A19's long_work: the break-offer line
+  late_hour: 23
+
+seed: null           # null: different random draws each session; a number: reproducible (tests, simulations)
+
+linear:              # only with model: linear
+  noise: 0.5         # the reward's standard deviation around the model's prediction
+  prior_sd: 0.5      # how far the weights may be from 0 (the intercept starts at the prior mean above)
+
+# How the panel names each action ("EEPY has learned that the wordless glance works best for you").
+words:
+  refocus:1: the wordless glance
+  refocus:2: the curious look
+  refocus:3: the spoken check
+  refocus:4: the break offer
+  bedtime:1: the tired look
+  bedtime:2: the yawn at you
+  bedtime:3: the spoken bedtime check
+  bedtime:4: the wind-down deal
+  bedtime:5: saying goodnight

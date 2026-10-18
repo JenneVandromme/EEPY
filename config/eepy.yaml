@@ -9,13 +9,26 @@
 # overrides it for one run.
 #
 #   wizard       a human operator drives the robot through the panel
-#   rules        rule-based escalation (A14)              -- not built yet
-#   hmm          HMM-driven decisions                     -- not built yet
-#   hmm_bandit   HMM plus a bandit choosing the action    -- not built yet
+#   rules        the threshold rules (A13) + the escalation (A14): the robot nudges on its own
+#   hmm          the HMM (A16) + the same escalation; acts on the belief (A19)
+#   hmm_bandit   the same, but a contextual bandit (A24) learns WHICH nudge works for
+#                this participant (config/bandit.yaml; off with policy: fixed in escalation.yaml)
 #
 # In a mode that is not built yet, the panel still works by hand, shows the
 # mode in amber, and records that no controller was running.
 mode: wizard
+
+# Explanations after nudges (A20): after a spoken nudge, EEPY adds one sentence
+# saying why ("Your eyes were closed 34% of the last minute."). This is an
+# experimental condition (nudges with vs without explanations), so it is
+# recorded in every session's meta.json. Off, EEPY still logs what it WOULD
+# have said. `python -m eepy.wizard --explanations off` overrides it for one run.
+# The reasons and their sentences: docs/EXPLANATION_CATALOG.md.
+explanations:
+  enabled: true
+  top_k: 3                  # evidence items kept per decision (the panel and the log)
+  window_min_seconds: 60    # a decision's evidence window: at least the last minute ...
+  window_max_seconds: 600   # ... and at most the last 10 minutes
 
 # Where session folders go. data/ is gitignored: participant data must never
 # be committed.
@@ -48,8 +61,9 @@ speech:
   # If the engine above fails or is missing (e.g. the Piper voice is not
   # downloaded yet), use the computer's own voice instead of staying silent.
   fallback: system
-  # auto     the robot's speaker when connected to one, else this computer
-  # robot    always the robot (in the simulator: this computer's speakers)
+  # auto     the real robot's speaker when connected to one, else this computer
+  #          (dry run and simulator: this computer's speakers, directly)
+  # robot    always through the robot's daemon (in the simulator this may stay silent)
   # desktop  always this computer
   # none     no audio
   output: auto
@@ -114,6 +128,12 @@ perception:
     ear_open: 0.28        # baseline: eye openness (EAR) of an open eye
     ear_floor: 0.05       # eye openness of a fully closed eye
     perclos_closure: 0.8  # "closed" for PERCLOS: 80 % shut (the standard P80)
+    # Eyes are only JUDGED (closed / blinks / PERCLOS) while the person looks
+    # roughly forward. Looking down at notes or a keyboard, or to the side, makes
+    # open eyes look half closed to the camera. Relative to their normal head
+    # posture (A12 calibration; uncalibrated: straight at the camera).
+    judge_max_down_deg: 10   # head tilted further down than this: eyes not judged
+    judge_max_turn_deg: 15   # head turned further aside than this: eyes not judged
   blink:
     close: 0.5            # eye 50 % shut: a blink starts
     open: 0.35            # back under 35 % shut: it ends
@@ -161,3 +181,34 @@ aus:
       max_rate: 15        # the camera's rate
       require_gpu: true   # no GPU found: a LOUD warning (AUs keep running, slower)
       cpu_threads: auto
+
+# Where the person is looking: at their work (screen, notes) or away.
+# eepy/perception/gaze/README.md explains every value. The work area is
+# PERSONAL -- calibrate it per person and camera setup:
+#     python -m eepy.perception.calibrate_gaze
+# Without calibration the defaults below are used (and flagged "uncalibrated").
+gaze:
+  min_away_seconds: 1.0     # looking off-work this long counts as "looked away"...
+  min_back_seconds: 0.5     # ...and back on work this long as "back on work"
+  smoothing_seconds: 0.15   # evens out jitter in the gaze direction
+  # How far the eyes turn (degrees) when the iris sits fully at the corner.
+  eye_gain_yaw: 35
+  eye_gain_pitch: 25
+  # The iris is only trusted when the eyes are this many pixels wide, the head
+  # is turned less than this, both eyes agree and the iris is steady;
+  # otherwise the head direction alone is used ("head only" mode).
+  min_eye_width_px: 18
+  max_head_yaw_for_iris: 40
+  max_eye_disagreement: 0.6
+  max_iris_jitter_deg: 6
+  edge_softness_deg: 3      # how gradually "on work" fades near a zone's edge
+  screen_margin_deg: 4      # calibrated zones are this much bigger than the points
+  notes_margin_deg: 8
+  # "look_at: user" follows the real student: where their face is in the robot's
+  # view is sent to the panel this many times a second. The robot camera's lens
+  # sees this wide (degrees); with the laptop camera the blue box is the view.
+  robot_lens_fov_deg: 87
+  user_report_rate: 5
+  # Uncalibrated: degrees (yaw + = the person's left, pitch + = down).
+  default_screen: {yaw: 20, pitch_min: -10, pitch_max: 20}
+  default_notes:  {yaw: 30, pitch_min: 20, pitch_max: 45}

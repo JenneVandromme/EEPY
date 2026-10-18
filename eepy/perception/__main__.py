@@ -4,6 +4,9 @@ Runs the camera and the face pipeline, and records into the session the Wizard
 panel is running (features.csv, events.vision.jsonl). Outside a session it
 still runs, but records nothing. Start it next to the panel, in .venv-vision.
 Ctrl+C to stop.
+
+    python -m eepy.perception --live    # also the live HMM page (http://127.0.0.1:8770): the HMM
+                                        # the panel acts on, with the robot's decisions
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ import argparse
 import logging
 import sys
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -24,11 +27,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--profile", help="machine profile for action units: laptop, demo-desktop, "
                                           "... (default: EEPY_PROFILE in .env, else laptop)")
     parser.add_argument("--no-aus", action="store_true", help="no action units, even if installed")
+    parser.add_argument("--user", help="whose calibration (default: each session's participant)")
+    parser.add_argument("--setup", help="camera-setup label of the gaze calibration (e.g. lab)")
+    parser.add_argument("--estimator", choices=("auto", "rules", "hmm"), default="auto",
+                        help="user-state estimator: auto (default) follows the session's mode -- the HMM "
+                             "in hmm sessions, the rules otherwise; or always rules / always hmm")
+    parser.add_argument("--hmm-params", help="the HMM's parameter file (default: config/state_hmm.yaml)")
+    parser.add_argument("--live", action="store_true",
+                        help="also serve the live HMM page (the HMM the panel acts on, and the robot's decisions)")
+    parser.add_argument("--live-port", type=int, default=8770, help="the live page's port (default 8770)")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="do not open the live page in the browser (the launcher shows it in a tab)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
 
     from eepy.camera import CameraConfigError, CameraError, open_camera
     from eepy.logs.features import FeatureStream, ProcessEventLog
+
+    from eepy.state.config import RulesConfigError
+    from eepy.state.hmm_params import HMMConfigError
 
     from .aus import ActionUnitExtractor
     from .aus import load_config as load_au_config
@@ -40,45 +57,152 @@ def main(argv: Optional[List[str]] = None) -> int:
         config = load()
         au_config = load_au_config(profile=args.profile)
         events = ProcessEventLog("vision")
-        camera = open_camera(args.camera, events=events,
+        # keep_full: the calibration's face check shows the blue box in the whole picture.
+        camera = open_camera(args.camera, events=events, keep_full=True,
                              **({"index": args.index} if args.index is not None else {}))
-    except (CameraError, CameraConfigError) as exc:   # also a wrong --profile
+        tracker, hmm_params = _state_tracker(args.estimator, args.hmm_params)   # checks both YAML files first
+    except (CameraError, CameraConfigError, RulesConfigError, HMMConfigError, ValueError) as exc:  # also --profile
         print(f"\n  {exc}", file=sys.stderr)
         return 2
     extractors = default_extractors(config)
-    features = FeatureStream(all_columns(extractors) + ["process_ms"], rate_hz=camera.config.fps)
     au_features = None
     if not args.no_aus:
         # One row per AU result, at its own rate, in the session's aus.csv.
         au_features = FeatureStream(list(au_config.units) + ["infer_ms"],
                                     rate_hz=au_config.profile.max_rate, name="aus")
         extractors.append(ActionUnitExtractor(au_config, config, features=au_features))
+    from .gaze import GazeExtractor, resolve_user
+    from .gaze import load_config as load_gaze_config
+
+    gaze = GazeExtractor(load_gaze_config(), config, user=resolve_user(args.user), setup=args.setup)
+    extractors.append(gaze)
+    features = FeatureStream(all_columns(extractors) + ["process_ms"], rate_hz=camera.config.fps)
+    # Each participant's own baseline (A12), following the session like the gaze zones.
+    from .baseline import StoredBaselineProvider
+    from .gaze import CalibrationStore
+
+    store = CalibrationStore()
+    baseline = StoredBaselineProvider(config, store=store, user=gaze.user, source=camera.name,
+                                      setup=args.setup)
     pipeline = FacePipeline(camera, config, extractors=extractors, features=features,
-                            events=events).start()
+                            events=events, baseline=baseline)
+    # Real "look at user": where the face is goes to the panel (if one runs).
+    from .gaze.look_at import UserTargetPublisher
+
+    gaze_config = gaze.gaze
+    publisher = UserTargetPublisher(camera.config.relay_port, gaze_config.get("robot_lens_fov_deg"),
+                                    camera.config.robot.fov_deg, gaze_config.get("user_report_rate"))
+    pipeline.subscribe(publisher)
+    # The user's state (A13): from each window summary, logged and sent to the panel.
+    from eepy.logs.clock import monotonic
+    from eepy.state.runner import SessionEstimators, StateFromPipeline, StatePublisher, StateRecorder, \
+        describe_estimator
+
+    live = server = None
+    if args.live:                  # before StateFromPipeline: the page keeps the picture and the raw signs
+        from .live import SessionFeed, serve
+
+        live = SessionFeed(hmm_params, config, baseline)
+        try:
+            server = serve(live.state, args.live_port)
+        except OSError as exc:
+            print(f"\n  Port {args.live_port} is busy ({exc}). Try --live-port {args.live_port + 1}.",
+                  file=sys.stderr)
+            camera.stop()
+            return 2
+        pipeline.subscribe(live.on_result)
+        tracker.listeners.append(live)
+    state_stream = StateRecorder.make_stream()
+    state_publisher = StatePublisher(camera.config.relay_port)
+    tracker.listeners += [StateRecorder(events, state_stream, describe=lambda: describe_estimator(tracker.estimator)),
+                          state_publisher]
+    choose = SessionEstimators(tracker, fixed=None if args.estimator == "auto" else args.estimator,
+                               hmm_params=hmm_params)
+    pipeline.subscribe(StateFromPipeline(tracker, config.windows, session=lambda: features.session,
+                                         on_session=choose))
+    pipeline.start()
+    # The Wizard panel's "Calibrate" step runs here (this process has the camera).
+    from .calibration.remote import CommandHandler
+
+    commands = CommandHandler(pipeline, camera, store, gaze, baseline, events, setup_label=args.setup)
     print(f"\n  Face perception running on the {camera.describe()} (profile {au_config.profile.name}). "
           "It records\n  only while the Wizard panel runs a session. Ctrl+C to stop.\n")
+    if live is not None:
+        url = f"http://127.0.0.1:{args.live_port}/"
+        print(f"  Live HMM page: {url}\n")
+        import webbrowser
+
+        if not args.no_browser:
+            webbrowser.open(url)
+    next_status = time.monotonic() + 5
+    next_live = 0.0
     try:
         while True:
-            time.sleep(5)
+            time.sleep(0.5)
             if pipeline.error:
                 print(f"\n  {pipeline.error}", file=sys.stderr)
                 return 1
+            tracker.idle(monotonic())              # no pictures for a while: unknown
+            done = commands.tick()                 # the panel asked to calibrate / reuse / skip?
+            if done:
+                print(f"  Calibration: {done}")
+            if live is not None and time.monotonic() >= next_live:
+                next_live = time.monotonic() + 2
+                live.refresh(features.session, choose._folder(features.session), tracker.estimator.name)
+            if time.monotonic() < next_status:
+                continue
+            next_status = time.monotonic() + 5
+            if not args.user:          # follow the session: each participant's own calibration
+                gaze.user = resolve_user(None)
+                baseline.use(gaze.user, camera.name)
             stats, latest = pipeline.stats(), pipeline.get_latest()
             face = "face" if latest and latest.observation.present else "no face"
             recording = f"recording into {features.session}" if features.session else "not recording (no session)"
             aus = next((e for e in extractors if isinstance(e, ActionUnitExtractor)), None)
             au_text = "AUs off" if aus is None or aus.status == "off" else \
                 f"AUs {aus.status} {aus.achieved_rate():.0f}/s"
+            zone = (latest.values.get("gaze_zone") if latest else None) or "-"
+            calib = "" if gaze.zones.calibrated and baseline.current().calibrated else " (uncalibrated)"
             print(f"  {stats['fps'] or 0:4.1f} fps   {stats['process_ms'] or 0:5.1f} ms/frame   "
-                  f"{face:8}  {au_text:18} {camera.status}   {recording}")
+                  f"{face:8}  gaze {zone}{calib:15} {au_text:18} state {_state_text(tracker):22} "
+                  f"{camera.status}   {recording}")
     except KeyboardInterrupt:
         pass
     finally:
         pipeline.stop()
+        if server is not None:
+            server.shutdown()
+        publisher.close()
+        state_publisher.close()
+        state_stream.close()
         features.close()
         if au_features is not None:
             au_features.close()
     return 0
+
+
+def _state_tracker(name: str, hmm_params_path: Optional[str]) -> Any:
+    """The user-state tracker. Both parameter files are checked at start-up (a mistake stops
+    here with a message). auto starts with the rules (no session yet); the session's mode
+    decides from then on. If the HMM cannot load (numpy missing), auto keeps the rules."""
+    from eepy.state.config import load as load_rules
+    from eepy.state.estimate import make_estimator
+    from eepy.state.hmm_params import load as load_hmm
+    from eepy.state.runner import StateTracker
+
+    load_rules()
+    hmm_params = load_hmm(hmm_params_path)
+    estimator = make_estimator("hmm", params=hmm_params) if name == "hmm" else make_estimator("rules")
+    return StateTracker(estimator), hmm_params
+
+
+def _state_text(tracker: Any) -> str:
+    """For the status line: "drowsy 82% (hmm)" or "focused (rules)"."""
+    latest = tracker.latest
+    if latest is None:
+        return "-"
+    sure = f" {latest.confidence:.0%}" if latest.confidence is not None else ""
+    return f"{latest.state}{sure} ({latest.estimator})"
 
 
 if __name__ == "__main__":

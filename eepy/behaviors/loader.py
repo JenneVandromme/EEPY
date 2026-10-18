@@ -214,6 +214,7 @@ class Library:
         start: Any = None,
         gaze: Callable[[str], HeadPose] | None = None,
         intensity_scale: float = 1.0,
+        base: HeadPose | None = None,
     ) -> list[Step]:
         """Expand a behaviour into a flat list of absolute steps.
 
@@ -236,6 +237,12 @@ class Library:
           intensity_scale  multiplies the behaviour's own `intensity`, for
                            play(name, intensity=0.5). Must be 0-1, like the
                            field it scales.
+          base             the robot's resting direction (yaw/pitch), e.g. aimed
+                           at the student's face. Absolute head angles in a
+                           behaviour are then offsets from it, and intensity
+                           scales toward it instead of toward 0; look_at targets
+                           stay the directions they name. None (the default):
+                           exactly as before, the resting direction is 0.
 
         One pass through a looping behaviour is returned; looping is the
         player's job, not this function's.
@@ -250,6 +257,8 @@ class Library:
                          "antenna_left", "body_yaw"):
                 setattr(pose, name, float(getattr(start, name)))
         self._gaze = gaze or (lambda name: self.gaze_targets[name])
+        self._base_yaw = float(base.yaw or 0.0) if base is not None else 0.0
+        self._base_pitch = float(base.pitch or 0.0) if base is not None else 0.0
         steps: list[Step] = []
         clock = 0.0
         for index, keyframe in enumerate(behavior.keyframes):
@@ -344,9 +353,16 @@ class Library:
 
         # Resolve the head. look_at is just a named absolute pose.
         head = keyframe.head
-        if keyframe.look_at is not None:
+        target = keyframe.look_at is not None
+        if target:
             head = self._gaze(keyframe.look_at)
             relative = False
+        # The resting direction (0 unless the player was given a base). A written
+        # angle is an offset from it; a look_at target is a direction in the room,
+        # so only its intensity scaling goes toward the base. With a base of 0 both
+        # are exactly the old "value * intensity".
+        by = getattr(self, "_base_yaw", 0.0)
+        bp = getattr(self, "_base_pitch", 0.0)
 
         if head is not None:
             if relative:
@@ -364,11 +380,11 @@ class Library:
                 if head.z is not None:
                     pose.z += head.z * intensity
             else:
-                # Absolute, scaled toward neutral (0) by intensity.
+                # Absolute, scaled toward the resting direction (0 without a base).
                 if head.yaw is not None:
-                    pose.yaw = head.yaw * intensity
+                    pose.yaw = by + ((head.yaw - by) if target else head.yaw) * intensity
                 if head.pitch is not None:
-                    pose.pitch = head.pitch * intensity
+                    pose.pitch = bp + ((head.pitch - bp) if target else head.pitch) * intensity
                 if head.roll is not None:
                     pose.roll = head.roll * intensity
                 if head.z is not None:

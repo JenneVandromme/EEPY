@@ -41,6 +41,16 @@ def _split_host_port(value: str) -> tuple[str, int]:
     return value, DEFAULT_PORT
 
 
+def daemon_host_str(args: argparse.Namespace) -> str:
+    """'host:port' for scripts that talk to the daemon over its REST API
+    instead of the SDK (eye_gaze_follow.py, in the vision venv)."""
+    robot_host = getattr(args, "robot_host", None) or os.environ.get(ROBOT_HOST_ENV)
+    if not robot_host:
+        return f"localhost:{DEFAULT_PORT}"
+    host, port = _split_host_port(robot_host)
+    return f"{host}:{port}"
+
+
 def connection_kwargs(args: argparse.Namespace) -> dict:
     """kwargs to merge into ReachyMini(**kwargs).
 

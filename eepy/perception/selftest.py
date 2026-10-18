@@ -49,6 +49,9 @@ class Tally:
     au: Dict[str, List[float]] = field(default_factory=dict)        # AU -> fresh values seen
     au_active_s: Dict[str, float] = field(default_factory=dict)     # AU -> seconds "on"
     eyes_shut_au43: List[bool] = field(default_factory=list)        # AU43 on, while eyes shut (A9)
+    gaze: List[Any] = field(default_factory=list)                   # (t, zone, away_s)
+    closure: List[float] = field(default_factory=list)              # eye_closure (calibrated)
+    t0: Optional[float] = None                                      # when the step became active
     last_t: Optional[float] = None
 
     def count(self, kind: str) -> int:
@@ -94,6 +97,99 @@ def _steps(look_away_deg: float) -> List[Step]:
                            f"yaw only reached {max(t.yaw or [0]):+.0f} deg"
                            + (f" (but {min(t.yaw):+.0f} the other way: is the sign wrong?)"
                               if t.yaw and min(t.yaw) < -look_away_deg else ""))),
+    ]
+
+
+class ShadowDetectors:
+    """A9's detectors once more, on the SAME frames but with the DEFAULT baseline,
+    so the report can show what calibration changed (A12): "blinks 5 (default 3)".
+    A pipeline plug-in that adds no values; it only remembers its events."""
+
+    name = "shadow"
+    columns: tuple = ()
+
+    def __init__(self, config: Any) -> None:
+        from .baseline import BaselineProvider
+        from .extractors import EyeExtractor, HeadExtractor, MouthExtractor, PresenceExtractor
+
+        self.baseline = BaselineProvider(config).current()
+        self.inner = [PresenceExtractor(config), EyeExtractor(config), MouthExtractor(config),
+                      HeadExtractor(config)]
+        self.events: List[Any] = []            # (t, type)
+        self.closure: List[Any] = []           # (t, eye_closure)
+
+    def update(self, obs: Any, baseline: Any) -> Any:
+        from .extractors import Output
+
+        for extractor in self.inner:
+            out = extractor.update(obs, self.baseline)
+            self.events += [(e.t, e.type) for e in out.events]
+            if out.values.get("eye_closure") is not None:
+                self.closure.append((obs.t, out.values["eye_closure"]))
+        return Output({})
+
+    def count(self, kind: str, start: float, end: float) -> int:
+        return sum(1 for t, k in self.events if k == kind and start <= t <= end)
+
+    def median_closure(self, start: float, end: float) -> Optional[float]:
+        xs = [c for t, c in self.closure if start <= t <= end]
+        return statistics.median(xs) if xs else None
+
+    # The rest of the Extractor interface: nothing to add.
+    def notice(self, *args: Any) -> None:
+        pass
+
+    def summary(self, now: float) -> list:
+        return []
+
+    def drain(self) -> list:
+        return []
+
+    def derive(self, values: Any, baseline: Any) -> dict:
+        return {}
+
+    def close(self) -> None:
+        pass
+
+    def reset(self) -> None:
+        pass
+
+
+def _gaze_steps(calibrated: bool) -> List[Step]:
+    """Gaze steps: PASS when most of the step is spent in the expected zone. The
+    delays: 'seen' = first frame in that zone (includes your reaction time),
+    'confirmed' = after the hysteresis (gaze.min_away/back_seconds)."""
+
+    def judge(expected: str, on_work: bool) -> Callable[[Tally], str]:
+        def verdict(t: Tally) -> str:
+            if not t.gaze:
+                return "CHECK no frames"
+            tail = t.gaze[len(t.gaze) * 2 // 5:]            # after the first 40 %: settled
+            counts: Dict[str, int] = {}
+            for _, zone, _ in tail:
+                counts[zone] = counts.get(zone, 0) + 1
+            top = max(counts, key=counts.get)
+            seen = next((g[0] for g in t.gaze if g[1] == expected), None)
+            confirmed = next((g[0] for g in t.gaze if (g[2] == 0) == on_work), None)
+            delay = (f"seen after {seen - t.t0:.1f} s" if seen is not None else "never seen") + \
+                (f", confirmed after {confirmed - t.t0:.1f} s" if confirmed is not None else "")
+            share = counts.get(expected, 0) / len(tail)
+            note = "" if calibrated else " [uncalibrated]"
+            return _ok(top == expected, f"{expected} {share:.0%} of the time; {delay}{note}",
+                       f"mostly {top} ({counts[top] / len(tail):.0%}), expected {expected}; {delay}{note}")
+        return verdict
+
+    return [
+        # Alternating on / off work, so every step is a real switch and its
+        # delays mean something (screen -> away -> notes -> phone).
+        Step("Gaze: screen", "Look at the MIDDLE of your screen and read something there.", 6,
+             "zone screen", lambda t: False, judge("screen", True)),
+        Step("Gaze: away", "Look AWAY to the side (a window, a door) and keep looking.", 6,
+             "zone away", lambda t: False, judge("away", False)),
+        Step("Gaze: notes", "Look at your NOTES (as if reading them).", 6,
+             "zone notes", lambda t: False, judge("notes", True)),
+        Step("Gaze: phone", "Look down at an imaginary PHONE in your LAP.", 6,
+             "zone down_other", lambda t: False, judge("down_other", False)),
     ]
 
 
@@ -145,7 +241,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--index", type=int, help="laptop camera number")
     parser.add_argument("--profile", help="machine profile for action units (default: EEPY_PROFILE, else laptop)")
     parser.add_argument("--no-aus", action="store_true", help="skip the action-unit steps")
+    parser.add_argument("--user", help="whose gaze calibration (default: 'default')")
     parser.add_argument("--fast", action="store_true", help="2-second steps (checks that it runs)")
+    parser.add_argument("--states", action="store_true",
+                        help="instead: the user-state scenario (~3 minutes): work, phone, act sleepy, "
+                             "leave -- the rules (A13) and the HMM (A16) side by side")
+    parser.add_argument("--hmm-params", help="with --states: the HMM's parameter file "
+                                             "(default: config/state_hmm.yaml)")
     args = parser.parse_args(argv)
 
     import logging
@@ -173,6 +275,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         config = load()
         extractors = default_extractors(config)
+        from .gaze import GazeExtractor, resolve_user
+        from .gaze import load_config as load_gaze_config
+
+        gaze = GazeExtractor(load_gaze_config(), config, user=resolve_user(args.user))
+        extractors.append(gaze)
+        shadow = ShadowDetectors(config)
+        extractors.append(shadow)
         if not args.no_aus:
             from .aus import ActionUnitExtractor
             from .aus import load_config as load_au_config
@@ -184,10 +293,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"\n  {exc}", file=sys.stderr)
         return 2
 
-    pipeline = FacePipeline(camera, config, extractors=extractors).start()
-    overlay = FaceOverlay(aus=au)
+    from .baseline import StoredBaselineProvider
+
+    baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
+    pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline)
+    if args.states:
+        return _state_scenario(cv2, pipeline, camera, config, au, gaze, baseline, args.fast, args.hmm_params)
+    pipeline.start()
+    overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline)
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     steps = _steps(config.get("", "look_away_deg"))
+    # Calibration is loaded on the first frame; the file tells us up front.
+    from .gaze import CalibrationStore, setup_name
+
+    calibrated = CalibrationStore().section(gaze.user, setup_name(camera.name), "gaze") is not None
+    steps += _gaze_steps(calibrated)
     tallies: List[Tally] = []
     print(f"\n  Face self-test on the {camera.describe()}. Follow the instructions in the window.")
     result = None
@@ -227,6 +347,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 now = time.monotonic()
                 if not active and now >= phase_end:
                     active, phase_end = True, now + (2.0 if args.fast else step.seconds)
+                    tally.t0 = result.t if result is not None else None
                 if active and (now >= phase_end or (finished_at and now - finished_at > 1.0)):
                     break
                 if pipeline.error:
@@ -260,6 +381,91 @@ def main(argv: Optional[List[str]] = None) -> int:
         cv2.destroyAllWindows()
         cv2.waitKey(1)
     _report(steps, tallies, stats, config, au_info)
+    _compare(steps, tallies, shadow, baseline.current())
+    return 0
+
+
+def _state_scenario(cv2: Any, pipeline: Any, camera: Any, config: Any, au: Any, gaze: Any,
+                    baseline: Any, fast: bool, hmm_params: Optional[str] = None) -> int:
+    """The scripted scenario -- work, phone, back, act sleepy, leave -- with the rules (A13)
+    and the HMM (A16) running live on the same pictures. Reports the state in each part and
+    how long switches took, for both."""
+    from eepy.logs.clock import monotonic
+    from eepy.state.estimate import make_estimator
+    from eepy.state.hmm_params import HMMConfigError
+    from eepy.state.runner import StateFromPipeline, StateTracker
+    from eepy.state.scenario import SCENARIO, judge, report, report_both
+
+    from .overlay import FaceOverlay
+
+    estimates: List[Any] = []
+    tracker = StateTracker(make_estimator("rules"), listeners=[estimates.append])
+    pipeline.subscribe(StateFromPipeline(tracker, config.windows))
+    hmm_estimates: List[Any] = []
+    hmm_tracker = None
+    try:
+        from eepy.state.hmm_params import load as load_hmm
+
+        hmm_tracker = StateTracker(make_estimator("hmm", params=load_hmm(hmm_params)),
+                                   listeners=[hmm_estimates.append])
+        pipeline.subscribe(StateFromPipeline(hmm_tracker, config.windows))
+    except (HMMConfigError, ValueError) as exc:
+        print(f"\n  The HMM cannot run, so this tests the rules only: {exc}")
+    pipeline.start()
+    overlay = FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=hmm_tracker or tracker,
+                          rules=tracker if hmm_tracker is not None else None)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    print(f"\n  User-state scenario on the {camera.describe()} (about 3 minutes). "
+          "Follow the instructions in the window.")
+    result = None
+    timed: List[Any] = []
+    started = monotonic()
+    try:
+        for n, phase in enumerate(SCENARIO, start=1):
+            step = Step(phase.title, phase.instruction, phase.seconds, "/".join(phase.expected),
+                        lambda t: False, lambda t: "")
+            title = f"{n}/{len(SCENARIO)}  {phase.title}"
+            start = monotonic()
+            end = start + (4.0 if fast else phase.seconds)
+            print("\a", end="", flush=True)                  # a beep: also for whoever left the view
+            while True:
+                now = monotonic()
+                if now >= end:
+                    break
+                if pipeline.error:
+                    print(f"\n  {pipeline.error}", file=sys.stderr)
+                    return 1
+                tracker.idle(now)
+                if hmm_tracker is not None:
+                    hmm_tracker.idle(now)
+                newest = pipeline.wait_for_result(newer_than=result, timeout=0.1)
+                if newest is not None:
+                    result = newest
+                    overlay.note(result)
+                cv2.imshow(WINDOW, _screen(cv2, result, overlay, step, title, True, end - now, camera))
+                key = cv2.waitKey(1) & 0xFF
+                overlay.key(key)
+                if key in (ord("q"), ord("Q"), 27) or cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
+                    timed.append((phase, start, now))
+                    raise KeyboardInterrupt
+                if key == ord(" "):
+                    break
+            timed.append((phase, start, monotonic()))
+    except KeyboardInterrupt:
+        print("  (stopped early)")
+    finally:
+        pipeline.stop()
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+    for line in report(judge(timed, estimates), estimates, started):
+        print(line)
+    if hmm_tracker is not None:
+        for line in report(judge(timed, hmm_estimates), hmm_estimates, started, title="User state (A16 HMM)"):
+            print(line)
+        for line in report_both(judge(timed, estimates), judge(timed, hmm_estimates), estimates,
+                                hmm_estimates, started):
+            print(line)
+    print()
     return 0
 
 
@@ -274,6 +480,12 @@ def _count(tally: Tally, result: Any, au: Any) -> None:
                              ("head_pitch", tally.pitch)):
             if values.get(name) is not None:
                 bucket.append(values[name])
+    if values.get("eye_closure") is not None:
+        tally.closure.append(values["eye_closure"])
+    if values.get("gaze_zone") is not None:
+        tally.gaze.append((result.t, values["gaze_zone"], values.get("away_s") or 0.0))
+        if tally.t0 is None:
+            tally.t0 = result.t
     for event in result.events:
         tally.events[event.type] = tally.events.get(event.type, 0) + 1
         if event.type == "blink":
@@ -362,6 +574,30 @@ def _report(steps: List[Step], tallies: List[Tally], stats: Dict[str, Any], conf
             print("  -> Your eyes differ from the default: per-person calibration (A12) will handle this.")
     if len(tallies) > 1 and tallies[1].blink_ms:
         print(f"  Blink durations: {', '.join(f'{ms:.0f}' for ms in tallies[1].blink_ms)} ms")
+    print()
+
+
+
+def _compare(steps: List[Step], tallies: List[Tally], shadow: ShadowDetectors, baseline: Any) -> None:
+    """Calibrated vs default detections on the same frames (A12)."""
+    if not baseline.calibrated:
+        print("  (No calibration for this person and camera: everything above used the defaults.\n"
+              "   Calibrate with  python -m eepy.perception.calibrate  to compare.)\n")
+        return
+    print(f"  Calibrated ({baseline.label}, {baseline.taken_at}) vs. default baseline, same frames:")
+    for step, tally in zip(steps, tallies):
+        if not tally.gaze or tally.t0 is None:
+            continue
+        start, end = tally.t0, tally.gaze[-1][0]
+        kind = {"Blink": "blink", "Yawn": "yawn", "Nod off": "nod"}.get(step.title)
+        if kind:
+            print(f"    {step.title:14} {kind}s: calibrated {tally.count(kind)}, default {shadow.count(kind, start, end)}")
+        if step.title == "Look normally":
+            default = shadow.median_closure(start, end)
+            mine = statistics.median([e for e in tally.closure]) if tally.closure else None
+            if default is not None and mine is not None:
+                print(f"    {step.title:14} eyes 'closed' at rest: calibrated {mine:.0%}, default {default:.0%}"
+                      "  (should be ~0 %)")
     print()
 
 

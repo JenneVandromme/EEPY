@@ -61,15 +61,17 @@ All event types live in `schema.py`, in these groups plus reserved ones:
 | Speech | `speech_requested`, `speech_started`, `speech_finished`, `speech_interrupted`, `speech_failed` |
 | Operator | `wizard_command`, `annotation`, `note` |
 | System | `connection`, `reload`, `error` |
-| Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries), `au_status`, `au_window` (optional action units) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
+| Face | `blink`, `yawn`, `nod`, `face_lost`, `face_back`, `face_window` (per-second summaries), `au_status`, `au_window` (optional action units), `calibration` (A12, see [eepy/perception/calibration/README.md](../perception/calibration/README.md)), `looked_away`, `back_on_work`, `gaze_window`, `gaze_status` (gaze, see [eepy/perception/gaze/README.md](../perception/gaze/README.md)) — written by the vision process; see [eepy/perception/README.md](../perception/README.md) |
+| Autonomy | `nudge_decision`, `nudge_outcome` (one per decision: success / no_reaction / dismissed / snoozed / interrupted_focus / censored), `role_changed`, `escalation` — the rules and hmm modes (A14, A16); see [eepy/interaction/README.md](../interaction/README.md) |
+| Model | `state_changed` (the user's state: from, to, reason, evidence; the HMM adds its probabilities; every second's state is in `state.csv`), `state_model` (which estimator and parameter file ran, and the session prior; once per session) — written by the vision process; see [eepy/state/README.md](../state/README.md) |
 | Camera | `camera_started`, `camera_error`, `camera_reconnected`, `camera_stats` — statistics only, never pixels; written by the vision process to `events.vision.jsonl` (see [eepy/camera/README.md](../camera/README.md)) |
-| **Reserved** | `hmm_belief`, `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` |
+| **Reserved** | `bandit_decision`, `bandit_reward`, `reply_category`, `llm_output` (the reserved `hmm_belief` became `state_model` + the `p_<state>` columns of `state.csv` in A16) |
 
 Every line in `events.jsonl` carries `v` (schema version), `seq` (1, 2, 3 …),
 `t_mono`, `t_wall`, `type` and `source`, plus the type's own fields. Extra
 fields are always allowed, so the data can grow without a schema change; bump
 `SCHEMA_VERSION` only when an existing field changes meaning. The reserved
-types are defined now, so the HMM and bandit tasks inherit a settled format
+types are defined now, so the bandit and LLM tasks inherit a settled format
 instead of inventing one under deadline pressure.
 
 ## The main decisions, and why
@@ -103,7 +105,8 @@ converting to Parquet later is one line in the loader.
 **The mode is fixed per session.** It is the experimental condition, so it is
 chosen at start-up (`config/eepy.yaml` or `--mode`) and recorded in the folder
 name and `meta.json`. A mode without a controller yet still records, keeps the
-panel fully usable by hand, and logs `mode_not_implemented`.
+panel fully usable by hand, and logs `mode_not_implemented`. `wizard` and `rules`
+(the state rules + the escalation, A13/A14) have one.
 
 ## Privacy, built in
 
@@ -152,6 +155,9 @@ participant's folder. *Fix:* `CURRENT` records the panel's process ID; the
 vision side stops recording within half a second of that process disappearing.
 The next panel to start clears the stale pointer and reports the crashed
 session.
+Whether that process still runs is asked with `pid_alive()` (`session.py`),
+never with `os.kill(pid, 0)`: on Windows, signal 0 is Ctrl+C, so that "check"
+would interrupt the panel or the vision process.
 
 **5. File order is not time order.**
 The player's events reach the log through another thread a few milliseconds

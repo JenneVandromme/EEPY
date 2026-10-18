@@ -21,14 +21,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .schema import EVENT_TYPES, SCHEMA_VERSION
-from .session import CURRENT_FILE, DATA_DIR, _sha256
+from .session import CURRENT_FILE, DATA_DIR, _sha256, pid_alive
 
 # Events are written in the order they ARRIVE, which can differ slightly from
 # the order they HAPPENED (the player's events come through a separate thread;
@@ -228,11 +227,7 @@ def stale_pointer(data_dir: Path = DATA_DIR) -> Optional[str]:
         pointer = json.loads((Path(data_dir) / CURRENT_FILE).read_text())
     except (OSError, ValueError):
         return None
-    try:
-        os.kill(int(pointer.get("pid", -1)), 0)
-        return None
-    except (OSError, ValueError):
-        return pointer.get("session", "?")
+    return None if pid_alive(pointer.get("pid", -1)) else pointer.get("session", "?")
 
 
 def clear_stale_pointer(data_dir: Path = DATA_DIR) -> None:

@@ -82,11 +82,29 @@ class Keys(Strict):
         }
 
 
+class Aim(Strict):
+    """Aiming the robot's resting direction at the participant's face (see
+    eepy/wizard/README.md, "Aiming at the participant")."""
+
+    enabled: bool = False                                   # parked: docs/TODO.md
+    auto: bool = True                                       # aim by itself when it sees the participant
+    auto_after_s: float = Field(default=2.0, ge=0.0, le=30.0)     # ... off-centre for this long
+    auto_min_gap_s: float = Field(default=15.0, ge=0.0, le=600.0)  # ... at most this often
+    on_calibrate: bool = True                               # aim first when Calibrate is pressed
+    tolerance_deg: float = Field(default=8.0, ge=0.0, le=30.0)
+    yaw_limit_deg: float = Field(default=30.0, ge=0.0, le=45.0)
+    up_limit_deg: float = Field(default=25.0, ge=0.0, le=35.0)
+    down_limit_deg: float = Field(default=15.0, ge=0.0, le=30.0)
+    rounds: int = Field(default=3, ge=1, le=6)
+    settle_s: float = Field(default=1.8, ge=0.5, le=5.0)
+
+
 class PanelConfig(Strict):
     default_intensity: float = Field(default=0.7, ge=0.0, le=1.0)
     idle: str | None = None
     keys: Keys = Field(default_factory=Keys)
     markers: list[Marker] = Field(default_factory=list)
+    aim: Aim = Field(default_factory=Aim)
 
 
 class ConfigError(Exception):
@@ -234,7 +252,9 @@ def build_panel(library: Library, config: PanelConfig) -> Panel:
     # Lines with a configured key first, in the config's order (so the keys
     # read 6 7 8 9 0 - across the row), then any new ones alphabetically.
     configured = [l for l in keys.lines if l in library.lines]
-    for line_id in configured + sorted(set(library.lines) - set(configured)):
+    # Lines the calibration speaks by itself get no button (lines.yaml says so).
+    spoken_by_system = {l for l in library.lines if l.startswith("calibration_")}
+    for line_id in configured + sorted(set(library.lines) - set(configured) - spoken_by_system):
         key, auto = pick(keys.lines.get(line_id), f'line "{line_id}"')
         lines.append(Button(f"l:{line_id}", "line", line_id.replace("_", " "), "",
                             key, line_id, auto))

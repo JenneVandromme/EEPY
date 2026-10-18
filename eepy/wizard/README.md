@@ -78,6 +78,37 @@ to the config.
 **A command is logged only once the player accepts it,** but it is stamped with
 the moment the button was pressed.
 
+## Aiming at the participant
+
+The robot's resting direction ("neutral") can point at the participant's face instead of
+straight ahead (the operator's view: [WIZARD_PANEL_GUIDE.md](../../docs/WIZARD_PANEL_GUIDE.md#aiming-the-robot-at-the-participant)).
+
+- **The loader** (`Library.resolve(..., base=HeadPose)`) turns written absolute head angles
+  into offsets from the base and scales intensity toward it; `look_at` targets stay room
+  directions. Without a base the result is identical to before (tested on every behaviour).
+- **The player** (`set_base`, `check_base`) plans every behaviour around the base and
+  returns to it (stop / Esc too); `close()` returns to the true neutral. `check_base` runs
+  every behaviour's safety checks from a candidate base.
+- **The panel** (`Wizard.aim`, a background thread): reads where the face is from the
+  `TrackingTargetProvider` (the vision process's USER reports), and if it is more than
+  `aim.tolerance_deg` from where the robot rests, moves the base there: clamped to the
+  configured limits, then pulled back toward straight ahead (a binary search) until every
+  behaviour passes `check_base`. It looks again after `settle_s` and corrects, at most
+  `rounds` times. The result is saved as the `robot_base` section of the participant's
+  calibration file (`data/calibration/<user>/<setup>.json`); Reuse restores it (if it is
+  still safe). Calibrate aims first when a face is tracked (`aim.on_calibrate`). A
+  reconnect keeps the base. `POST /api/aim {"action": "aim" | "reset"}`.
+- **By itself** (`aim.auto`, `Wizard._maybe_auto_aim`, called on every USER report): the
+  face more than the tolerance from the base for `auto_after_s`, no behaviour playing
+  (`player.is_playing()`, the idle does not count), no calibration running, at most every
+  `auto_min_gap_s`; at the safe limit it does not retry for about the same face.
+- **Why it does not follow continuously:** the robot's camera is in its head. Gaze zones
+  are calibrated from one view; a resting direction that keeps moving would shift them,
+  and perception does not yet correct for the robot's head pose. So it re-aims only when
+  the face has clearly moved, and suggests calibrating again when that happens after the
+  calibration.
+- Tests: `tests/test_aim.py`.
+
 ## The session log
 
 The panel logs through the central logger, `eepy.logs.log` — it has no log
@@ -91,6 +122,16 @@ autonomous behaviour can be told apart.
   `events.jsonl`, and a `snapshot/` of the YAML files in use.
 - **The mode** is the experimental condition, shown in the status bar and
   recorded in the folder name and `meta.json`.
+- **In the rules mode** the panel also runs the escalation (A14):
+  - `_start_autonomy()` builds an `EscalationEngine` that plays through the
+    panel's own player (`source=auto`), plus a tick thread;
+  - the vision process's `STATE` messages feed it;
+  - the session start and end, the calibration, the operator's plays (for the
+    minimum gap) and the reply markers (`user_accepted` / `user_snoozed` /
+    `user_dismissed`) inform it;
+  - `POST /api/autonomy` pauses it.
+
+  See [eepy/interaction/README.md](../interaction/README.md).
 - Commands are logged only once the player has **accepted** them, stamped with
   the moment of the press.
 - **Annotations are stamped when the desktop receives the key press** — a few

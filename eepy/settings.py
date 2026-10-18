@@ -53,6 +53,16 @@ class Speech(_Strict):
     pregenerate: bool = True
 
 
+class Explanations(_Strict):
+    """Explanations after nudges (A20). `enabled` is an experimental condition: recorded in
+    every session's meta.json. Off, EEPY still logs what it WOULD have said."""
+
+    enabled: bool = True
+    top_k: int = Field(default=3, ge=1, le=5)
+    window_min_seconds: float = Field(default=60.0, ge=10, le=600)
+    window_max_seconds: float = Field(default=600.0, ge=60, le=3600)
+
+
 def _check_camera(value: object) -> object:
     """The camera section is checked by eepy/camera/config.py, which the
     vision process (no pydantic) uses too -- one set of rules, two readers."""
@@ -72,9 +82,11 @@ class Settings(_Strict):
     privacy: Privacy = Field(default_factory=Privacy)
     logging: Logging = Field(default_factory=Logging)
     speech: Speech = Field(default_factory=Speech)
+    explanations: Explanations = Field(default_factory=Explanations)
     camera: Optional[dict] = None
     perception: Optional[dict] = None
     aus: Optional[dict] = None
+    gaze: Optional[dict] = None
 
     @field_validator("camera")
     @classmethod
@@ -98,6 +110,18 @@ class Settings(_Strict):
     def _valid_aus(cls, value: Optional[dict]) -> Optional[dict]:
         from eepy.camera.config import CameraConfigError
         from eepy.perception.aus.config import parse
+
+        try:
+            parse(value)
+        except CameraConfigError as exc:
+            raise ValueError(str(exc)) from None
+        return value
+
+    @field_validator("gaze")
+    @classmethod
+    def _valid_gaze(cls, value: Optional[dict]) -> Optional[dict]:
+        from eepy.camera.config import CameraConfigError
+        from eepy.perception.gaze.config import parse
 
         try:
             parse(value)
@@ -153,8 +177,10 @@ def check_mode(value: str) -> str:
     return mode
 
 
-def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None) -> Settings:
-    """Read config/eepy.yaml (defaults if it does not exist). `mode` overrides."""
+def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None,
+                  explanations: bool | None = None) -> Settings:
+    """Read config/eepy.yaml (defaults if it does not exist). `mode` and `explanations`
+    (on/off) override."""
     raw: dict = {}
     if Path(path).is_file():
         try:
@@ -164,6 +190,8 @@ def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None) -> Settin
             raise SettingsError(f"{Path(path).name}{where}: {exc.message}") from None
     if mode is not None:
         raw["mode"] = mode
+    if explanations is not None:
+        raw["explanations"] = dict(raw.get("explanations") or {}, enabled=explanations)
     try:
         return Settings.model_validate(raw)
     except ValidationError as exc:
@@ -173,7 +201,8 @@ def load_settings(path: Path = SETTINGS_PATH, mode: str | None = None) -> Settin
             if err["type"] == "extra_forbidden":
                 known = ["mode", "data_dir", "participant_pattern", "privacy", "logging",
                          "store_raw_speech", "flush_seconds", "speech", "engine", "voice",
-                         "fallback", "fallback_voice", "output", "pregenerate", "camera", "perception", "aus"]
+                         "fallback", "fallback_voice", "output", "pregenerate", "camera", "perception", "aus", "gaze",
+                         "explanations", "enabled", "top_k", "window_min_seconds", "window_max_seconds"]
                 match = difflib.get_close_matches(str(err["loc"][-1]), known, n=1)
                 hint = f' Did you mean "{match[0]}"?' if match else ""
                 lines.append(f'eepy.yaml: "{err["loc"][-1]}" is not a setting I know.{hint}')

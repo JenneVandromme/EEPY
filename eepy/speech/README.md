@@ -38,7 +38,7 @@ Wizard panel, into speech — out of the robot's speaker, or this computer's.
 | `lines.py` | `LineSelector`: which wording, never twice in a row; placeholders. |
 | `engines.py` | Text → audio: `piper`, `system` (macOS `say` / Windows SAPI / espeak), `google`, `gemini`. |
 | `cache.py` | Pre-generated clips, named by a hash of engine + voice + text. |
-| `outputs.py` | Where audio goes: `robot`, `desktop`, `none`; `auto` picks. |
+| `outputs.py` | Where audio goes: `robot`, `desktop`, `none`; `auto` picks (the real robot's speaker; with the dry run or the simulator, this computer's speakers directly: the simulator's own audio stayed silent on macOS). |
 | `speaker.py` | `Speaker`: one voice at a time, never blocks, reports everything. |
 | `audio.py` | How long a clip is — nothing reports when playback ends. |
 | `download.py` | Piper voices, with progress and resume. |

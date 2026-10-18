@@ -13,6 +13,7 @@ data/sessions/
     features.csv                face features, ~15 rows a second (python -m eepy.perception)
     features.json               which columns features.csv has
     aus.csv / aus.json          action units, one row per result (only with the optional extra)
+    state.csv / state.json      the participant's state, once a second (focused, drowsy, ...)
     events.vision.jsonl         from the vision process: blinks, yawns, nods, face lost/back,
                                 per-second summaries (PERCLOS ...), camera status
     snapshot/                   the exact behaviour and config files used
@@ -73,6 +74,92 @@ robot's words, not the participant's.
 nod counts over the last 10 s and 60 s. Every column and field is explained in plain
 words in [eepy/perception/README.md](../eepy/perception/README.md). Where
 `blink_confidence` is `low`, the camera was too slow to count blinks reliably.
+
+**Calibration**: `meta.json` has a `calibration` summary (new / reused / skipped /
+failed), and `events.vision.jsonl` the full `calibration` event (baseline values, quality
+checks). `features.csv` has `calibrated` (1/0) and the normalised columns `ear_rel`,
+`mar_rel`, `head_*_rel`, `face_size_rel`; `face_window` has `blink_rate_rel` and
+`blink_mean_ms_rel`. **Use the normalised ones to compare people**, and check
+`calibrated`. See [eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md).
+
+**Gaze**: `features.csv` also has `gaze_zone` (screen / notes / down_other / away /
+no_face), `gaze_on_work`, `gaze_confidence`, `gaze_mode` and `away_s`; the events
+`looked_away` / `back_on_work` mark each look-away, and `gaze_window` summarises 10 s /
+60 s. Check `gaze_calibrated` (or the `gaze_status` event): uncalibrated sessions used a
+default work area. See [eepy/perception/gaze/README.md](../eepy/perception/gaze/README.md).
+
+**User state**: `state.csv` has one row a second: `state` (focused / distracted / drowsy /
+very_drowsy / absent / unknown), `pending` (a state waiting out its dwell time, or for the HMM
+the state becoming more likely), `calibrated`, the `rules` that fired, the `reason` as shown in
+the panel, `p_<state>` scores, and `estimator` (`rules` or `hmm`; empty in sessions from before
+A16 = rules). For the rules the scores are one-hot. For the HMM (hmm mode, from A16) they are its
+probabilities over focused / distracted / drowsy / very_drowsy (`p_absent` and `p_unknown` are
+always 0: those are flags, shown in `state`), and the row also has `most_likely` (the most likely
+of the four), `confidence` (P of the shown state), `uncertainty` (0 certain, 1 uniform),
+`updated` (0 while absent / unknown: the belief only drifted), `n_features` (signs used) and
+`evidence` (the strongest signs, e.g. `perclos->sleepy +0.12`).
+
+`events.vision.jsonl` has a `state_changed` event at every change: `from`, `to`, the reason, the
+evidence (feature, value, threshold) and what was skipped; the HMM adds `probs`, `most_likely`,
+`confidence`, `uncertainty`, `pending`, `updated` and `hmm_evidence` (its top signs). A
+`state_model` event, once per session, says which estimator ran with which parameter file
+(`params`, `version`, `params_source` hand_set / fitted, `sha256`, the hidden `states`), and the
+session prior applied (`prior`). From HMM version 2 (the drowsiness ladder, with a hidden
+*tired* state shown as focused), `state_changed.values` also holds `drowsiness_level` (0 alert
+… 1 very drowsy) and `hidden` (the probability of each hidden state). A `prior.json` in the session folder (only with the panel's `--session-prior`) is the
+starting belief that was asked for.
+
+Rules sessions from before and after A16 differ slightly: the `microsleep` and `eyes_closed_now`
+rules now need the eyes judged (the snapshotted `state_rules.yaml` shows which). In `au_window`,
+`AU43_*` only counts moments of looking forward from A16 on (`results_eyes_*` counts them);
+older sessions include looking down.
+
+Re-run the states with other thresholds or HMM numbers, and compare them with the operator's
+markers: `python -m eepy.state.replay <session> [--estimator rules|hmm|both]`. See
+[eepy/state/README.md](../eepy/state/README.md). To *see* every second of the HMM's decision
+(signs, belief, gate, robot) on a page: `python -m eepy.state.explain <session>`, written to
+`data/explain/` ([docs/EXPLANATION_VIEWER.md](EXPLANATION_VIEWER.md)).
+
+**The robot's resting direction:** a `robot_base` event each time it changes: aimed at the
+participant (`reason` aim, with `yaw`, `pitch`, the `face_offset` it corrected, and `limited`
+when held back so every behaviour stays safe), restored with a reused calibration (`reuse`),
+or straight ahead again (`reset`, yaw/pitch null). Behaviours played after it are planned
+around that direction.
+
+**Autonomy** (rules and hmm modes): every nudge the robot chose is a `nudge_decision` (ladder, level,
+behaviour, tone, reason, `propensity`, and the `context` it decided on), followed by exactly one
+`nudge_outcome` with the same `decision_id`: `success`, `no_reaction`, `dismissed`, `snoozed`,
+`interrupted_focus` (a false alarm) or `censored` (no fair verdict), with `seconds` and a `detail`.
+`role_changed` and `escalation` events (breaks, the wind-down, goodnight, pauses, replies; in the
+hmm mode also `waiting_for_confidence` / `confidence_wait_ended` when the confidence gate holds a
+ladder back, with the confidence and the threshold) fill in the rest. With the hmm mode's belief
+decisions (A19), each `policy_decision` says what the policy chose and why, once per change: `act`
+(with the `decision_id` of its nudge), `wait` (the belief is unclear), `hold` (a ladder does not
+climb), `resume`, `switch` (to the other ladder, with `from_level` and `start_level`) or `reset`,
+with the `probs`, `confidence`, `uncertainty`, the top 3 `evidence` signs and `evidence_progress`
+(how far each ladder's evidence is, 0–1). Nudges in the hmm mode carry `probs` and `evidence` in
+their `context` too ([docs/A19_BELIEF_DECISIONS.md](A19_BELIEF_DECISIONS.md)). The robot's own behaviours have `source` `auto`, the operator's `wizard`. The markers
+`user_accepted` / `user_snoozed` / `user_dismissed` are the participant's answers. See
+[eepy/interaction/README.md](../eepy/interaction/README.md#what-is-recorded-for-the-analysis-and-the-bandit).
+
+**The allowed set** (A23): each `nudge_decision` also has `allowed` (every action the policy could
+choose, e.g. `refocus 2 hedged`), `most_intrusive` (the subset marked so) and `chosen_in_allowed`. An
+`escalation` event `policy_failed` or `policy_outside_allowed` means the fixed escalation stepped in.
+
+**The bandit** (A24, hmm_bandit mode): each `nudge_decision` has `bandit`: the situation
+(`bucket`), every allowed arm's posterior `mean`, `sd`, tries `n` and its draw (`sample`), the
+`chosen` arm and the `propensity`. A `bandit_update` event follows each reward it learned from;
+`escalation` `policy_wait` is the bandit choosing to wait. `meta.json` has `policy` (the policy
+used, its settings, the file and its updates before the session). The posteriors themselves are in
+`data/bandit/<participant>.json` (evidence per situation and arm: Σy, Σ(1−y), n).
+
+**Rewards** (A22, every mode): a successful `nudge_outcome` also says `how` (`focus`, `reply`,
+`break`, `bed`) and `back_after` (seconds until the focus began). When the operator plays a ladder
+behaviour by hand, a `wizard_nudge` holds the context at that moment. Each nudge then gets one
+`nudge_reward` (`source` `auto` or `wizard`): outcome, `latency`, `raw_reward`, the recovery
+`discount`, `reward` (absent when censored, with `included` false) and the decision-time `context`.
+The training table: `python -m eepy.bandit.rewards all --out data/rewards/table.csv`
+([docs/A22_REWARDS.md](A22_REWARDS.md)).
 
 **Action units** (optional): `s.aus` has one row per result, timed to the frame it came
 from; `au_window` events hold their 10 s / 60 s averages and the cross-checks with the eye

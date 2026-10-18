@@ -43,6 +43,17 @@ Level 0 is almost nothing. The top level says something out loud, or goes to
 sleep. **Every level must exist** — the decision logic asks for "bedtime,
 level 3" and there has to be something there.
 
+In the **rules** mode the robot climbs these ladders **on its own**. It waits
+for a reaction after each level, goes one level up when there is none, and
+starts again once the student is back on task. Level 0 is the background
+loop while in that role. The timings are in `config/escalation.yaml`, explained
+in [eepy/interaction/README.md](../eepy/interaction/README.md).
+
+**Role switches** (optional): a behaviour named `role_to_refocus`,
+`role_to_bedtime` or `role_to_study_buddy` (e.g. in a new
+`behaviors/roles.yaml`) is played automatically when the robot switches into
+that role. None exist yet: design them if you like.
+
 The files:
 
 ```
@@ -134,7 +145,9 @@ when each keyframe, sound and line would happen.
   take longer and tells you so ("slowed down to stay under the speed limit").
   It never changes *where* the move goes, only how long it takes.
 
-In the simulator, sounds go to your computer's own audio output. The files
+In the simulator, sounds go to your computer's own audio output (spoken lines too: with
+`speech.output: auto` they play on this computer directly, not through the simulator, whose
+audio can stay silent on macOS). The files
 in `sounds/` are still silent placeholders, so you will hear nothing until
 someone replaces them with real recordings.
 
@@ -266,6 +279,16 @@ it started. That is how a nod works from any pose:
 ```
 
 Most blocks in `_blocks.yaml` are relative for exactly this reason.
+
+**"Absolute" means: from the robot's resting position.** Normally that is straight
+ahead. When the Wizard panel aims the robot at the participant (e.g. 12° up, see
+[WIZARD_PANEL_GUIDE.md](WIZARD_PANEL_GUIDE.md#aiming-the-robot-at-the-participant)),
+`pitch: 10` means 10° below *that* direction, and `intensity` scales toward it. The
+named `look_at` targets (`notes`, `screen`, `away`) are places on the desk and stay put;
+`look_at: user` follows the real face. So write behaviours as if the robot rests looking
+at the student, and keep some room: the more a behaviour looks up on its own, the less
+far up the robot can be aimed. Right now `bedtime_attentive` (looks up 24° with its yawn)
+limits the aim to about 13° up.
 
 ### ⚠️ The antennas are mirrored
 
@@ -408,6 +431,22 @@ You can use two placeholders, filled in when the robot speaks:
 - `{evidence}` — a short phrase saying why the robot spoke up
 
 Anything else is rejected, so a typo like `{minute}` gets caught.
+
+**Calibration lines.** The lines whose ID starts with `calibration_` (at the end of
+`lines.yaml`) are what EEPY says during the two-minute calibration at the start of
+a session: `calibration_intro`, `calibration_face_check`, `calibration_look_dot`,
+`calibration_look_notes`, `calibration_look_away`, `calibration_baseline_start`,
+`calibration_done`, and a few for problems (`calibration_too_dark`,
+`calibration_too_far`, ...). Their text is a **placeholder: rewrite it freely**. Keep
+the IDs. They get no button on the Wizard panel, because the calibration says them
+by itself. What each one is for:
+[eepy/perception/calibration/README.md](../eepy/perception/calibration/README.md).
+
+**Escalation lines.** `break_welcome_back` is said when the student comes back
+after the break the robot offered (refocus level 4). `wind_down_reminder` is said
+one minute before the "15 more minutes" are up (bedtime level 4). Both are
+**placeholder text**: rewrite them. When they are used:
+[eepy/interaction/README.md](../eepy/interaction/README.md).
 
 ---
 

@@ -16,11 +16,13 @@
     --bg: #f4f2ee; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dedad3;
     --accent: #2f5bd3; --ok: #1f8a4c; --bad: #c62828; --warn: #b26a00; --key: #ecebe7;
     --refocus: #2f5bd3; --bedtime: #6a3fb5; --basics: #1f8a4c; --lines: #8a5a1f; --markers: #b0306b;
+    /* the HMM's belief bar (A16): focused, distracted, drowsy, very drowsy */
+    --b-focused: var(--ok); --b-distracted: var(--warn); --b-drowsy: #d9771e; --b-very: var(--bad);
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #17171a; --panel: #212125; --ink: #ececef; --muted: #a0a0a8; --line: #34343a;
             --key: #2e2e34; --accent: #6e92ff; --refocus: #6e92ff; --bedtime: #a985f0;
-            --basics: #4cc785; --lines: #d9a35a; --markers: #ec6fa8; }
+            --basics: #4cc785; --lines: #d9a35a; --markers: #ec6fa8; --b-drowsy: #e8913e; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -37,7 +39,56 @@
   .pill.bad { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.rec { background: var(--bad); color: #fff; font-weight: 600; }
   .pill.amber { background: var(--warn); color: #fff; font-weight: 600; }
+  .ustate-why { font-size: 12px; max-width: 34em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .belief { display: inline-flex; width: 120px; height: 10px; border-radius: 5px; overflow: hidden;
+            background: var(--key); border: 1px solid var(--line); }
+  .belief > i { display: block; height: 100%; flex: 0 0 0; }
+  .belief .b0 { background: var(--b-focused); } .belief .b1 { background: var(--b-distracted); }
+  .belief .b2 { background: var(--b-drowsy); } .belief .b3 { background: var(--b-very); }
+  .belief.stale { opacity: .35; }
+  /* the HMM's decision chain in the autonomy row (hmm mode): belief -> gate -> robot */
+  .chain { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .chain .step { padding: 2px 8px; border-radius: 999px; background: var(--key); }
+  .chain .step.yes { outline: 1.5px solid var(--ok); } .chain .step.no { outline: 1.5px solid var(--warn); }
+  .chain .lit { animation: chainlit 1.2s ease-out; }
+  @keyframes chainlit { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  /* where the robot is on each ladder (autonomy): done -> now -> next */
+  .ladrow { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; }
+  .ladrow + .ladrow { margin-top: 4px; }
+  .ladrow .lname { width: 64px; font-weight: 600; color: var(--lc); }
+  .rungs { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; }
+  .rung { padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--panel);
+          white-space: nowrap; color: var(--muted); }
+  .rung b { font-weight: 600; margin-right: 3px; }
+  .rlink { width: 12px; height: 2px; background: var(--line); }
+  .rlink.on { background: var(--lc); }
+  .rung.done { color: var(--ink); border-color: var(--lc); background: color-mix(in srgb, var(--lc) 14%, var(--panel)); }
+  .rung.now { color: #fff; border-color: var(--lc); background: var(--lc); font-weight: 600; }
+  .rung.now.moving { animation: rungpulse 1.1s ease-in-out infinite; }
+  .rung.next { color: var(--ink); border-color: var(--lc); border-style: dashed; }
+  @keyframes rungpulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lc) 35%, transparent); } }
+  .ladrow .lnote { color: var(--muted); }
+  /* the bandit's last choice (A24): per allowed action, posterior mean +- spread, the sample, the pick */
+  .bandit { font-size: 12.5px; }
+  .bandit .barrow { display: grid; grid-template-columns: 190px 1fr 120px; align-items: center; gap: 8px; margin: 2px 0; }
+  .bandit .track { position: relative; height: 12px; border-radius: 6px; background: var(--key); }
+  .bandit .zero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+  .bandit .spread { position: absolute; top: 3px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .bandit .mean { position: absolute; top: 1px; width: 3px; height: 10px; margin-left: -1px; background: var(--accent); }
+  .bandit .sample { position: absolute; top: -3px; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-top: 6px solid var(--ink); }
+  .bandit .chosen .name { font-weight: 700; } .bandit .chosen .track { outline: 1.5px solid var(--accent); }
+  .bandit .waitrow .track { background: transparent; border: 1px dashed var(--line); }
+  /* the last nudge's explanation (A20): what EEPY said or would say, and why */
+  .explain { font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+  .explain .said { font-style: italic; }
+  .explain .evi { padding: 1px 8px; border-radius: 999px; background: var(--key); white-space: nowrap; }
+  .explain .evi b { font-weight: 600; }
+  .evbar { display: inline-block; width: 60px; height: 8px; border-radius: 4px; background: var(--key);
+           border: 1px solid var(--line); overflow: hidden; vertical-align: middle; }
+  .evbar > span { display: block; height: 100%; background: var(--lc); }
   .pill.rec .dot { background: #fff; animation: blink 1.2s infinite; }
+  .calbar { display: inline-block; width: 160px; height: 10px; border: 1px solid var(--muted); border-radius: 5px; overflow: hidden; }
+  .calbar > span { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
   @keyframes blink { 50% { opacity: .25; } }
   .muted { color: var(--muted); }
   .spacer { flex: 1; }
@@ -121,11 +172,19 @@
     <span class="pill">playing: <b id="playing">—</b></span>
     <span class="pill">idle: <b id="idle">—</b></span>
     <span class="pill" id="camera" hidden><span class="dot"></span><span>camera</span></span>
+    <span class="pill" id="ustate" hidden><span class="dot"></span><span>state: <b></b></span></span>
+    <span class="belief" id="ubelief" hidden><i class="b0"></i><i class="b1"></i><i class="b2"></i><i class="b3"></i></span>
+    <span class="muted ustate-why" id="ustate-why"></span>
     <span class="spacer"></span>
     <button class="small" id="reload" tabindex="-1">Reload files</button>
     <button class="small" id="reconnect" tabindex="-1">Reconnect robot</button>
   </div>
   <div class="row session" id="session-row"></div>
+  <div class="row calib" id="calib-row" hidden></div>
+  <div class="row calib" id="auto-row" hidden></div>
+  <div class="calib" id="ladder-view" hidden></div>
+  <div class="calib explain" id="explain-row" hidden></div>
+  <div class="calib bandit" id="bandit-row" hidden></div>
   <div id="error" class="error" hidden>
     <b>Last problem</b> <span class="muted" id="error-time"></span>
     <button class="small" id="error-clear" tabindex="-1" style="float:right">Hide</button>
@@ -220,7 +279,8 @@ const actions = {
                      .then((r) => r && toast(`Saying: “${r.text}”`)),
   marker: (b, via) => post("/api/annotate", { marker: b.target, via }).then((r) => {
     if (!r) return;
-    r.saved ? toast(`Marked: ${b.label}`) : toast(`Marked “${b.label}” — but NO session is running, so it was not saved.`, "warn");
+    r.saved ? toast(`Marked: ${b.label}${r.autonomy ? ` — ${r.autonomy}` : ""}`)
+            : toast(`Marked “${b.label}” — but NO session is running, so it was not saved.`, "warn");
   }),
   idle: (via) => post("/api/idle", { on: !state.status.idle_on, via }),
   tone: () => setTone(tone === "hedged" ? "direct" : "hedged"),
@@ -309,8 +369,59 @@ function renderStatus(s) {
   } else e.hidden = true;
 
   renderCamera(s.camera);
+  renderUserState(s.user_state, s.autonomy, s.session);
   renderSession(s.session);
+  renderCalibration(s.calibration, s.session);
+  renderAim(s.aim, s.session);
+  renderAutonomy(s.autonomy, s.session);
   if (s.panel_version !== panelVersion) { panelVersion = s.panel_version; loadState(); }
+}
+
+// The participant's state, estimated by the vision process from the camera: by the
+// rules (A13) or the HMM (A16) -- focused, distracted, drowsy, very drowsy, absent,
+// unknown -- with the main reason. The HMM also sends its belief: the bar after the
+// pill (greyed while it only drifts: absent or unknown). eepy/state/README.md.
+const STATE_LOOK = { focused: ["", "dot ok"], distracted: [" amber", "dot"], drowsy: [" amber", "dot"],
+                     very_drowsy: [" bad", "dot"], absent: ["", "dot"], unknown: ["", "dot"] };
+const BELIEF = ["focused", "distracted", "drowsy", "very_drowsy"];
+const FAMILY = { focused: "focus", distracted: "distraction", drowsy: "drowsiness", very_drowsy: "drowsiness" };
+const pct = (p) => `${Math.round(p * 100)} %`;
+function renderUserState(u, auto, session) {
+  const pill = $("ustate"), why = $("ustate-why"), bar = $("ubelief");
+  pill.hidden = !u; why.textContent = "";
+  bar.hidden = !(u && u.probs && u.fresh);
+  if (!u) return;
+  const name = u.fresh ? u.state : "unknown";
+  const hmm = u.confidence !== undefined && u.confidence !== null;
+  const shown = hmm && u.fresh && name !== "absent" && name !== "unknown";
+  const [cls, dot] = STATE_LOOK[name] || ["", "dot"];
+  pill.className = "pill" + cls;
+  pill.querySelector(".dot").className = dot;
+  let text = name.replace("_", " ");
+  if (shown) text += ` · ${pct(u.confidence)}`;
+  if (u.fresh && u.pending) text += ` → ${u.pending.replace("_", " ")}?`;
+  if (u.fresh && !u.calibrated) text += " · uncalibrated";
+  pill.querySelector("b").textContent = text;
+  why.textContent = u.fresh ? u.reason : "no word from the vision program for a few seconds";
+  let tip = `Estimated from the camera by the ${u.estimator} (eepy/state/README.md).\n`;
+  if (hmm && u.probs) {
+    const act = auto && auto.act_confidence && auto.act_confidence.act
+      ? auto.act_confidence.act[name === "distracted" ? "refocus" : "bedtime"] : null;
+    tip += "Belief (HMM): " + BELIEF.map((s) => `${s.replace("_", " ")} ${pct(u.probs[s])}`).join(" · ") + "\n"
+         + `Most likely: ${u.most_likely.replace("_", " ")}.`
+         + (shown && name !== "focused" ? ` ${pct(u.confidence)} sure it is ${FAMILY[name]}`
+            + (act ? ` (EEPY acts from ${pct(act)}).` : ".") : "") + "\n";
+    const segs = bar.querySelectorAll("i");
+    BELIEF.forEach((s, i) => { segs[i].style.flexBasis = `${(u.probs[s] * 100).toFixed(1)}%`; });
+    bar.classList.toggle("stale", !u.updated);
+    bar.title = tip.trim();
+  }
+  tip += (u.fresh ? `Why: ${u.reason.split("; ").join(" / ")}` : "The vision program (python -m eepy.perception) is not sending.")
+       + (u.pending ? `\nMay change to: ${u.pending.replace("_", " ")} (waiting to be sure)` : "")
+       + (u.calibrated ? "" : "\nNot calibrated: default values, less reliable.");
+  if (u.expected_estimator && u.estimator !== u.expected_estimator && !(session && session.active))
+    tip += `\nThe vision program runs the ${u.estimator} until a session starts.`;
+  pill.title = tip;
 }
 
 // The camera pill: what the vision process gets from this panel (eepy/camera/relay.py).
@@ -339,6 +450,295 @@ function renderCamera(c) {
   pill.title = tip;
   pill.querySelector(".dot").className = dot;
   pill.querySelector("span:last-child").textContent = text;
+}
+
+// The calibration step of a session (A12): it runs in the vision process
+// (python -m eepy.perception), which has the camera; this card starts it and shows
+// its progress. See eepy/perception/calibration/README.md.
+function renderCalibration(c, se) {
+  const row = $("calib-row");
+  row.hidden = !(se && se.active && c && c.state !== "none");
+  if (row.hidden) { row.dataset.state = ""; return; }
+  const waiting = !c.vision_connected;
+  const key = [c.state, waiting, !!c.reuse].join("|");
+  if (row.dataset.state !== key) {
+    row.dataset.state = key;
+    const reuse = c.reuse ? `<button class="small" id="cal-reuse" tabindex="-1"
+        title="taken ${escapeHtml(c.reuse.taken_at)}">Reuse (${Math.round(c.reuse.age_days)} d old${c.reuse.late_evening ? ", late evening!" : ""})</button>` : "";
+    const busy = ["requested", "running"].includes(c.state);
+    row.innerHTML = `<span class="pill" id="cal-pill"><span class="dot"></span><span id="cal-text"></span></span>
+      <span class="calbar" ${busy ? "" : "hidden"}><span id="cal-fill"></span></span>
+      <span class="muted" id="cal-msg"></span><span class="spacer"></span>
+      <span class="muted" id="aim-msg"></span>
+      <button class="small" id="aim-go" tabindex="-1" title="point the robot's resting position at the participant's face (config/wizard_panel.yaml, aim)">Aim at participant</button>
+      ${busy ? `<button class="small" id="cal-stop" tabindex="-1">Stop</button>`
+             : `<button class="small" id="cal-go" tabindex="-1">${c.state === "pending" || c.state === "skipped" ? "Calibrate" : "Calibrate again"}</button>
+                ${c.state === "pending" ? reuse : ""}
+                ${c.state === "pending" ? `<button class="small" id="cal-skip" tabindex="-1">Skip</button>` : ""}`}`;
+    const send = (action, extra) => post("/api/calibration", Object.assign({ action }, extra || {}));
+    if ($("cal-go")) $("cal-go").onclick = () => send("calibrate");
+    if ($("cal-reuse")) $("cal-reuse").onclick = () => send("reuse");
+    if ($("cal-stop")) $("cal-stop").onclick = () => send("stop");
+    if ($("cal-skip")) $("cal-skip").onclick = () => {
+      const reason = prompt("Skip the calibration? Why (logged with the session)?", "");
+      if (reason !== null) send("skip", { reason });
+    };
+  }
+  const labels = { pending: "calibration: not done yet", requested: "calibration: starting...",
+                   running: `calibration ${c.step || ""}: ${c.stage || ""}`, done: "calibrated",
+                   reused: "calibration reused", skipped: "calibration skipped",
+                   failed: "calibration FAILED", stopped: "calibration stopped" };
+  let text = labels[c.state] || `calibration: ${c.state}`;
+  if (waiting && ["pending", "requested", "running"].includes(c.state))
+    text += " — waiting for the vision process (python -m eepy.perception)";
+  $("cal-text").textContent = text;
+  const good = ["done", "reused"].includes(c.state), bad = ["failed", "skipped", "stopped"].includes(c.state);
+  $("cal-pill").className = "pill" + (bad || (waiting && c.state !== "done") ? " amber" : "");
+  $("cal-pill").querySelector(".dot").className = "dot" + (good ? " ok" : "");
+  const fill = $("cal-fill"); if (fill) fill.style.width = `${Math.round((c.progress || 0) * 100)}%`;
+  $("cal-msg").textContent = c.message || c.instruction || (c.reason ? `(${c.reason})` : "");
+}
+
+// Aiming the robot's resting position at the participant's face (config/wizard_panel.yaml,
+// aim). Calibrate aims first by itself; Reuse restores the saved aim.
+function renderAim(a, se) {
+  const msg = $("aim-msg"), go = $("aim-go");
+  if (!msg || !go) return;
+  go.hidden = !a || !a.enabled;
+  go.disabled = a && a.state === "aiming";
+  go.onclick = () => post("/api/aim", { action: "aim" }).then((r) => r && r.aim && toast(r.aim.message || "aiming..."));
+  let text = "";
+  if (a && a.message && a.state !== "none") text = a.message;
+  else if (a && a.base) text = `resting at yaw ${a.base.yaw}°, pitch ${a.base.pitch}°`;
+  msg.textContent = text;
+  msg.style.color = a && ["limited", "no_face", "failed"].includes(a.state) ? "var(--warn, #b26b00)" : "";
+}
+
+// Autonomy (A14, the rules mode): what the robot does on its own, and what comes
+// next. "Pause autonomy" hands control back to the operator at any moment.
+// The participant's answers are the markers "user accepted / snoozed / dismissed".
+// eepy/interaction/README.md.
+function renderAutonomy(a, se) {
+  const row = $("auto-row");
+  row.hidden = !a;
+  if (!a) return;
+  if (!row.dataset.built) {
+    row.dataset.built = "1";
+    row.innerHTML = `<span class="pill" id="auto-pill"><span class="dot"></span><span id="auto-text"></span></span>
+      <span class="chain" id="auto-chain" hidden></span>
+      <span class="muted" id="auto-next"></span><span class="spacer"></span>
+      <button class="small" id="auto-pause" tabindex="-1"></button>`;
+    $("auto-pause").onclick = () => { $("auto-pause").blur();
+      const pause = !(state.status.autonomy && state.status.autonomy.paused);
+      post("/api/autonomy", { paused: pause }).then((r) => r && toast(pause
+        ? "Autonomy paused: only you control the robot now." : "Autonomy resumed: it starts afresh.")); };
+  }
+  const roles = { study_buddy: "study buddy", refocus: "refocus", bedtime: "bedtime",
+                  paused: "paused (absent)", none: "—" };
+  let text = `autonomy: ${roles[a.role] || a.role}`;
+  if (a.ladder && a.level != null) text += ` · ${a.ladder} level ${a.level}`;
+  if (a.flow === "break") text += " · BREAK";
+  if (a.flow === "wind_down") text += " · WIND-DOWN";
+  if (a.flow === "goodnight") text += " · GOODNIGHT";
+  if (a.paused) text = "autonomy PAUSED — you are in control";
+  if (!a.active) text = "autonomy: starts with the session";
+  $("auto-text").textContent = text;
+  const pill = $("auto-pill");
+  pill.className = "pill" + (a.paused ? " amber" : "");
+  pill.querySelector(".dot").className = "dot" + (a.active && !a.paused ? " ok" : "");
+  const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
+  let next = a.next || "";
+  if (a.next_in != null && /in$|until$|left:$/.test(next)) next += ` ${mmss(a.next_in)}`;
+  else if (a.next_in != null) next += ` (${mmss(a.next_in)})`;
+  if (a.flow === "wind_down" && a.snoozes_left != null) next += ` · snoozes left: ${a.snoozes_left}`;
+  $("auto-next").textContent = next + (a.nudges ? ` · ${a.nudges} nudge${a.nudges > 1 ? "s" : ""} this session`
+                                                    + (a.last_outcome ? `, last: ${a.last_outcome.replace("_", " ")}` : "") : "");
+  const btn = $("auto-pause");
+  btn.textContent = a.paused ? "Resume autonomy" : "Pause autonomy";
+  btn.hidden = !a.active && !a.paused;
+  renderChain(state.status.user_state, a);
+  renderLadders(a);
+  renderExplanation(a);
+  renderBandit(a);
+}
+
+// The bandit's last choice (A24, docs/A24_BANDIT.md): for each allowed action, the posterior mean
+// (bar) +- its spread (band) on the reward scale -1..+1, the value it drew (triangle), and the pick.
+// "waiting" has a fixed value: the bandit only waits when it has learned nothing here helps.
+function renderBandit(a) {
+  const box = $("bandit-row");
+  const b = a.bandit;
+  box.hidden = !a.active || a.policy_name !== "bandit" || !b;
+  if (box.hidden) return;
+  const key = `${b.t}|${b.chosen}`;
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const x = (v) => `${Math.max(0, Math.min(100, (v + 1) * 50))}%`;
+  const names = { refocus_early: "distracted, early", refocus_late: "distracted, long work", bedtime_early: "drowsy, before 23:00",
+                  bedtime_late: "drowsy, late", ambiguous: "distracted or drowsy" };
+  let html = `<div><b>Bandit</b> <span class="muted">${names[b.bucket] || b.bucket} · chose ${b.chosen === "wait" ? "to wait"
+    : (b.arms.find((r) => r.arm === b.chosen) || {}).words || b.chosen} · chance ${Math.round(b.propensity * 100)} %</span></div>`;
+  for (const r of b.arms) {
+    const lo = r.mean - r.sd, hi = r.mean + r.sd;
+    html += `<div class="barrow${r.arm === b.chosen ? " chosen" : ""}${r.arm === "wait" ? " waitrow" : ""}"
+      title="${r.arm}: posterior mean ${r.mean.toFixed(2)} ± ${r.sd.toFixed(2)}, ${r.n} tries; drew ${r.sample.toFixed(2)}">
+      <span class="name">${r.words}</span>
+      <span class="track"><i class="zero"></i>${r.arm === "wait" ? "" : `<i class="spread" style="left:${x(lo)};width:calc(${x(hi)} - ${x(lo)})"></i>`}
+        <i class="mean" style="left:${x(r.mean)}"></i><i class="sample" style="left:${x(r.sample)}"></i></span>
+      <span class="muted">${r.mean >= 0 ? "+" : ""}${r.mean.toFixed(2)}${r.arm === "wait" ? " (fixed)" : ` · ${Math.round(r.n)} tries`}</span></div>`;
+  }
+  if (b.sentence) html += `<div class="muted" style="margin-top:4px">${b.sentence}</div>`;
+  box.innerHTML = html;
+}
+
+// The last nudge's explanation (A20, docs/EXPLANATION_CATALOG.md): the sentence EEPY said -- or
+// would say, with explanations off or on a silent level -- the top evidence, and the contrast.
+function renderExplanation(a) {
+  const box = $("explain-row");
+  const x = a.explanation;
+  box.hidden = !a.active || !x;
+  if (box.hidden) return;
+  const key = `${x.decision_id}|${a.explanations}`;
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const pct = (v) => `${Math.round(v * 100)} %`;
+  const head = `<b>Why #${x.decision_id}</b> <span class="muted">${x.ladder} level ${x.level}, ${x.mode}</span>`;
+  const said = x.sentence ? (x.spoken ? "said: " : `would say (${x.not_spoken}): `) : "nothing to say: ";
+  box.innerHTML = head + `<span><span class="muted"></span><span class="said"></span></span>`;
+  box.querySelector("span > .muted").textContent = said;
+  box.querySelector(".said").textContent = x.sentence ? `“${x.sentence}”` : (x.not_spoken || "no evidence");
+  for (const item of x.items || []) {
+    const el = document.createElement("span");
+    el.className = "evi";
+    const p = item.placeholders || {};
+    const detail = [p.closed_pct && `closed ${p.closed_pct} %`, p.times_normal && `blinks ${p.times_normal}x`,
+                    p.yawns && `${p.yawns} yawn(s)`, p.nods && `${p.nods} nod(s)`, p.away_pct && `away ${p.away_pct} %`,
+                    p.away_for && `away now ${p.away_for}`].filter(Boolean).slice(0, 2).join(", ");
+    el.innerHTML = "<b></b> <span></span>";
+    el.querySelector("b").textContent = item.type.replaceAll("_", " ");
+    el.querySelector("span").textContent = (item.share != null ? pct(item.share) : "")
+      + (item.seconds != null ? ` · fired ${Math.round(item.seconds)} s` : "") + (detail ? ` · ${detail}` : "");
+    el.title = item.contribution != null ? `${item.contribution.toFixed(2)} nats over ${Math.round(x.window.seconds)} s`
+                                         : `rules: ${(item.rules || []).join(", ")}`;
+    box.appendChild(el);
+  }
+  const c = document.createElement("span");
+  c.className = "muted";
+  c.textContent = x.contrast && x.contrast.text ? `— ${x.contrast.text}` : "";
+  c.title = x.checks && x.checks.sum_error != null
+    ? `log-odds change ${x.checks.log_odds_change} = evidence ${x.checks.evidence} + dynamics ${x.checks.dynamics}` : "";
+  box.appendChild(c);
+}
+
+// Where the robot is on each ladder: filled = played in this climb (✓ it worked, · no reaction),
+// solid = the level it is on now (pulsing while it moves), dashed = the next level, with its time.
+// Level 0 is the ladder's role idle. The rungs come from behaviors/*.yaml (the ladder sections).
+const OUTCOME_MARK = { success: "✓", no_reaction: "·", interrupted_focus: "✗", censored: "–",
+                       accepted: "✓", snoozed: "z", dismissed: "✗" };
+function renderLadders(a) {
+  const box = $("ladder-view");
+  const groups = (state.panel?.groups || []).filter((g) => !["basics", "lines", "markers"].includes(g.id));
+  box.hidden = !a.active || !groups.length;
+  if (box.hidden) return;
+  const s = state.status, pctx = (p) => `${Math.round(p * 100)} %`;
+  const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
+  const flowTag = { refocus: { break: "on a break" }, bedtime: { wind_down: "winding down", goodnight: "goodnight" } };
+  box.innerHTML = "";
+  for (const { id, title, buttons } of groups) {
+    const here = a.ladder === id;
+    const played = here ? Object.fromEntries((a.played || []).map((p) => [p.level, p.outcome])) : {};
+    const row = document.createElement("div");
+    row.className = "ladrow";
+    row.style.setProperty("--lc", `var(--${id}, var(--accent))`);
+    row.innerHTML = `<span class="lname"></span><span class="rungs"></span><span class="lnote"></span>`;
+    row.querySelector(".lname").textContent = title.replace(/ ladder$/, "");
+    const rungs = row.querySelector(".rungs");
+    let note = "";
+    buttons.forEach((b, i) => {
+      const level = parseInt(b.label.slice(1), 10);
+      const el = document.createElement("span");
+      let cls = "", tip = `${b.label}: ${b.target.replaceAll("_", " ")}`;
+      const atIdle = level === 0 && a.role === id && !(here && a.level != null);
+      if ((here && a.level === level) || atIdle) {
+        cls = "now" + (s.playing === b.target ? " moving" : "");
+        tip += atIdle ? " — the role's idle" : played[level] === null ? " — waiting for a reaction" : "";
+      } else if (level in played) {
+        cls = "done"; tip += ` — ${String(played[level]).replace("_", " ")}`;
+      } else if (here && a.open && level === a.level + 1 && a.flow === "normal") {
+        cls = "next"; tip += " — next, if there is no reaction";
+        if (a.next_in != null && /next level in$/.test(a.next || "")) note = `next: ${b.label} in ${mmss(a.next_in)}`;
+      }
+      if (i) rungs.insertAdjacentHTML("beforeend", `<span class="rlink${cls === "done" || cls.startsWith("now") ? " on" : ""}"></span>`);
+      el.className = `rung ${cls}`; el.title = tip;
+      el.innerHTML = `<b></b><span></span>`;
+      el.querySelector("b").textContent = b.label + (level in played && played[level] ? ` ${OUTCOME_MARK[played[level]] || ""}` : "");
+      el.querySelector("span").textContent = b.detail;
+      rungs.appendChild(el);
+    });
+    const tag = flowTag[id]?.[a.flow];
+    if (tag) note = tag + (note ? ` · ${note}` : "");
+    const prog = (a.evidence_progress || {})[id];
+    if (!here && prog > 0) {              // hmm belief decisions: evidence building toward a first nudge
+      row.querySelector(".lnote").innerHTML = `evidence <span class="evbar"><span></span></span> `;
+      row.querySelector(".evbar span").style.width = pctx(Math.min(1, prog));
+      row.querySelector(".lnote").append(pctx(Math.min(1, prog)) + " of a first nudge");
+    } else row.querySelector(".lnote").textContent = note;
+    box.appendChild(row);
+  }
+}
+
+// hmm mode: the decision as a chain -- belief -> sure enough? -> what the robot does. The
+// full, replayable view of the same chain: python -m eepy.state.explain (docs/EXPLANATION_VIEWER.md).
+let lastChain = "";
+function renderChain(u, a) {
+  const box = $("auto-chain");
+  const hmm = u && u.fresh && u.confidence !== undefined && u.confidence !== null;
+  box.hidden = !hmm || !a.active;
+  if (box.hidden) return;
+  const ladder = u.state === "distracted" ? "refocus" : (u.state === "drowsy" || u.state === "very_drowsy") ? "bedtime" : null;
+  const need = ladder && a.act_confidence && a.act_confidence.act ? a.act_confidence.act[ladder] : null;
+  const pctx = (p) => `${Math.round(p * 100)} %`;
+  if (a.decisions === "belief") { renderBeliefChain(box, u, a, pctx); return; }
+  let gate = "nothing to act on", cls = "";
+  if (ladder && need != null) {
+    const ok = u.confidence >= need;
+    gate = ok ? `✓ sure enough (acts from ${pctx(need)})` : `✗ not sure enough (acts from ${pctx(need)})`;
+    cls = ok ? "yes" : "no";
+  } else if (u.state === "absent" || u.state === "unknown") gate = "on hold";
+  const robot = a.paused ? "paused by you" : a.ladder && a.level != null ? `${a.ladder} level ${a.level}`
+              : ladder && cls === "yes" ? "first nudge when due" : "quiet";
+  const key = `${u.state}|${cls}|${robot}`;
+  const lit = key !== lastChain && lastChain !== "";
+  lastChain = key;
+  box.innerHTML = `<span class="step" title="the HMM's belief: the shown state and how sure it is">${u.state.replace("_", " ")} ${pctx(u.confidence)}</span>→`
+    + `<span class="step ${cls} ${lit ? "lit" : ""}" title="config/escalation.yaml, confidence.act">${gate}</span>→`
+    + `<span class="step" title="what the robot does about it">${robot}</span>`;
+}
+
+// hmm mode with belief decisions (A19, config/escalation.yaml hmm:): belief -> evidence -> decision -> robot.
+function renderBeliefChain(box, u, a, pctx) {
+  const d = a.decision || {};
+  const prog = a.evidence_progress || {};
+  const lead = ["refocus", "bedtime", "ambiguous"].reduce((x, k) => ((prog[k] || 0) > (prog[x] || 0) ? k : x), "refocus");
+  const names = { refocus: "distracted", bedtime: "drowsy", ambiguous: "distracted or drowsy" };
+  const evidence = (prog[lead] || 0) > 0 ? `evidence for ${names[lead]}: ${pctx(prog[lead])}` : "no evidence building";
+  const kinds = { act: ["nudge", "yes"], wait: ["waiting: not sure yet", "no"], hold: ["holding", "no"],
+                  switch: ["switching ladder", "yes"], reset: ["back to focused", ""], resume: ["watching", ""] };
+  const [word, cls] = kinds[d.decision] || ["watching", ""];
+  const robot = a.paused ? "paused by you" : a.ladder && a.level != null ? `${a.ladder} level ${a.level}` : "quiet";
+  const why = (d.evidence || []).map((e) => `• ${e.text}`).join("\n");
+  const tip = (d.reason ? `${word}: ${d.reason}` : word) + (why ? `\nTop evidence:\n${why}` : "");
+  const key = `${d.decision}|${d.ladder}|${robot}`;
+  const lit = key !== lastChain && lastChain !== "";
+  lastChain = key;
+  const belief = u.probs ? Object.entries(u.probs).sort((x, y) => y[1] - x[1]).slice(0, 2)
+    .map(([s, p]) => `${s.replace("_", " ")} ${pctx(p)}`).join(", ") : `${u.state} ${pctx(u.confidence)}`;
+  box.innerHTML = `<span class="step" title="the HMM's belief (the two most likely states)"></span>→`
+    + `<span class="step" title="config/escalation.yaml hmm.accumulate: evidence must add up before a first nudge"></span>→`
+    + `<span class="step ${cls} ${lit ? "lit" : ""}"></span>→<span class="step" title="what the robot does about it"></span>`;
+  const steps = box.querySelectorAll(".step");
+  steps[0].textContent = belief; steps[1].textContent = evidence; steps[2].textContent = word; steps[2].title = tip;
+  steps[3].textContent = robot;
 }
 
 function renderSession(se) {

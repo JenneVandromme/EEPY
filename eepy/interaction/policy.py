@@ -1,0 +1,187 @@
+"""The NudgePolicy interface: given the situation, what should EEPY do now?
+
+The EscalationEngine (engine.py) decides WHEN a nudge may happen -- onset
+delays, reaction windows, cooldowns, guards, breaks, the wind-down timer -- and
+then asks the policy WHAT to do: which ladder level, how strongly, in which
+tone. This task's policy is a fixed escalation (one level up after each
+nudge that got no reaction). The contextual bandit (A24) implements the same
+interface and replaces only this choice; timing, outcomes and logging stay.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, Optional, Protocol, Tuple
+
+from .config import EscalationConfig
+
+
+@dataclass(frozen=True)
+class NudgeRecord:
+    """One nudge of this session, with its outcome once known."""
+
+    decision_id: int
+    t: float
+    ladder: str
+    level: int
+    outcome: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class NudgeContext:
+    now: float
+    estimate: Dict[str, Any]          # the state estimate: state, reason, pending, calibrated (+ HMM: confidence ...)
+    state_seconds: float              # how long the state's role has lasted
+    role: str                         # study_buddy | refocus | bedtime | paused | none
+    ladder: Optional[str]             # the ladder of this episode
+    level: Optional[int]              # the last level played in this episode (None: none yet)
+    last_outcome: Optional[str]       # of the previous nudge in this episode
+    restarting: bool                  # after a top-of-ladder cooldown
+    nudges_session: int
+    nudges_last_hour: int
+    since_last_nudge: Optional[float]
+    since_break: Optional[float]
+    since_calibration: Optional[float]
+    session_seconds: float
+    history: Tuple[NudgeRecord, ...] = ()
+    start_level: Optional[int] = None  # hmm (A19): the first level of this episode, e.g. carried over from
+    start_reason: str = ""             # the other ladder after a switch, or the ambiguous gentle option
+    # A23: what the action space needs, and the allowed set itself (eepy/interaction/actions.py)
+    ignored_levels: Tuple[int, ...] = ()   # levels with no reaction in this episode (this round)
+    ambiguous: bool = False                # A19's ambiguous episode: the gentle option only
+    blocked: Optional[str] = None          # a guard blocks every nudge now (then: wait only)
+    allowed: Tuple["Action", ...] = ()     # filled in by the engine before decide()
+    hour: Optional[float] = None           # A24: the local time of day (21.5 = 21:30), when the engine knows it
+
+    @property
+    def state(self) -> str:
+        return str(self.estimate.get("state") or "unknown")
+
+    @property
+    def calibrated(self) -> bool:
+        return bool(self.estimate.get("calibrated"))
+
+    @property
+    def confidence(self) -> Optional[float]:
+        """HMM: P(the reported state's family); None for the rules."""
+        value = self.estimate.get("confidence")
+        return None if value is None else float(value)
+
+    @property
+    def estimator(self) -> str:
+        return str(self.estimate.get("estimator") or "rules")
+
+    def summary(self) -> Dict[str, Any]:
+        """For the nudge_decision event: what the policy saw (no history)."""
+        out = {k: v for k, v in asdict(self).items() if k not in ("history", "estimate", "now", "allowed", "blocked")}
+        out["ignored_levels"] = list(self.ignored_levels)
+        if self.start_level is None:                  # A19 only: the rules' context stays as it was
+            out.pop("start_level")
+            out.pop("start_reason")
+        out["state"] = self.state
+        out["calibrated"] = self.calibrated
+        out["reason_state"] = self.estimate.get("reason")
+        out["pending"] = self.estimate.get("pending")
+        out["estimator"] = self.estimator
+        for key in ("confidence", "uncertainty", "most_likely", "probs", "evidence"):
+            if self.estimate.get(key) is not None:
+                out[key] = self.estimate[key]
+        for key in ("state_seconds", "since_last_nudge", "since_break", "since_calibration",
+                    "session_seconds"):
+            if out.get(key) is not None:
+                out[key] = round(float(out[key]), 1)
+        return out
+
+
+@dataclass(frozen=True)
+class Action:
+    kind: str                         # "wait" | "play"
+    ladder: Optional[str] = None
+    level: Optional[int] = None
+    intensity: float = 1.0
+    tone: str = "hedged"              # hedged | direct
+    reason: str = ""                  # plain language: panel + log
+    propensity: float = 1.0           # the chance the policy had of choosing this (A24)
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+    @staticmethod
+    def wait(reason: str) -> "Action":
+        return Action("wait", reason=reason)
+
+
+class NudgePolicy(Protocol):
+    name: str
+
+    def decide(self, context: NudgeContext) -> Action:
+        """Called by the engine only when a nudge is due and allowed."""
+        ...
+
+
+class FixedEscalation:
+    """Start low; one level up after each nudge that got no reaction; at the top, wait
+    (the engine then cools down and comes back with restarting=True)."""
+
+    name = "fixed_escalation"
+
+    def __init__(self, config: EscalationConfig) -> None:
+        self.config = config
+
+    def decide(self, context: NudgeContext) -> Action:
+        if context.ladder is None:
+            return Action.wait("no ladder for this state")
+        ladder = self.config.ladders[context.ladder]
+        very = context.state == "very_drowsy"
+        if context.level is None:
+            start = ladder.restart_level if context.restarting else ladder.start_level
+            if very and ladder.start_level_very_drowsy is not None:
+                start = max(start, ladder.start_level_very_drowsy)
+            level, why = start, ("starting again after a pause" if context.restarting
+                                 else f"{context.state.replace('_', ' ')} for {context.state_seconds:.0f} s")
+            if context.start_level is not None and not context.restarting:
+                level, why = context.start_level, context.start_reason or why
+                if very and ladder.start_level_very_drowsy is not None:
+                    level = max(level, ladder.start_level_very_drowsy)
+        else:
+            if context.level >= ladder.top:
+                return Action.wait("top of the ladder")
+            level = context.level + 1
+            if very and ladder.start_level_very_drowsy is not None:
+                level = max(level, ladder.start_level_very_drowsy)
+            why = f"no reaction to level {context.level}"
+        tone = tone_for(context, self.config)
+        if context.allowed:                     # A23: stay inside the allowed set
+            plays = [a for a in context.allowed if a.kind == "play"]
+            levels = sorted({a.level for a in plays if a.level is not None and a.level <= ladder.top})
+            if level not in levels:
+                higher = [lv for lv in levels if context.level is None or lv > context.level]
+                if context.level is not None and not higher:
+                    return Action.wait("top of the ladder")       # e.g. no break offer yet: L3 is the top
+                if not higher:
+                    return Action.wait("no allowed level")
+                level, why = higher[0], f"{why} (level {level}: the allowed set)"
+            if not any(a.level == level and a.tone == tone for a in plays):
+                tone = "hedged"
+        return Action("play", context.ladder, level, ladder.intensity.get(level, 1.0), tone,
+                      reason=f"{context.ladder} level {level}: {why}")
+
+
+def tone_for(context: NudgeContext, config: EscalationConfig) -> str:
+    """A19's confidence rule: direct when calibrated, sure (confidence.direct), and very drowsy or
+    after a nudge without reaction; else hedged. Shared by the fixed escalation and the bandit."""
+    very = context.state == "very_drowsy"
+    repeat = context.level is not None and context.last_outcome == "no_reaction"
+    conf = context.confidence
+    sure = conf is None or conf >= config.direct_confidence     # the rules: no confidence
+    return "direct" if context.calibrated and (very or repeat) and sure else "hedged"
+
+
+def make_policy(config: EscalationConfig, mode: Optional[str] = None, participant: str = "default",
+                store: Any = None, bandit_config: Any = None, seed: Optional[int] = None) -> "NudgePolicy":
+    """The policy for this mode (config/escalation.yaml `policy:`). auto: the bandit (A24) in the
+    hmm_bandit mode, the fixed escalation in every other mode; fixed: the fixed escalation always."""
+    if config.policy == "fixed" or mode != "hmm_bandit":
+        return FixedEscalation(config)
+    from eepy.bandit.policy import BanditPolicy, Store, load_config
+
+    return BanditPolicy(config, bandit_config or load_config(), store=store if store is not None else Store(),
+                        participant=participant, seed=seed)

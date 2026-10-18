@@ -1,0 +1,333 @@
+# The HMM state estimator (A16): a belief over focused / distracted / drowsy /
+# very_drowsy, updated about once a second from the camera's features.
+#
+# Plain-language guide: eepy/state/README.md ("The HMM"). The choices behind these
+# numbers, their limits and what could come later: docs/A16_HMM_DECISIONS.md.
+#
+# Every number has a `why` (one line: where it comes from). A17 writes fitted
+# parameters in exactly this format. After a change: bump `version`, and try it on
+# recorded sessions first:
+#     python -m eepy.state.replay latest --estimator both
+format: eepy.state_hmm/1
+version: 3
+source: hand_set
+created: "2026-10-13"
+author: "EEPY team (A16)"
+description: >
+  Hand-set values from the drowsiness literature (PERCLOS, blink duration), the A13 rule
+  thresholds, and aggregate values of the P99 pilot sessions.
+fit: null
+
+# The hidden states. "tired" is a step on the drowsiness ladder between focused and drowsy
+# (docs/A16_HMM_DECISIONS.md, Part H): shown as focused, so a tired person who is still
+# working is never nudged. Coming out of drowsiness goes drowsy -> tired -> focused, which
+# keeps drowsiness from sticking long after someone woke up.
+states: [focused, distracted, tired, drowsy, very_drowsy]
+reported_as: {tired: focused}
+reported_as_why: "awake but tired: still working, so shown as focused (never nudged); the step between focused and drowsy"
+
+# The belief at the start of every session.
+initial:
+  focused:     {value: 0.78, why: "a session starts with someone sitting down to work"}
+  distracted:  {value: 0.10, why: "settling in: phone, notes"}
+  tired:       {value: 0.08, why: "late-evening sessions often start tired (shown as focused)"}
+  drowsy:      {value: 0.035, why: "late-evening sessions can start drowsy"}
+  very_drowsy: {value: 0.005, why: "rare at the start; not zero"}
+
+# How many times an hour someone in the first state switches to the second.
+transitions_per_hour:
+  focused:
+    distracted:  {value: 6,    why: "self-interruptions about every 10 minutes of study"}
+    tired:       {value: 3,    why: "tiredness creeps in: about every 20 minutes of focus, late evening (shown as focused)"}
+    drowsy:      {value: 0.3,  why: "straight from alert to drowsy is rare: it usually goes through tired"}
+    very_drowsy: {value: 0.02, why: "nobody goes from alert to nodding off directly; not 0 so it stays connected"}
+  distracted:
+    focused:     {value: 60,   why: "distraction comes and goes quickly: back after ~1 minute"}
+    tired:       {value: 1,    why: "coming back from the phone tired"}
+    drowsy:      {value: 0.5,  why: "rarely straight from distraction to drowsy"}
+    very_drowsy: {value: 0.02, why: "as from focused"}
+  tired:
+    focused:     {value: 6,    why: "tiredness passes (a stretch, a drink): ~10 minutes"}
+    distracted:  {value: 6,    why: "tired people reach for the phone as often as alert ones"}
+    drowsy:      {value: 25,   why: "the next step down: once tired, drowsiness follows within minutes (synthetic benchmark: drowsy noticed sooner than with one step)"}
+    very_drowsy: {value: 0.1,  why: "skipping drowsy is rare"}
+  drowsy:
+    focused:     {value: 2,    why: "straight back to alert is rare: waking up goes through tired"}
+    distracted:  {value: 2,    why: "drowsy people pick up the phone to wake up"}
+    tired:       {value: 40,   why: "waking up is fast once the eyes are alert again: ~1.5 minutes (fixes drowsiness sticking: 121 -> 79 s on the synthetic test users)"}
+    very_drowsy: {value: 6,    why: "untreated drowsiness worsens in ~10 minutes"}
+  very_drowsy:
+    focused:     {value: 0.3,  why: "being jolted fully awake is rare"}
+    distracted:  {value: 0.5,  why: "as to focused"}
+    tired:       {value: 1,    why: "rarely straight back to just tired"}
+    drowsy:      {value: 12,   why: "very drowsy fluctuates with drowsy (~5 minutes)"}
+
+# Signs that measure much the same thing share one weight, so one event is not
+# counted twice. 0 = independent (each counts fully), 1 = the same sign (together
+# they count as one).
+groups:
+  eye_closure: {correlation: {value: 0.5, why: "one long closure moves all six eye signs, each from another angle (time closed, blink length, frequency, longest closure, closure now, a second sensor); A17 fits it"}}
+  yawning:     {correlation: {value: 0.8, why: "a jaw drop (AU26) is mostly the yawn itself"}}
+  gaze:        {correlation: {value: 0.5, why: "the same looking away: over a minute vs right now"}}
+
+# The signs. evidence_seconds: how often a sign's value counts as new evidence
+# (a count over the last minute counts once per minute).
+features:
+  perclos:
+    input: perclos_60s
+    family: beta
+    clip: [0.005, 0.995]
+    clip_why: "keeps the Beta density finite at exactly 0 and 1"
+    group: eye_closure
+    calibration: face
+    evidence_seconds: {value: 10, why: "a 60-s window counted as 6 looks per minute: a deliberate overcount so drowsiness shows within ~40 s (A17 fits it)"}
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20]
+    needs_why: "a face, and 20 s of eyes seen while looking forward (looking down makes open eyes look closed)"
+    label: eye closure
+    show: "eyes closed {value:.0%} of the last minute"
+    params:
+      focused:     {mean: 0.03, concentration: 30, why: "alert PERCLOS is a few percent (P99 focused median 0.02)"}
+      tired:       {mean: 0.03, concentration: 30, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {mean: 0.03, concentration: 30, why: "distraction says nothing about the eyelids"}
+      drowsy:      {mean: 0.12, concentration: 10, why: "12-15 % is the usual onset (Wierwille; Dinges); wide: drowsiness comes and goes"}
+      very_drowsy: {mean: 0.30, concentration: 6,  why: ">= 25 % is severe drowsiness and microsleep risk"}
+  blink_duration:
+    input: blink_mean_ms_rel_60s
+    family: student_t
+    df: {value: 3, why: "heavy tails: in P99 focused minutes the ratio reached 3.5x (p90) over ~5 blinks"}
+    transform: log
+    clip: [0.2, 10]
+    clip_why: "ratios outside 0.2-10x are measurement errors"
+    uncalibrated: {input: blink_mean_ms_60s, divide_by: {value: 200, why: "a typical blink; the rules' 300 ms uncalibrated threshold is 1.5 x 200"}}
+    group: eye_closure
+    calibration: face
+    evidence_seconds: {value: 10, why: "as perclos"}
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20, blink_confidence_60s == ok, blink_count_60s >= 5]
+    needs_why: "a mean of fewer than 5 blinks, or blinks at a low frame rate, is noise"
+    label: blink length
+    show: "blinks {value:.1f}x as long as usual"
+    show_uncalibrated: "blinks {value:.0f} ms on average"
+    params:
+      focused:     {mean: 0.0,   sd: 0.35, why: "as long as usual"}
+      tired:       {mean: 0.0,   sd: 0.35, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {mean: 0.0,   sd: 0.35, why: "as focused"}
+      drowsy:      {mean: 0.531, sd: 0.40, why: "1.7x usual (ln 1.7): blinks lengthen with fatigue (rules: 1.5x)"}
+      very_drowsy: {mean: 0.875, sd: 0.45, why: "2.4x usual (ln 2.4)"}
+  long_blinks:
+    input: long_blinks_60s
+    family: poisson
+    exposure_seconds: eyes_measured_s_60s
+    group: eye_closure
+    calibration: face
+    evidence_seconds: {value: 60, why: "a count over 60 s: each blink counts once"}
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20, blink_confidence_60s == ok]
+    needs_why: "blinks are only seen while the eyes are judged, at a fast enough frame rate"
+    label: long blinks
+    show: "{value:.0f} long blink(s) in the last minute"
+    show_zero: "no long blinks in the last minute"
+    params:
+      focused:     {rate_per_minute: 0.4, why: "occasional (P99 focused ~0.5/min incl. noise)"}
+      tired:       {rate_per_minute: 0.4, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {rate_per_minute: 0.4, why: "as focused"}
+      drowsy:      {rate_per_minute: 3.0, why: "the rules' long_blinks threshold: 3 per minute"}
+      very_drowsy: {rate_per_minute: 6.0, why: "twice drowsy"}
+  microsleep:
+    input: blink_max_ms_60s
+    family: bernoulli
+    event: blink_max_ms_60s >= 1500
+    event_why: "a closure of 1.5 s or more is a microsleep, not a blink"
+    missing_value: 0
+    missing_value_why: "no blink in the minute (while the eyes were judged) means no microsleep either"
+    group: eye_closure
+    calibration: face
+    evidence_seconds: {value: 60, why: "an event in a 60-s window: counts once"}
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20]
+    needs_why: "as perclos"
+    label: microsleep
+    show: "an eye closure of {value:.0f} ms in the last minute"
+    show_zero: "no microsleep in the last minute"
+    params:
+      focused:     {p: 0.005, why: "rare when alert"}
+      tired:       {p: 0.005, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {p: 0.005, why: "as focused"}
+      drowsy:      {p: 0.05,  why: "occasional"}
+      very_drowsy: {p: 0.40,  why: "the defining sign of very drowsy"}
+  eyes_closed_now:
+    input: eyes_closed_now_s
+    family: bernoulli
+    event: eyes_closed_now_s >= 1.5
+    event_why: "as microsleep, while it happens"
+    group: eye_closure
+    calibration: face
+    evidence_seconds: {value: 2, why: "right now: a closure lasts seconds"}
+    needs: [face_present_ratio_10s >= 0.5, eyes_measured_s_10s >= 3]
+    needs_why: "the eyes were judged in the last 10 s"
+    label: eyes shut now
+    show: "eyes closed for {value:.1f} s right now"
+    show_zero: "eyes open"
+    params:
+      focused:     {p: 0.002, why: "almost never closed 1.5 s when alert"}
+      tired:       {p: 0.002, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {p: 0.002, why: "as focused"}
+      drowsy:      {p: 0.02,  why: "now and then"}
+      very_drowsy: {p: 0.15,  why: "often, while nodding off"}
+  au_eyes_closed:
+    input: AU43_active_60s
+    family: beta
+    clip: [0.005, 0.995]
+    clip_why: "as perclos"
+    group: eye_closure
+    calibration: none
+    evidence_seconds: {value: 10, why: "as perclos"}
+    needs: [au_status == running, au_results_eyes_60s >= 30, face_present_ratio_10s >= 0.5, eyes_measured_s_60s >= 20]
+    needs_why: "action units running and fresh, with 30+ results while looking forward (AU43 only counts those)"
+    label: eyes-closed action unit
+    show: "eyes-closed action unit active {value:.0%} of the minute"
+    params:
+      focused:     {mean: 0.10, concentration: 10, why: "AU43 fires on blink frames too; no data while looking forward yet (a guess for A17)"}
+      tired:       {mean: 0.10, concentration: 10, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {mean: 0.10, concentration: 10, why: "as focused"}
+      drowsy:      {mean: 0.25, concentration: 8,  why: "longer closures"}
+      very_drowsy: {mean: 0.45, concentration: 6,  why: "eyes shut much of the time"}
+  yawns:
+    input: yawns_60s
+    family: poisson
+    exposure_seconds: face_seen_s_60s
+    group: yawning
+    calibration: none
+    evidence_seconds: {value: 30, why: "a count over 60 s, counted twice: once a minute, yawns with alert-looking eyes never outweighed the eye signs (acted yawns never reached drowsy; docs/A16_HMM_DECISIONS.md, Part I)"}
+    needs: [face_present_ratio_10s >= 0.5, face_seen_s_60s >= 10]
+    needs_why: "yawns are only seen with a face; 10 s minimum"
+    label: yawning
+    show: "{value:.0f} yawn(s) in the last minute"
+    show_zero: "no yawns in the last minute"
+    params:
+      focused:     {rate_per_minute: 0.05, why: "rare when alert (one per 20 minutes)"}
+      tired:       {rate_per_minute: 0.05, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {rate_per_minute: 0.05, why: "as focused (boredom yawns kept weak)"}
+      drowsy:      {rate_per_minute: 0.8,  why: "frequent yawning when sleepy"}
+      very_drowsy: {rate_per_minute: 1.0,  why: "slightly more"}
+  au_jaw_drop:
+    input: AU26_active_60s
+    family: beta
+    clip: [0.005, 0.995]
+    clip_why: "as perclos"
+    group: yawning
+    calibration: none
+    evidence_seconds: {value: 60, why: "a yawn makes the jaw drop for a few seconds: an event, so it counts once per minute like the yawn count (else one yawn counts several times)"}
+    needs: [au_status == running, au_results_60s >= 30, face_present_ratio_10s >= 0.5]
+    needs_why: "action units running and fresh (30+ results in the minute)"
+    label: jaw drop
+    show: "jaw-drop action unit active {value:.0%} of the minute"
+    params:
+      focused:     {mean: 0.02, concentration: 20, why: "P99 focused mean 0.017 (talking, chewing)"}
+      tired:       {mean: 0.02, concentration: 20, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {mean: 0.02, concentration: 20, why: "as focused"}
+      drowsy:      {mean: 0.08, concentration: 12, why: "P99 acted-yawn seconds mean 0.09"}
+      very_drowsy: {mean: 0.10, concentration: 10, why: "as drowsy"}
+  nods:
+    input: nods_60s
+    family: poisson
+    exposure_seconds: face_seen_s_60s
+    calibration: none
+    evidence_seconds: {value: 30, why: "as yawns: counted twice a minute (head down + nods: drowsy after 46 s instead of 80 s)"}
+    needs: [face_present_ratio_10s >= 0.5, face_seen_s_60s >= 10]
+    needs_why: "as yawns"
+    label: nodding off
+    show: "{value:.0f} nod(s) in the last minute"
+    show_zero: "no nods in the last minute"
+    params:
+      focused:     {rate_per_minute: 0.03, why: "a quick look down can look like a nod; rare"}
+      tired:       {rate_per_minute: 0.03, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {rate_per_minute: 0.05, why: "head movements while looking around"}
+      drowsy:      {rate_per_minute: 0.8,  why: "the rules: one nod is a strong sign"}
+      very_drowsy: {rate_per_minute: 2.5,  why: "the rules: two in a minute is very drowsy"}
+  gaze_off:
+    input: gaze_off_ratio_60s
+    family: beta
+    clip: [0.005, 0.995]
+    clip_why: "as perclos"
+    group: gaze
+    calibration: none
+    evidence_seconds: {value: 20, why: "the minute share lags behind (it still says 'away' after looking back); the fast part is away_now"}
+    needs: [face_present_ratio_60s >= 0.3]
+    needs_why: "as the rules' often_away: enough face time in the minute"
+    label: looking away over the minute
+    show: "looked away {value:.0%} of the last minute"
+    params:
+      focused:     {mean: 0.15, concentration: 10, why: "glances and zone edges (P99 focused 0.16-0.20)"}
+      tired:       {mean: 0.15, concentration: 10, why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {mean: 0.55, concentration: 5,  why: "P99 distracted 0.42-0.58; the rules' threshold 0.35"}
+      drowsy:      {mean: 0.15, concentration: 10, why: "as focused: looking away says nothing about sleepiness"}
+      very_drowsy: {mean: 0.15, concentration: 10, why: "as focused"}
+  away_now:
+    input: away_current_s
+    family: categorical
+    bins: [0, 5, 10, 20, 60]
+    bins_why: "on work | glance (0-5 s) | 5-10 | 10-20 | 20-60 | > 60 s: the rules use 5 s"
+    group: gaze
+    calibration: none
+    evidence_seconds: {value: 2, why: "right now: a look away changes within seconds"}
+    needs: [face_present_ratio_10s >= 0.3]
+    needs_why: "some face in the last 10 s: leaving the desk is absent, not looking away"
+    label: looking away now
+    show: "looking away for {value:.0f} s"
+    show_zero: "looking at the work"
+    params:
+      focused:     {probs: [0.80, 0.17, 0.025, 0.004, 0.0009, 0.0001], why: "glances are short (P99 focused p90 4 s)"}
+      tired:       {probs: [0.80, 0.17, 0.025, 0.004, 0.0009, 0.0001], why: "as focused: tired is a step on the ladder, not a sign pattern of its own"}
+      distracted:  {probs: [0.30, 0.15, 0.15, 0.17, 0.18, 0.05],      why: "long looks away"}
+      drowsy:      {probs: [0.80, 0.14, 0.04, 0.015, 0.004, 0.001],   why: "drowsy people stay on the work"}
+      very_drowsy: {probs: [0.80, 0.14, 0.04, 0.015, 0.004, 0.001],   why: "as drowsy: looking away says nothing about how deep the drowsiness is (was 'more drifting': every look at the work then counted against very drowsy)"}
+
+# What the panel shows, from the belief.
+report:
+  switch_probability: {value: 0.6, why: "show a new state only when it is clearly the most likely (and leave one below 40 %)"}
+  very_drowsy_share: {enter: 0.6, leave: 0.4, why: "very drowsy vs drowsy, with a band against flicker"}
+  warmup_seconds: {value: 5, why: "as A13: a few seconds of data before saying anything"}
+  evidence_top: {value: 3, why: "three reasons fit the status bar"}
+  recent_seconds: {value: 30, why: "reasons rank by the last ~30 s of evidence"}
+
+# No face: shown as absent, decided outside the model (the belief only drifts).
+absent:
+  enter_when: face_absent_ratio_10s >= 0.8
+  enter_when_why: "A13's no_face rule: 8 of the last 10 s without a face"
+  enter_seconds: {value: 5, why: "A13's absent dwell"}
+  leave_when: face_absent_ratio_10s < 0.5
+  leave_when_why: "the face is back at least half of the last 10 s"
+
+# Not enough reliable data: unknown (the belief only drifts). A missing value counts as true.
+unknown:
+  - {id: starting_up, when: coverage_s_10s < 5, says: "only {value:.0f} s of camera data so far", why: "as A13"}
+  - {id: camera_too_slow, when: fps_10s < 5, says: "camera too slow ({value:.0f} pictures/s)", why: "as A13"}
+
+gap_seconds: {value: 3, why: "as A13: no pictures this long means unknown"}
+uncalibrated_weight: {value: 0.5, why: "the default eye baseline still works, but less reliably"}
+numerics:
+  min_prob: {value: 1.0e-6, why: "no state is ever ruled out completely"}
+  max_log_ratio: {value: 8, why: "one sign can make a state at most ~3000x less likely per window (outliers)"}
+
+# Time of day / session length on the drowsiness rates: NOT implemented in A16 (the
+# slot exists; `enabled: true` is refused). The formula for later is in eepy/state/README.md.
+modulation:
+  enabled: false
+  late_start_hour:  {value: 22,  why: "the circadian dip deepens after ~22:00"}
+  per_late_hour:    {value: 0.4, why: "drowsiness onset ~1.5x more likely per hour later"}
+  per_session_hour: {value: 0.2, why: "time-on-task fatigue"}
+  max_factor:       {value: 4.0, why: "never more than 4x the base rate"}
+  applies_to: [focused->tired, tired->drowsy, drowsy->very_drowsy]
+  applies_to_why: "only the rates into drowsiness (also what a session prior's multiplier changes)"
+
+# A starting belief per session (prior.json in the session folder), e.g. from a
+# sleepiness question. Off by default; see eepy/state/README.md.
+session_prior:
+  enabled: false
+  trust:
+    default:   {value: 0.0,  why: "the hand-set values themselves"}
+    heuristic: {value: 0.5,  why: "simple rules from context: half way"}
+    kss:       {value: 0.5,  why: "self-reported sleepiness is informative but noisy"}
+    llm:       {value: 0.25, why: "an untested generative prior: a quarter of the way until A18 shows it helps"}
+  initial_bounds: [0.01, 0.95]
+  initial_bounds_why: "no state is ruled in or out before any evidence"
+  multiplier_bounds: [0.25, 4.0]
+  multiplier_bounds_why: "at most 4x faster or slower drowsiness onset"

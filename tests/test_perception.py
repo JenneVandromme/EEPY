@@ -155,7 +155,29 @@ def test_window_counts_rates_and_head_figures():
     assert out["blink_mean_ms_10s"] == 150.0 and out["long_blinks_10s"] == 0
     assert out["look_away_ratio_10s"] == pytest.approx(0.3, abs=0.03)
     assert out["pitch_mean_10s"] == pytest.approx(10.0) and out["pitch_var_10s"] == pytest.approx(0.0)
-    assert set(k.rsplit("_", 1)[1] for k in out) == {"10s", "60s"}
+    once = {"eyes_closed_now_s", "baseline_calibrated"}          # once per summary, no window
+    assert set(k.rsplit("_", 1)[1] for k in out if k not in once) == {"10s", "60s"}
+    assert out["blink_max_ms_10s"] == 150.0 and out["eyes_closed_now_s"] == 0.0
+    assert out["baseline_calibrated"] is False
+
+
+def test_eyes_closed_now_and_the_longest_closure():
+    """A13's microsleep rules: how long the eyes are closed right now, and the
+    longest closure in the window once they reopen."""
+    from eepy.perception.extractors import FaceEvent
+
+    def values(t):
+        closed = 5.0 <= t < 7.5                                  # eyes shut for 2.5 s
+        return {"face_present": 1.0, "eye_closure": 1.0 if closed else 0.0,
+                "head_yaw": 0.0, "head_pitch": 0.0}
+
+    during = run_windows(15, values, 7.2)        # the summary at ~7 s
+    assert during["eyes_closed_now_s"] == pytest.approx(2.0, abs=0.1)
+    after = run_windows(15, values, 9.2,
+                        events_at=lambda t: [FaceEvent("blink", t, {"duration_ms": 2500.0, "long": True})]
+                        if abs(t - 5.0) < 1e-6 else [])
+    assert after["eyes_closed_now_s"] == 0.0
+    assert after["blink_max_ms_10s"] == 2500.0
 
 
 def test_windows_are_emitted_about_once_a_second():
@@ -385,6 +407,29 @@ def test_pipeline_records_features_events_and_windows_in_the_schema():
     assert all(r["process_ms"] >= 4.0 for r in features.rows[:-1])
 
 
+def test_the_live_pipeline_feeds_the_state_estimator():
+    """A13 end to end: FacePipeline -> window summaries -> the rules -> a state.
+    Eyes open for 14 s (focused), then shut (very drowsy: eyes closed >= 1.5 s,
+    plus its 3 s dwell)."""
+    from eepy.state import make_estimator
+    from eepy.state.runner import StateFromPipeline, StateTracker
+
+    out = []
+    tracker = StateTracker(make_estimator("rules"), listeners=[out.append])
+    pipeline = FacePipeline(camera=None, landmarker_factory=lambda: None)
+    pipeline.subscribe(StateFromPipeline(tracker))
+    for i, t in enumerate(sample(15, 21), start=1):
+        pipeline._deliver(pipeline.process(face_obs(t, 0.28 if t < 14 else 0.02, i)))
+    states = [(round(e.t), e.state) for e in out]
+    assert states[0][1] == "unknown"
+    focused_at = next(t for t, s in states if s == "focused")
+    assert 9 <= focused_at <= 11                       # 5 s of data + 5 s dwell
+    very = next(e for e in out if e.state == "very_drowsy")
+    assert 18 <= very.t <= 20 and [r.rule for r in very.reasons] == ["eyes_closed_now"]
+    # (not PERCLOS: with under 30 s of data, a share of the "60 s" window is noise)
+    assert very.calibrated is False                    # default baseline, no gaze calibration
+
+
 def test_the_baseline_provider_is_asked_every_frame():
     class Calibrated(BaselineProvider):
         calls = 0
@@ -438,3 +483,48 @@ def test_mediapipe_runs_and_finds_no_face_in_a_blank_picture():
         assert result.face_landmarks == []
     finally:
         landmarker.close()
+
+
+def test_eyes_are_not_judged_while_looking_down_or_aside():
+    """Found in a real session: reading notes (head ~19 deg down) narrows OPEN eyes
+    to the camera, which read as closed -- 20 false 'microsleeps' in 10 minutes.
+    Eyes now only count while the head is near its normal posture."""
+    from dataclasses import replace
+
+    from eepy.perception.extractors import EyeExtractor
+
+    eye = EyeExtractor()
+    base = Baseline()
+    events = []
+
+    def frame(t, ear, pitch=0.0, yaw=0.0, i=1):
+        obs = replace(face_obs(t, ear, i), head=HeadAngles(yaw, pitch, 0))
+        out = eye.update(obs, base)
+        events.extend(out.events)
+        return out.values
+
+    v = frame(0.0, 0.28)
+    assert v["eyes_judged"] == 1.0 and v["eye_closure"] is not None
+    # Look down at the notes for 5 s with the eyes OPEN but narrowed (EAR 0.14):
+    for k, t in enumerate(sample(30, 5, offset=1.0)):
+        v = frame(t, 0.14, pitch=19.0, i=k + 2)
+    assert v["eyes_judged"] == 0.0 and v["eye_closure"] is None
+    v = frame(6.1, 0.28)                                    # back to the screen
+    assert events == []                                     # no "microsleep"
+    for k, t in enumerate(sample(30, 2, offset=7.0)):       # turned aside 25 deg: not judged either
+        assert frame(t, 0.14, yaw=25.0, i=k + 300)["eyes_judged"] == 0.0
+    # A real blink while looking forward is still a blink.
+    for k, t in enumerate(sample(30, 1, offset=10.0)):
+        frame(t, 0.03 if 10.3 <= t < 10.5 else 0.28, i=k + 400)
+    assert [round(e.fields["duration_ms"] / 100) for e in events] == [2]
+
+
+def test_perclos_counts_only_the_time_the_eyes_were_judged():
+    def values(t):
+        down = (t % 10) >= 5                                # half the time reading notes
+        return {"face_present": 1.0, "eye_closure": None if down else (0.95 if t % 10 < 1 else 0.0),
+                "head_yaw": 0.0, "head_pitch": 20.0 if down else 0.0}
+
+    out = run_windows(15, values, 60.5)
+    assert out["eyes_measured_s_60s"] == pytest.approx(30, abs=1.5)
+    assert out["perclos_60s"] == pytest.approx(0.2, abs=0.03)   # 1 s closed per 5 s judged

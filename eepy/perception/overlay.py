@@ -13,10 +13,17 @@ from typing import Any, List, Optional, Tuple
 from . import landmarks as lm
 from .pipeline import PerceptionResult
 
+RED = (60, 60, 230)
 GREEN, YELLOW, CYAN, WHITE, BLACK, GREY = (80, 220, 80), (0, 220, 255), (255, 220, 0), \
     (255, 255, 255), (0, 0, 0), (170, 170, 170)
 FLASH_SECONDS = 0.9
-FLASH_COLOURS = {"blink": CYAN, "yawn": YELLOW, "nod": (255, 120, 255)}
+STATE_COLOURS = {"focused": GREEN, "distracted": YELLOW, "drowsy": YELLOW,
+                 "very_drowsy": RED, "absent": GREY, "unknown": GREY}
+BELIEF_ORDER = ("focused", "distracted", "drowsy", "very_drowsy")
+BELIEF_COLOURS = {"focused": (80, 200, 80), "distracted": (0, 200, 255), "drowsy": (0, 140, 255),
+                  "very_drowsy": (60, 60, 230)}          # BGR
+FLASH_COLOURS = {"blink": CYAN, "yawn": YELLOW, "nod": (255, 120, 255),
+                 "looked_away": (60, 60, 255), "back_on_work": GREEN}
 
 
 def _text(cv2: Any, image: Any, line: str, x: int, y: int, color: Tuple[int, int, int] = WHITE,
@@ -30,9 +37,15 @@ def _fmt(value: Optional[float], spec: str = ".2f") -> str:
 
 
 class FaceOverlay:
-    def __init__(self, aus: Any = None) -> None:
+    def __init__(self, aus: Any = None, gaze: Any = None, baseline: Any = None, state: Any = None,
+                 rules: Any = None) -> None:
+        self.baseline = baseline          # the BaselineProvider (A12), to show what is in use
+        self.state = state                # a StateTracker (A13/A16): .latest is the newest estimate
+        self.rules = rules                # a second tracker with the rules, shown below the HMM (self-test)
         self.aus = aus                    # the ActionUnitExtractor, if there is one
+        self.gaze = gaze                  # the GazeExtractor, if there is one
         self.show_aus = True
+        self.show_gaze = True
         self.show_landmarks = True
         self.flashes: List[Tuple[float, str, str]] = []    # (shown until, kind, label)
         self.window: Optional[dict] = None
@@ -42,6 +55,8 @@ class FaceOverlay:
             self.show_landmarks = not self.show_landmarks
         if key in (ord("a"), ord("A")):
             self.show_aus = not self.show_aus
+        if key in (ord("g"), ord("G")):
+            self.show_gaze = not self.show_gaze
 
     def note(self, result: PerceptionResult) -> None:
         """Remember events and window figures (call for EVERY result, even ones not drawn)."""
@@ -53,6 +68,10 @@ class FaceOverlay:
                 label = f"YAWN {event.fields['duration_s']:.1f} s"
             elif event.type == "nod":
                 label = f"NOD {event.fields['depth_deg']:.0f} deg"
+            elif event.type == "looked_away":
+                label = f"LOOKED AWAY ({event.fields['zone'].replace('_', ' ')})"
+            elif event.type == "back_on_work":
+                label = f"BACK ON WORK after {event.fields['away_seconds']:.1f} s"
             else:
                 label = event.type.replace("_", " ").upper()
             self.flashes.append((now + FLASH_SECONDS, event.type, label))
@@ -75,16 +94,22 @@ class FaceOverlay:
                 cv2.line(image, tuple(int(c) for c in points[a]), tuple(int(c) for c in points[b]), YELLOW, 1)
 
         lines = [("face features   (L: landmarks on/off)", GREY)]
+        lines += self._calibration_lines()
+        lines += self._state_lines()
         if not obs.present:
             lines.append(("no face", YELLOW))
         else:
+            # Raw values, with the normalised ones (relative to THIS person, A12) after them.
             lines += [
-                (f"eyes  EAR L {_fmt(v.get('ear_left'))}  R {_fmt(v.get('ear_right'))}   "
-                 f"closed {_fmt(v.get('eye_closure'), '.0%')}   blink model L {_fmt(v.get('blink_left'))} "
-                 f"R {_fmt(v.get('blink_right'))}", WHITE),
-                (f"mouth MAR {_fmt(v.get('mar'))}   jaw open {_fmt(v.get('jaw_open'))}", WHITE),
-                (f"head  yaw {_fmt(v.get('head_yaw'), '+.0f')}  pitch {_fmt(v.get('head_pitch'), '+.0f')}"
-                 f"  roll {_fmt(v.get('head_roll'), '+.0f')}  deg     face size {_fmt(v.get('face_size'), '.0%')}",
+                (f"eyes  EAR L {_fmt(v.get('ear_left'))}  R {_fmt(v.get('ear_right'))}"
+                 f"  ({_fmt(v.get('ear_rel'), '.2f')}x usual)   closed {_fmt(v.get('eye_closure'), '.0%')}"
+                 f"   blink model L {_fmt(v.get('blink_left'))} R {_fmt(v.get('blink_right'))}", WHITE),
+                (f"mouth MAR {_fmt(v.get('mar'))} ({_fmt(v.get('mar_rel'), '+.2f')} vs rest)"
+                 f"   jaw open {_fmt(v.get('jaw_open'))}", WHITE),
+                (f"head  yaw {_fmt(v.get('head_yaw'), '+.0f')} ({_fmt(v.get('head_yaw_rel'), '+.0f')})"
+                 f"  pitch {_fmt(v.get('head_pitch'), '+.0f')} ({_fmt(v.get('head_pitch_rel'), '+.0f')})"
+                 f"  roll {_fmt(v.get('head_roll'), '+.0f')} ({_fmt(v.get('head_roll_rel'), '+.0f')}) deg"
+                 f"   face size {_fmt(v.get('face_size'), '.0%')} ({_fmt(v.get('face_size_rel'), '.2f')}x)",
                  WHITE),
             ]
         lines.append((f"processing {_fmt(v.get('process_ms'), '.1f')} ms per frame", GREY))
@@ -96,9 +121,13 @@ class FaceOverlay:
                           + ("   (fps too low for blinks)" if w.get("blink_confidence_10s") == "low" else ""),
                           WHITE))
         y = height - 14 - 24 * (len(lines) - 1)
+        self._draw_belief(cv2, image, 12, y - 34)
         for line, color in lines:
             _text(cv2, image, line, 12, y, color)
             y += 24
+
+        if self.gaze is not None and self.show_gaze:
+            self._draw_gaze(cv2, image, v, width, height)
 
         if self.aus is not None and self.show_aus:
             self._draw_aus(cv2, image, v, width, height)
@@ -140,3 +169,95 @@ class FaceOverlay:
                          WHITE, 1)
             label = f"{unit} {AU_DESCRIPTIONS.get(unit, '')}"
             _text(cv2, image, label, x + bar_w + 8, yy, WHITE if value is not None else GREY, 0.45)
+
+    # The gaze map: angle space from the PERSON's point of view (their left on the
+    # left, down is down) -- so looking at the screen's top-left corner puts the dot
+    # top-left. Blue box: screen zone; green: notes; the dot: gaze now.
+    MAP_YAW, MAP_PITCH = (-50.0, 50.0), (-40.0, 60.0)
+
+    def _draw_gaze(self, cv2: Any, image: Any, values: dict, width: int, height: int) -> None:
+        gaze = self.gaze
+        x0, y0, w, h = 12, 120, 210, 170
+        cv2.rectangle(image, (x0, y0), (x0 + w, y0 + h), (25, 25, 25), -1)
+
+        def to_px(yaw: float, pitch: float) -> tuple:
+            fx = (-yaw - self.MAP_YAW[0]) / (self.MAP_YAW[1] - self.MAP_YAW[0])   # yaw + = their left
+            fy = (pitch - self.MAP_PITCH[0]) / (self.MAP_PITCH[1] - self.MAP_PITCH[0])
+            return int(x0 + max(0, min(1, fx)) * w), int(y0 + max(0, min(1, fy)) * h)
+
+        mode = values.get("gaze_mode")
+        zones = gaze.zones.head if mode == 0 else gaze.zones.gaze
+        for rect, colour, name in ((zones.screen, (255, 140, 40), "screen"), (zones.notes, GREEN, "notes")):
+            if rect is None:
+                continue
+            a, b = to_px(rect.yaw_min, rect.pitch_min), to_px(rect.yaw_max, rect.pitch_max)
+            cv2.rectangle(image, a, b, colour, 2)
+            cv2.putText(image, name, (a[0] + 3, a[1] + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.4, colour, 1)
+        yaw, pitch = values.get("gaze_yaw"), values.get("gaze_pitch")
+        if yaw is not None and pitch is not None:
+            cv2.circle(image, to_px(yaw, pitch), 6, WHITE, -1)
+            cv2.circle(image, to_px(yaw, pitch), 6, BLACK, 1)
+        zone = values.get("gaze_zone") or "no_face"
+        away_s = values.get("away_s") or 0.0
+        on = away_s == 0.0          # the CONFIRMED state (with hysteresis), not this frame's zone
+        label = "ON WORK" if on else ("AWAY" + (f" {away_s:.0f}s" if away_s >= 1 else ""))
+        _text(cv2, image, label, x0, y0 - 34, GREEN if on else (60, 60, 255), 0.9)
+        mode_text = {1: "iris+head", 0: "head only"}.get(mode, "-")
+        extra = "" if gaze.zones.calibrated else "  UNCALIBRATED"
+        _text(cv2, image, f"{zone.replace('_', ' ')}  {mode_text}  conf {_fmt(values.get('gaze_confidence'))}"
+              f"{extra}   (G)", x0, y0 - 10, YELLOW if extra else GREY, 0.45)
+
+    def _state_lines(self) -> list:
+        """The user's state and why: what the Wizard panel shows too. HMM: the state with how
+        sure it is, the reason in grey; then (self-test) the rules' state."""
+        latest = getattr(self.state, "latest", None)
+        if latest is None:
+            return []
+        colour = STATE_COLOURS.get(latest.state, WHITE)
+        pending = f"  (-> {latest.pending.replace('_', ' ')}?)" if latest.pending else ""
+        if latest.confidence is None:
+            lines = [(f"STATE {latest.state.replace('_', ' ').upper()}{pending}   {latest.reason_text}", colour)]
+            points = latest.values.get("drowsy_points")
+            if points:
+                lines.append((f"drowsy points {points:.1f} (1.0 = drowsy, 2.0 = very drowsy)", GREY))
+        else:
+            sure = f" {latest.confidence:.0%}" if latest.state not in ("absent", "unknown") else ""
+            lines = [(f"HMM  {latest.state.replace('_', ' ').upper()}{sure}{pending}", colour),
+                     (latest.reason_text, GREY)]
+        rules = getattr(self.rules, "latest", None)
+        if rules is not None:
+            lines.append((f"RULES {rules.state.replace('_', ' ').upper()}   {rules.reason_text}",
+                          STATE_COLOURS.get(rules.state, WHITE)))
+        return lines
+
+    def _draw_belief(self, cv2: Any, image: Any, x: int, y: int, width: int = 300, height: int = 12) -> None:
+        """The HMM's belief as a stacked bar (focused, distracted, drowsy, very drowsy); dimmed
+        while it is only drifting (absent, unknown)."""
+        latest = getattr(self.state, "latest", None)
+        if latest is None or latest.confidence is None:
+            return
+        left = x
+        for i, state in enumerate(BELIEF_ORDER):
+            p = latest.scores.get(state, 0.0)
+            w = round(width * p) if i < len(BELIEF_ORDER) - 1 else x + width - left
+            if w <= 0:
+                continue
+            colour = BELIEF_COLOURS[state]
+            if not latest.updated:
+                colour = tuple(int(c * 0.4) for c in colour)
+            cv2.rectangle(image, (left, y), (left + w - 1, y + height), colour, -1)
+            if w >= 40:
+                _text(cv2, image, f"{p:.0%}", left + 3, y + height - 1, WHITE, 0.35)
+            left += w
+
+    def _calibration_lines(self) -> list:
+        """Whose baseline is in use (A12), and its key values -- or that there is none."""
+        if self.baseline is None:
+            return []
+        b = self.baseline.current()
+        if not b.calibrated:
+            return [("UNCALIBRATED -- default baseline (python -m eepy.perception.calibrate)", YELLOW)]
+        late = "  (taken late evening)" if b.late_evening else ""
+        return [(f"CALIBRATED {b.label} {b.taken_at}{late}", GREEN),
+                (f"baseline: eyes open {_fmt(b.ear_open)} closed {_fmt(b.ear_floor)}   blinks "
+                 f"{_fmt(b.blink_rate, '.0f')}/min   head {b.yaw0:+.0f}/{b.pitch0:+.0f} deg", GREY)]

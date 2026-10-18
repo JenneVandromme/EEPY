@@ -31,9 +31,10 @@ SOURCES: FrozenSet[str] = frozenset({
     "perception",  # the vision process
 })
 
-# The experimental conditions. Only "wizard" has a controller so far.
+# The experimental conditions. "wizard": the operator only; "rules": the state rules
+# (A13) and the fixed escalation (A14) act on their own. The HMM modes come later.
 MODES: Tuple[str, ...] = ("wizard", "rules", "hmm", "hmm_bandit")
-IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard"})
+IMPLEMENTED_MODES: FrozenSet[str] = frozenset({"wizard", "rules", "hmm", "hmm_bandit"})   # rules: A13 + A14; hmm: A16 + A14; hmm_bandit: + A24
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,11 @@ EVENT_TYPES: Dict[str, EventType] = {
                                "Nothing could be played. The words are still in `text`, "
                                "shown in the panel instead."),
     "sound_played": EventType("robot", ("file",), "A sound was sent to the speaker."),
+    "robot_base": EventType("robot", ("reason",),
+                            "The robot's resting direction changed: aimed at the participant's "
+                            "face (reason aim, with yaw, pitch, face_offset and limited: held back "
+                            "so every behaviour stays safe), restored with a reused calibration "
+                            "(reuse), or straight ahead again (reset; yaw/pitch null)."),
 
     # --- the operator ------------------------------------------------------------
     "wizard_command": EventType("operator", ("action",),
@@ -124,15 +130,76 @@ EVENT_TYPES: Dict[str, EventType] = {
     "au_status": EventType("face", ("status",),
                            "Action units (Py-Feat, optional) changed state: starting, loading, "
                            "running, paused (too slow) or off -- with the device, profile and why."),
+    "looked_away": EventType("face", ("zone",),
+                             "The person stopped looking at their work (screen/notes) -- "
+                             "t is when it started; zone: away, down_other or no_face."),
+    "back_on_work": EventType("face", ("away_seconds",),
+                              "The person looks at their work again, after away_seconds."),
+    "gaze_window": EventType("face", (),
+                             "About once a second: looking-away ratio, away episodes and "
+                             "durations, zone shares, over 10 s / 60 s."),
+    "gaze_status": EventType("face", ("calibrated",),
+                             "Which gaze calibration is in use (user, camera setup), or none."),
+    "calibration": EventType("face", ("result",),
+                             "Per-user calibration (A12): result new / reused / skipped / failed, "
+                             "with the baseline values, quality checks and gaze zones."),
     "au_window": EventType("face", (),
                            "About once a second: per action unit its mean and share of time "
                            "active over 10 s / 60 s, the achieved rate, and cross-checks with "
                            "the eye and yawn features."),
 
+    # --- the user's state (eepy/state/): the rules (A13) or the HMM (A16) ------------------
+    "state_changed": EventType("model", ("to", "estimator"),
+                               "The estimated user state changed (focused, distracted, drowsy, "
+                               "very_drowsy, absent, unknown): from, to, the reason, the rules "
+                               "that fired with their values. The HMM adds probs, most_likely, "
+                               "confidence, uncertainty, pending, updated and hmm_evidence (its "
+                               "top signs). Every second's state is in state.csv."),
+    "state_model": EventType("model", ("estimator",),
+                             "Which state estimator runs in this session, logged at its first "
+                             "estimate in the session: the estimator, its parameter file, version, "
+                             "params_source (hand_set/fitted), sha256, the enabled features, and the "
+                             "applied session prior. The belief itself is in state.csv (p_<state>)."),
+
+    # --- autonomy (eepy/interaction/, A14): what EEPY decided, and what came of it ---------
+    "nudge_decision": EventType("autonomy", ("decision_id", "policy", "ladder", "level"),
+                                "The robot decided to nudge: the ladder level and behaviour, tone, "
+                                "intensity, propensity (the policy's chance of choosing it), the "
+                                "reason, the reaction window, the context it decided on, and the "
+                                "explanation (A20: the top evidence over the decision window, the "
+                                "contrast with the runner-up, the sentence, and whether it was spoken)."),
+    "wizard_nudge": EventType("operator", ("ladder", "level", "behavior"),
+                              "The operator played a ladder behaviour by hand (A22): a nudge the bandit "
+                              "may learn from, flagged source=wizard. With the context at that moment "
+                              "(the belief, its trend, the session so far)."),
+    "nudge_reward": EventType("autonomy", ("decision_id", "outcome"),
+                              "What a nudge was worth to the bandit (A22, config/rewards.yaml): the "
+                              "action, the outcome, the latency, the recovery discount, the reward "
+                              "(null: censored, excluded) and the decision-time context."),
+    "bandit_update": EventType("autonomy", ("decision_id",),
+                               "The bandit (A24) learned from a nudge's reward: the participant and how "
+                               "many updates its posteriors have had (data/bandit/<participant>.json)."),
+    "nudge_outcome": EventType("autonomy", ("decision_id", "outcome"),
+                               "What came of one nudge_decision (by decision_id), exactly once: "
+                               "success, no_reaction, dismissed, snoozed, interrupted_focus or "
+                               "censored (no fair verdict), with seconds and the detail. The "
+                               "bandit's rewards (A22) are computed from these."),
+    "policy_decision": EventType("autonomy", ("decision",),
+                                 "hmm mode (A19): what the belief-based decisions chose, once per change: "
+                                 "act (with decision_id), wait (the belief is unclear), hold (a ladder does not "
+                                 "climb), resume, switch (to the other ladder, with the level carried over) or "
+                                 "reset; with the reason, state, probs, confidence, uncertainty, the top "
+                                 "evidence and how far each ladder's evidence is (evidence_progress)."),
+    "role_changed": EventType("autonomy", ("to",),
+                              "The robot's role: study_buddy, refocus, bedtime, paused, none."),
+    "escalation": EventType("autonomy", ("what",),
+                            "Everything else the escalation did: cooldown_started, episode_reset, "
+                            "approving_nod, break_started/ended, welcome_back, wind_down_started/"
+                            "snoozed/reminder/cancelled, goodnight, went_to_bed, reply, "
+                            "autonomy_paused/resumed, waiting_for_confidence/confidence_wait_ended "
+                            "(hmm mode: the confidence gate held a ladder back / stopped holding it)."),
+
     # --- reserved for later tasks: defined now so the format is settled ---------------
-    "hmm_belief": EventType("model", ("probs", "most_likely"),
-                            "The HMM's belief over hidden states, e.g. "
-                            "{'focused': .7, 'distracted': .2, 'tired': .1}.", reserved=True),
     "bandit_decision": EventType("model", ("arm", "policy"),
                                  "The bandit chose an action. Log 'propensity' too: "
                                  "the probability it had of choosing it, needed for "

@@ -190,7 +190,7 @@ def test_settings_defaults_and_override():
     settings = load_settings()
     assert settings.mode == "wizard" and settings.mode_implemented
     assert load_settings(mode="hmm_bandit").mode == "hmm_bandit"
-    assert not load_settings(mode="hmm_bandit").mode_implemented
+    assert load_settings(mode="hmm_bandit").mode_implemented          # built since A24
 
 
 def test_settings_errors_are_friendly(tmp_path):

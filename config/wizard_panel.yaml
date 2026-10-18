@@ -47,6 +47,8 @@ keys:
     bedtime_negotiate: "9"
     bedtime_goodnight: "0"
     approving: "-"
+    break_welcome_back: u
+    wind_down_reminder: i
 
 # What the operator can mark as OBSERVED. Each press is written to the session
 # log with an exact timestamp; these become the labels the HMM is fitted to,
@@ -62,4 +64,31 @@ markers:
   - { id: eyes_closing,     label: "eyes closing",     key: b }
   - { id: user_replied,     label: "user replied",     key: n }
   - { id: user_dismissed,   label: "user dismissed",   key: m }
+  # The participant's answer to a nudge. In the rules mode these also steer the
+  # escalation (A14): accepted (a break, the wind-down deal, goodnight), snoozed
+  # ("15 more minutes"), dismissed (leave me alone). Later speech does this (A28).
+  - { id: user_accepted,    label: "user accepted",    key: "." }
+  - { id: user_snoozed,     label: "user snoozed",     key: "/" }
   - { id: user_went_to_bed, label: "user went to bed", key: "," }
+
+# Aiming the robot at the participant. The robot's resting position ("neutral")
+# normally looks straight ahead; when the robot sits lower than the student's face
+# (e.g. at chest height), it looks at their face instead. All its movements (the
+# idle's breathing too) then play around that direction. It aims BY ITSELF as soon
+# as the vision program sees the face, and again when the face stays off-centre
+# while the robot rests; also on "Aim at participant" and before Calibrate. Reuse
+# restores the saved aim.
+# PARKED (2026-10-13): not seen working on the real robot yet, so switched off.
+# The exact problem and what is left: docs/TODO.md.
+aim:
+  enabled: false
+  auto: true              # aim by itself (no button needed)
+  auto_after_s: 2         # ... when the face has been off-centre for 2 s while the robot rests
+  auto_min_gap_s: 15      # ... at most every 15 s (no hunting)
+  on_calibrate: true      # aim first when Calibrate is pressed
+  tolerance_deg: 8        # a face within 8 degrees of the picture's centre is fine as it is
+  yaw_limit_deg: 30       # never turn further than this to the side ...
+  up_limit_deg: 25        # ... or look up / down further than this; and never further
+  down_limit_deg: 15      #     than every behaviour can still play safely from
+  rounds: 3               # aim, look again, correct: at most this many times
+  settle_s: 1.8           # seconds to wait after moving, before looking again

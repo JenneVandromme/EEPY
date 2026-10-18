@@ -1,0 +1,192 @@
+# The escalation (A14): what EEPY DOES about the participant's state.
+#
+# The state comes from config/state_rules.yaml (A13, rules mode) or the HMM
+# (config/state_hmm.yaml, A16, hmm mode): focused, distracted, drowsy,
+# very_drowsy, absent, unknown. This file says when EEPY nudges, how
+# it climbs the ladders in behaviors/refocus.yaml and behaviors/bedtime.yaml,
+# and when it stops.
+#
+# Plain-language guide (when EEPY nudges, and why): eepy/interaction/README.md
+# Try a change without a camera:
+#     python -m eepy.interaction.simulate phone_break
+#
+# All times are in SECONDS. A mistake here stops the panel with a message that
+# says what and where.
+
+# Which role EEPY takes in each state.
+#   study_buddy  quiet presence (the panel's idle); never interrupts real focus
+#   refocus      the "back to work" ladder        bedtime  the "time to sleep" ladder
+#   paused       nothing (no talking to an empty chair)   none  nothing at all
+roles:
+  focused: study_buddy
+  distracted: refocus
+  drowsy: bedtime
+  very_drowsy: bedtime
+  absent: paused
+  unknown: none
+
+# Played when EEPY switches role -- only if a behaviour with that name exists
+# (none do yet: the designers may add them, e.g. in behaviors/roles.yaml).
+role_switch:
+  study_buddy: role_to_study_buddy
+  refocus: role_to_refocus
+  bedtime: role_to_bedtime
+
+# How long a state must last before the FIRST nudge.
+onset:
+  distracted: 20      # on top of A13's ~10 s: ~30 s off task before a wordless nudge
+  drowsy: 30          # drowsiness builds slowly; react to a pattern, not a moment
+  very_drowsy: 10     # strong evidence: react sooner
+
+ladders:
+  refocus:
+    start_level: 1
+    # Seconds to wait for a reaction after each level, before going one up.
+    reaction: {1: 30, 2: 30, 3: 45, 4: 120}   # wordless nudges short; spoken longer;
+                                               # a break offer needs time to get up
+    intensity: {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}
+    # After the top level without a reaction: wait, then start again lower.
+    cooldown: 300       # 5 minutes: no endless loop
+    restart_level: 2    # a fresh but not the very first, faintest nudge
+  bedtime:
+    start_level: 1
+    start_level_very_drowsy: 2    # very drowsy skips the faintest hint
+    reaction: {1: 60, 2: 60, 3: 90, 4: 120}   # the drowsiness features use 60 s windows:
+                                               # a reaction cannot show sooner
+    intensity: {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}
+    cooldown: 600       # after "no" to the wind-down offer: respect it for 10 minutes
+    restart_level: 3
+
+# Back to focused: the ladder starts from scratch.
+focused:
+  reset_after: 10               # seconds of focus (A13 already waited 5) before resetting
+  approving_nod: approving_nod  # the behaviour; "" for none
+  nod_only_after_success: true  # only when a nudge just worked -- not every time
+  nod_min_interval: 600         # at most one nod per 10 minutes: no dog-trainer feel
+
+# Limits that hold whatever the state.
+guards:
+  min_gap: 20             # never two nudges within 20 s (the operator's count too)
+  max_per_hour: 12        # about three full ladders an hour; more is nagging
+  after_calibration: 180  # no nudges in the first 3 minutes after calibration
+                          # (or after the session start, without a calibration)
+
+absent:
+  reset_after: 300        # gone 5 minutes (no break offered): start fresh when back
+  went_to_bed_after: 300  # gone 5 minutes after bedtime level >= went_to_bed_level:
+  went_to_bed_level: 3    #   they took the hint -- bedtime success
+
+# Refocus level 4 offers a break.
+break:
+  offer_level: 4
+  absent_within: 120          # leaving within 2 minutes of the offer = taking the break
+  seconds: 600                # pause nudging for 10 minutes
+  welcome_line: break_welcome_back   # said when they are back (behaviors/lines.yaml)
+
+# Bedtime level 4 offers "15 more minutes?"; level 5 is the goodnight routine.
+wind_down:
+  offer_level: 4
+  seconds: 900                # the timer: 15 minutes ({minutes} in the line)
+  snoozes: 1                  # "user snoozed" restarts the timer this many times
+  snooze_seconds: 900
+  reminder_line: wind_down_reminder  # said shortly before the timer runs out
+  reminder_before: 60
+  goodnight_level: 5
+
+# A nudge counts as a false alarm (interrupted_focus) when the state turns
+# focused this soon after it started: A13 needs 5 s of focus before saying
+# "focused", so the person was already back on task.
+false_alarm_seconds: 5
+
+# How often the panel checks the timers (seconds).
+tick_seconds: 0.5
+
+# How sure the state estimate must be before EEPY acts on it. HMM mode only: the
+# rules give no confidence, so this does nothing in the rules mode. The numbers are
+# P(the shown state), e.g. 0.7 = 70 % sure (see docs/A16_HMM_DECISIONS.md, A4).
+confidence:
+  act:
+    refocus: 0.7     # start the refocus episode / play a refocus nudge only from 70 %
+    bedtime: 0.7
+  direct: 0.85       # the firmer "direct" tone also needs 85 %
+
+# hmm mode: decisions on the HMM's whole belief instead of "the shown state above a
+# threshold for N seconds" (A19; plain words: eepy/interaction/README.md, "Belief-based
+# decisions"; the choices and limits: docs/A19_BELIEF_DECISIONS.md). P(refocus) is
+# P(distracted), P(bedtime) is P(drowsy) + P(very drowsy). The rules mode ignores this
+# section. Remove it (or decisions: gate) for A16's gate: the onset timers above plus
+# confidence.act.
+hmm:
+  decisions: belief        # belief | gate
+  accumulate:
+    floor: 0.55            # evidence builds while P is above this and drains below it: a coin flip never adds up
+    needed:                # probability-seconds above the floor before the first nudge:
+      refocus: 8           #   ~20 s at 95 % (as onset.distracted), ~32 s at 80 %, ~53 s at 70 %
+      bedtime: 12          #   ~30 s at 95 % (as onset.drowsy), ~48 s at 80 %: drowsiness builds slowly
+      very_drowsy: 6       #   ~15 s at 95 %, only when calibrated: the weakest-detected state, and a false
+                           #   alarm jumps straight into the bedtime ladder (uncalibrated: the bedtime value)
+  # Starting a ladder also needs confidence.act (70 %) right now; going on needs only this:
+  keep: 0.55               # hysteresis: a ladder climbs on while P stays above 55 %; below, it holds
+  hold_if_focused: 0.30    # ... and holds once P(focused) is back at 30 %: the belief returns slowly after
+                           # drowsiness (~1 min), so ladders kept climbing at someone already back (synthetic
+                           # train users: false nudges 2.9 -> 2.2 per hour of work, fewer missed episodes)
+  reset:
+    focused: 0.75          # back to focused: P(focused) at least 75 % ...
+    seconds: 10            # ... for 10 s (as focused.reset_after) resets the ladder
+  wait:                    # wait for more evidence (logged as a decision) when the belief is unclear:
+    uncertainty: 0.6       #   the normalised entropy is above 0.6 (spread over several states), or
+    top_two_gap: 0.15      #   the two most likely states are less than 15 points apart,
+    consider: 0.40         #   while distracted or drowsy is at least 40 % likely (below: just focused, no wait)
+    margin: 0.05           #   a wait ends only when 0.05 clearer (uncertainty < 0.55, gap > 0.20): live, the
+                           #   uncertainty hovered at 0.6 and the wait went on and off four times in 30 s
+  ambiguous:               # distracted and drowsy both moderately likely: the gentler option
+    each: 0.30             #   both at least 30 % and neither ladder ready
+    needed: 12             #   probability-seconds of (distracted + sleepy) above the floor, as bedtime
+    long_work: 2700        #   after 45 minutes of work (since the start or the last break): offer the
+                           #   break (refocus level 4); before that: one wordless glance (level 1)
+  switch:                  # the belief moves to the other ladder mid-way (e.g. distracted -> drowsy):
+    step_back: 1           #   the new ladder starts one level below the old one: they already ignored
+                           #   nudges, but a new topic starts a step softer ...
+    max_level: 3           #   ... and never straight at the break offer, the wind-down or goodnight
+  intensity:               # confidence -> how big the movements are, never above the designer's value
+    scale: true
+    min: 0.7               # 70 % of ladders.*.intensity at the act threshold ...
+    full_at: 0.9           # ... the full value from 90 % sure
+  evidence_top: 3          # the top signs attached to every decision (for the panel, the log and A20)
+
+# --- Who chooses WHAT to play, and what it may choose from (A23) -------------
+# auto:  the contextual bandit (A24, config/bandit.yaml) in the hmm_bandit mode, and the
+#        fixed escalation in every other mode (rules, hmm)
+# fixed: the fixed escalation in EVERY mode, the bandit's too -- the one switch to turn
+#        the bandit off. The fixed escalation (start low, one level up after each nudge
+#        without a reaction) is also what plays whenever a policy fails or picks
+#        something outside the allowed set.
+policy: auto
+
+# The action space: what any policy may play at a moment. The bandit only ever picks
+# inside this set, however it learns. Timing (onset, guards, cooldowns, the belief's
+# evidence) is decided before this; these rules are about WHICH nudge.
+# Docs: docs/A23_ALLOWED_ACTIONS.md. Try them: the launcher's Decisions tab.
+actions:
+  max_step_up: 2            # at most two levels above the last one: no jump from a glance to a spoken prompt
+  max_start_level:          # the first nudge of an episode is at most this level ...
+    refocus: 2              #   a wordless nudge first: we may be wrong about the distraction
+    bedtime: 2              #   tiredness builds slowly; start with a hint
+    very_drowsy: 3          #   strong evidence may start with words (A19's switch and restarts may go higher)
+  no_ignored_levels: true   # never repeat a level they already ignored this episode (a restart after a cooldown is a fresh round)
+  break_after_work: 900     # the break offer only after 15 minutes of work since the start or the last break
+  goodnight_early:          # goodnight without the wind-down timer, only when:
+    enabled: true
+    confidence: 0.9         #   very drowsy and at least 90 % sure (the HMM; the rules never qualify),
+    needs_calibration: true #   the features are relative to this person,
+    after_spoken: true      #   and a spoken bedtime nudge was already ignored this episode
+  spoken_from: 3            # levels from here say something out loud (both ladders)
+  direct_tone:
+    needs_calibration: true # the firmer tone also needs confidence.direct (85 %): never firm on a guess
+  ambiguous_tone: hedged    # distracted or drowsy, unclear which: only the gentle option (A19)
+  most_intrusive_from:      # marked "most intrusive" in the logs and the launcher
+    refocus: 3              #   spoken prompts and the break offer
+    bedtime: 3              #   spoken prompts, the wind-down offer and goodnight
+  # The designers' intrusiveness ranking (B8), when it exists: "ladder:level": rank (higher =
+  # more intrusive), e.g. "refocus:2": 1.5. Empty: the ladder level order.
+  intrusiveness: {}

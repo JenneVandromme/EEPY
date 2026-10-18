@@ -16,7 +16,9 @@ FACE FEATURES (eepy/perception, needs MediaPipe -- .venv-vision): the face's
 landmarks, eye and mouth openness, head angles, and a flash when a blink, yawn
 or nod is detected. L toggles the landmarks; --no-face turns it all off. With
 the optional action units installed: a bar per AU (A toggles), with the device,
-rate and time per result. What the values mean: eepy/perception/README.md.
+rate and time per result. GAZE: a small map of the work area with the current
+gaze, ON WORK / AWAY and the mode (G toggles). What the values mean:
+eepy/perception/README.md and eepy/perception/gaze/README.md.
 
 Press Q or Esc (or close the window) to stop. Nothing is recorded or saved.
 Run it in .venv-vision.
@@ -90,7 +92,8 @@ def _draw(cv2: Any, frame: Any, fps: float, camera: Any) -> Any:
     return image
 
 
-def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True) -> Any:
+def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True,
+                   user: Optional[str] = None, estimator: str = "hmm", hmm_params: Optional[str] = None) -> Any:
     """(FacePipeline, FaceOverlay), or (None, None) where MediaPipe is missing.
     Action units are added when installed (and the profile allows)."""
     try:
@@ -110,7 +113,37 @@ def _face_pipeline(camera: Any, profile: Optional[str] = None, aus: bool = True)
 
         au = ActionUnitExtractor(load_au_config(profile=profile), config)
         extractors.append(au)
-    return FacePipeline(camera, config, extractors=extractors), FaceOverlay(aus=au)
+    from eepy.perception.gaze import GazeExtractor, resolve_user
+    from eepy.perception.gaze import load_config as load_gaze_config
+
+    gaze = GazeExtractor(load_gaze_config(), config, user=resolve_user(user))
+    extractors.append(gaze)
+    from eepy.perception.baseline import StoredBaselineProvider
+
+    baseline = StoredBaselineProvider(config, user=gaze.user, source=camera.name)
+    pipeline = FacePipeline(camera, config, extractors=extractors, baseline=baseline)
+    # The user's state (A13 rules / A16 HMM), live, with its reason. Shown only: nothing is recorded.
+    from eepy.state.config import RulesConfigError
+    from eepy.state.estimate import make_estimator
+    from eepy.state.hmm_params import HMMConfigError
+    from eepy.state.runner import StateFromPipeline, StateTracker
+
+    tracker = None
+    if estimator == "hmm":
+        try:
+            from eepy.state.hmm_params import load as load_hmm
+
+            tracker = StateTracker(make_estimator("hmm", params=load_hmm(hmm_params)))
+        except (HMMConfigError, ValueError) as exc:
+            print(f"  (The HMM cannot run, showing the rules instead: {exc})")
+    if tracker is None:
+        try:
+            tracker = StateTracker(make_estimator("rules"))
+        except RulesConfigError as exc:
+            print(f"  (No user state: {exc})")
+    if tracker is not None:
+        pipeline.subscribe(StateFromPipeline(tracker, config.windows))
+    return pipeline, FaceOverlay(aus=au, gaze=gaze, baseline=baseline, state=tracker)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -122,6 +155,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--no-face", action="store_true", help="camera only, no face features")
     parser.add_argument("--no-aus", action="store_true", help="face features without action units")
     parser.add_argument("--profile", help="machine profile for action units (default: EEPY_PROFILE, else laptop)")
+    parser.add_argument("--user", help="whose gaze calibration to use (default: the running session's "
+                                       "participant, else 'default')")
+    parser.add_argument("--estimator", choices=("hmm", "rules"), default="hmm",
+                        help="which user-state estimator to show (default: hmm)")
+    parser.add_argument("--hmm-params", help="the HMM's parameter file (default: config/state_hmm.yaml)")
     parser.add_argument("--seconds", type=float, default=0,
                         help="stop by itself after this many seconds (default: run until Q)")
     args = parser.parse_args(argv)
@@ -151,7 +189,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         pipeline, overlay = (None, None) if args.no_face else \
-            _face_pipeline(camera, args.profile, aus=not args.no_aus)
+            _face_pipeline(camera, args.profile, aus=not args.no_aus, user=args.user,
+                           estimator=args.estimator, hmm_params=args.hmm_params)
     except CameraConfigError as exc:      # e.g. an unknown --profile
         print(f"\n  {exc}", file=sys.stderr)
         return 2

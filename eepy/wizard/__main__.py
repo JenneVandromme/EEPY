@@ -96,8 +96,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="the panel's keys and markers")
     parser.add_argument("--mode", choices=MODES,
                         help="the experimental condition (default: mode in config/eepy.yaml)")
+    parser.add_argument("--explanations", choices=("on", "off"),
+                        help="explanations after nudges, an experimental condition "
+                             "(default: explanations.enabled in config/eepy.yaml)")
     parser.add_argument("--data-dir", type=Path,
                         help="where session folders go (default: data_dir in config/eepy.yaml)")
+    parser.add_argument("--session-prior", type=Path,
+                        help="hmm mode: a JSON file with a starting belief for each session "
+                             "(eepy/state/README.md; needs session_prior.enabled in config/state_hmm.yaml)")
     args = parser.parse_args(argv)
 
     for module in ("fastapi", "uvicorn"):
@@ -115,7 +121,8 @@ def main(argv: list[str] | None = None) -> int:
 
     load_env_file()
     try:
-        settings = load_settings(mode=args.mode)
+        settings = load_settings(mode=args.mode, explanations=None if args.explanations is None
+                                 else args.explanations == "on")
     except SettingsError as exc:
         print(f"\n  Cannot start: config/eepy.yaml has a problem.\n  {exc}", file=sys.stderr)
         return 2
@@ -139,11 +146,13 @@ def main(argv: list[str] | None = None) -> int:
     print("\n  Starting the EEPY Wizard panel...")
     wizard = make_wizard(args.backend, args.robot_host, settings=settings,
                          behaviors_dir=args.behaviors_dir, sounds_dir=args.sounds_dir,
-                         config_path=args.config)
+                         config_path=args.config, session_prior=args.session_prior)
     status = "connected" if wizard.connected() else "NOT connected -- see the panel"
     print(f"  Robot: {wizard.backend_name}, {status}")
     built = "" if settings.mode_implemented else "  (not built yet: manual control only)"
     print(f"  Mode:  {settings.mode}{built}")
+    if settings.mode in ("rules", "hmm"):
+        print(f"  Explanations after nudges: {'on' if settings.explanations.enabled else 'off (logged, not spoken)'}")
     print("\n  Open the panel:")
     # 127.0.0.1, not "localhost": localhost can mean IPv6 to a browser, and
     # be answered by a different program than the one listening on IPv4.

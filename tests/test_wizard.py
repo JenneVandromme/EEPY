@@ -25,7 +25,7 @@ from eepy.logs import SessionLog  # noqa: E402
 from eepy.logs.check import check_session  # noqa: E402
 from eepy.logs.clock import monotonic  # noqa: E402
 from eepy.wizard.config import ConfigError, load_config  # noqa: E402
-from eepy.wizard.server import Wizard, create_app  # noqa: E402
+from eepy.wizard.server import Wizard, WizardError, create_app  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not reach.available(), reason="the player needs the IK solver")
 
@@ -61,10 +61,10 @@ class FlakyBackend(DryRunBackend):
 def make(files):
     made = []
 
-    def _make(factory=DryRunBackend, spoken=None, mode="wizard", speaker_factory=None):
+    def _make(factory=DryRunBackend, spoken=None, mode="wizard", speaker_factory=None, session_prior=None):
         wizard = Wizard(factory, backend_name="dry", behaviors_dir=files["behaviors"],
                         sounds_dir=files["sounds"], config_path=files["config"],
-                        speaker_factory=speaker_factory,
+                        speaker_factory=speaker_factory, session_prior=session_prior,
                         mode=mode, session_log=SessionLog(data_dir=files["data"],
                                                           repo_root=REPO),
                         speech_callback=(lambda l, t: spoken.append((l, t))) if spoken is not None else None)
@@ -110,7 +110,7 @@ def test_buttons_are_generated_from_the_behaviour_files(make):
     assert "approving_nod" in [b["target"] for b in groups["basics"]["buttons"]]
     assert "study_buddy_idle" not in [b["target"] for b in groups["basics"]["buttons"]], \
         "the idle has its own on/off button"
-    assert len(groups["markers"]["buttons"]) == 8
+    assert len(groups["markers"]["buttons"]) == 10       # incl. user_accepted / user_snoozed (A14)
 
 
 def test_a_new_behaviour_appears_after_reload_with_a_key(make, files):
@@ -456,16 +456,20 @@ def test_the_mode_is_shown_and_recorded(make, files):
     assert lines(files)[0]["mode"] == "wizard"
 
 
-def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files):
-    _, client = make(mode="rules")
+def test_a_mode_that_is_not_built_still_works_by_hand_and_says_so(make, files, monkeypatch):
+    # Every mode is built since A24; the mechanism stays, for the next one: pretend the bandit is not.
+    from eepy.wizard import server as srv
+    monkeypatch.setattr(srv, "IMPLEMENTED_MODES", frozenset({"wizard", "rules", "hmm"}))
+    monkeypatch.setattr(srv, "AUTONOMY_MODES", {"rules": "rules", "hmm": "hmm"})
+    _, client = make(mode="hmm_bandit")
     status = client.get("/api/state").json()["status"]
-    assert status["mode"] == "rules" and not status["mode_implemented"]
+    assert status["mode"] == "hmm_bandit" and not status["mode_implemented"]
     assert "no controller" in status["last_error"]["message"]
     client.post("/api/session/start", json={"participant": "P21"})
     assert client.post("/api/play", json={"behavior": "approving_nod", "intensity": 0.5}).json()["ok"]
     client.post("/api/session/end")
-    assert session_folder(files).name.endswith("_P21_rules")
-    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "rules" for r in lines(files))
+    assert session_folder(files).name.endswith("_P21_hmm_bandit")
+    assert any(r["type"] == "mode_not_implemented" and r["mode"] == "hmm_bandit" for r in lines(files))
 
 
 def test_session_metadata_is_complete(make, files):
@@ -473,6 +477,8 @@ def test_session_metadata_is_complete(make, files):
     client.post("/api/session/start", json={"participant": "P22", "notes": "pilot, quiet room"})
     client.post("/api/session/end", json={"notes": "participant was tired"})
     meta = json.loads((session_folder(files) / "meta.json").read_text())
+    # the explanations condition (A20) is part of what a session MEANS
+    assert meta["explanations"]["enabled"] is True and meta["explanations"]["top_k"] == 3
     assert meta["participant"] == "P22" and meta["schema_version"] == 1
     assert meta["notes"] == ["pilot, quiet room", "participant was tired"]
     assert meta["code"]["commit"] and "dirty" in meta["code"]
@@ -574,3 +580,425 @@ def test_a_busy_camera_port_is_a_warning_not_a_crash(files):
             assert "camera relay could not start" in wizard.last_error["message"]
         finally:
             wizard.shutdown()
+
+
+def test_look_at_user_follows_the_face_the_vision_process_reports(files):
+    """The whole path: vision process -> relay (USER) -> panel -> a behaviour that
+    uses "look_at: user" aims where the face really is."""
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = Wizard(DryRunBackend, backend_name="dry", behaviors_dir=files["behaviors"],
+                    sounds_dir=files["sounds"], config_path=files["config"],
+                    session_log=SessionLog(data_dir=files["data"], repo_root=REPO),
+                    camera_relay=(port, 15))
+    client = RelayClient(port)
+    try:
+        default = wizard.player.targets.get("user")
+        client.send_user({"yaw": 14.0, "pitch": -4.0})           # face up and to the robot's left
+        assert wizard.camera_status()["tracking_user"]
+        target = wizard.player.targets.get("user")
+        assert (target.yaw, target.pitch) == (14.0, -4.0) != (default.yaw, default.pitch)
+        wizard.play("approving_nod", 1.0)                        # starts with glance_at_user
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and abs(wizard.player.pose.yaw - 14.0) > 0.5:
+            time.sleep(0.02)
+        assert wizard.player.pose.yaw == pytest.approx(14.0, abs=0.5)
+    finally:
+        client.close()
+        wizard.shutdown()
+
+
+# --- the calibration step (A12) --------------------------------------------------------------------
+
+
+def _calibration_wizard(files, tmp_path, port=None):
+    from eepy.perception.gaze.calibration import CalibrationStore
+
+    return Wizard(DryRunBackend, backend_name="dry", behaviors_dir=files["behaviors"],
+                  sounds_dir=files["sounds"], config_path=files["config"],
+                  session_log=SessionLog(data_dir=files["data"], repo_root=REPO),
+                  speech_callback=lambda line, text: None,
+                  camera_relay=(port, 15) if port else None,
+                  calibration_store=CalibrationStore(tmp_path / "calibration"))
+
+
+def _meta(wizard):
+    return json.loads((wizard.sessions.folder / "meta.json").read_text())
+
+
+def test_skipping_the_calibration_is_logged(files, tmp_path):
+    wizard = _calibration_wizard(files, tmp_path)
+    try:
+        wizard.start_session("P05")
+        assert wizard.calibration_status()["state"] == "pending"
+        assert wizard.calibration_status()["reuse"] is None
+        wizard.calibration_command("skip", reason="participant in a hurry")
+        assert wizard.calibration_status()["state"] == "skipped"
+        assert _meta(wizard)["calibration"] == {"result": "skipped", "reason": "participant in a hurry"}
+        folder = wizard.sessions.folder
+        wizard.end_session()
+        events = [json.loads(l) for l in (folder / "events.jsonl").read_text().splitlines()]
+        assert any(e["type"] == "calibration" and e["result"] == "skipped" for e in events)
+    finally:
+        wizard.shutdown()
+
+
+def test_calibrate_goes_to_the_vision_process_and_the_result_into_meta(files, tmp_path):
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = _calibration_wizard(files, tmp_path, port)
+    vision = RelayClient(port)                            # stands in for python -m eepy.perception
+    try:
+        with pytest.raises(WizardError, match="Start a session"):
+            wizard.calibration_command("calibrate")
+        wizard.start_session("P05")
+        assert vision.poll() is None
+        assert wizard.calibration_status()["vision_connected"]
+        wizard.calibration_command("calibrate")
+        assert vision.poll() == {"command": "calibrate", "user": "P05"}
+        assert vision.say("calibration_intro")             # spoken by the panel's player
+        vision.report({"state": "running", "stage": "gaze", "progress": 0.4})
+        assert wizard.calibration_status()["stage"] == "gaze"
+        vision.report({"state": "done", "taken_at": "2026-10-06 10:00", "late_evening": False,
+                       "values": {"ear_open": 0.31}})
+        assert wizard.calibration_status()["state"] == "done"
+        meta = _meta(wizard)["calibration"]
+        assert meta["result"] == "new" and meta["values"] == {"ear_open": 0.31}
+        with pytest.raises(WizardError, match="no recent calibration"):
+            wizard.calibration_command("reuse")
+    finally:
+        vision.close()
+        wizard.shutdown()
+
+
+def test_the_user_state_from_the_vision_process_shows_in_the_status(files, tmp_path):
+    """A13: the vision process sends its state estimate (relay STATE); the status
+    bar shows it, and says when the vision process went quiet."""
+    import socket
+
+    from eepy.camera.relay import RelayClient
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    wizard = _calibration_wizard(files, tmp_path, port)
+    vision = RelayClient(port)
+    try:
+        assert wizard.status()["user_state"] is None          # nothing heard yet: no pill
+        vision.send_state({"state": "drowsy", "reason": "eyes closed 15% of the last minute",
+                           "pending": None, "calibrated": True, "estimator": "rules"})
+        shown = wizard.status()["user_state"]
+        assert shown["state"] == "drowsy" and shown["fresh"] is True
+        wizard._user_state_seen -= 10                          # 10 s without word
+        assert wizard.status()["user_state"]["fresh"] is False
+    finally:
+        vision.close()
+        wizard.shutdown()
+
+
+def test_a_recent_calibration_is_offered_for_reuse(files, tmp_path):
+    import time as _time
+
+    from eepy.perception.calibration import save
+    from eepy.perception.gaze.calibration import CalibrationStore
+
+    store = CalibrationStore(tmp_path / "calibration")
+    save(store, "P05", "laptop", {"gaze": {"zones": {}}, "baseline": {
+        "values": {}, "taken_at": _time.strftime("%Y-%m-%d %H:%M"), "late_evening": False}})
+    wizard = _calibration_wizard(files, tmp_path)
+    try:
+        wizard.start_session("P05")
+        assert wizard.calibration_status()["reuse"]["age_days"] == 0
+        wizard.calibration_command("reuse")
+        assert wizard.calibration_status()["state"] == "requested"
+    finally:
+        wizard.shutdown()
+
+
+def test_calibration_lines_get_no_panel_buttons(files, tmp_path):
+    wizard = _calibration_wizard(files, tmp_path)
+    try:
+        assert "calibration_intro" in wizard.library.lines
+        buttons = [b.id for _, _, bs in wizard.panel.groups for b in bs]
+        assert not any(b.startswith("l:calibration_") for b in buttons)
+    finally:
+        wizard.shutdown()
+
+
+# --- the rules mode: autonomy (A14) ----------------------------------------------------------
+
+
+@pytest.fixture
+def quick_escalation(tmp_path, monkeypatch):
+    """The shipped escalation with no waiting: the first nudge on the first distracted
+    report (the timings themselves are tested in test_escalation.py)."""
+    import yaml
+
+    from eepy.interaction import config as escalation_config
+
+    raw = yaml.safe_load(escalation_config.DEFAULT_PATH.read_text())
+    raw["onset"] = {"distracted": 0, "drowsy": 0, "very_drowsy": 0}
+    raw["guards"].update(after_calibration=0, min_gap=0)
+    path = tmp_path / "escalation.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    monkeypatch.setattr(escalation_config, "DEFAULT_PATH", path)
+
+
+def _recent(wizard, kind):
+    return [r for r in wizard.log_since(0)[1] if r.get("type") == kind]
+
+
+def _until(check, seconds=5.0):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_rules_mode_nudges_on_its_own_from_the_vision_state(make, quick_escalation):
+    wizard, client = make(mode="rules")
+    assert wizard.mode_implemented and wizard.status()["autonomy"]["active"] is False
+    wizard.start_session("P30")
+    wizard.calibration_command("skip", reason="test")
+    wizard._state_report({"state": "distracted", "reason": "looking away for 6 s", "pending": None,
+                          "calibrated": True})
+    decision = _recent(wizard, "nudge_decision")
+    assert decision and decision[0]["source"] == "auto"
+    assert (decision[0]["ladder"], decision[0]["level"]) == ("refocus", 1)
+    assert _until(lambda: any(r.get("source") == "auto" for r in _recent(wizard, "behavior_started")))
+    status = wizard.status()["autonomy"]
+    assert status["role"] == "refocus" and status["level"] == 1 and "reaction" in status["next"]
+
+    # The participant's answer, through the marker buttons: logged as an annotation AND steering.
+    r = client.post("/api/annotate", json={"marker": "user_dismissed", "via": "click"}).json()
+    assert r["autonomy"].startswith("dismissed: this ladder pauses")
+    assert _recent(wizard, "nudge_outcome")[0]["outcome"] == "dismissed"
+    assert _recent(wizard, "annotation")[-1]["marker"] == "user_dismissed"
+
+    # The operator's own behaviours stay source=wizard.
+    assert _until(lambda: not wizard.player.is_playing())
+    client.post("/api/play", json={"behavior": "approving_nod", "intensity": 1.0})
+    assert _until(lambda: any(r.get("source") == "wizard" and r.get("behavior") == "approving_nod"
+                              for r in _recent(wizard, "behavior_started")))
+    wizard.end_session()
+
+
+def test_pause_autonomy_from_the_panel(make, quick_escalation):
+    wizard, client = make(mode="rules")
+    wizard.start_session("P31")
+    wizard.calibration_command("skip", reason="test")
+    r = client.post("/api/autonomy", json={"paused": True}).json()
+    assert r["autonomy"]["paused"] is True
+    wizard._state_report({"state": "distracted", "reason": "x", "pending": None, "calibrated": True})
+    assert _recent(wizard, "nudge_decision") == []             # the operator is in control
+    assert _recent(wizard, "wizard_command")[-1]["action"] == "autonomy_pause"
+    client.post("/api/autonomy", json={"paused": False})
+    wizard._state_report({"state": "distracted", "reason": "x", "pending": None, "calibrated": True})
+    assert len(_recent(wizard, "nudge_decision")) == 1
+    wizard.end_session()
+    assert _recent(wizard, "nudge_outcome")[-1]["outcome"] == "censored"   # session ended
+
+
+def test_wizard_mode_has_no_autonomy(make):
+    wizard, client = make(mode="wizard")
+    assert wizard.status()["autonomy"] is None
+    wizard.start_session("P32")
+    wizard._state_report({"state": "distracted", "reason": "x", "pending": None, "calibrated": True})
+    r = client.post("/api/annotate", json={"marker": "user_accepted"}).json()
+    assert r["ok"] and r["autonomy"] is None                    # just a marker
+    assert client.post("/api/autonomy", json={"paused": True}).status_code >= 400
+    wizard.end_session()
+
+
+# --- the HMM mode (A16) ---------------------------------------------------------------------------
+
+HMM_DISTRACTED = {"state": "distracted", "reason": "looking away now (looking away for 30 s) suggests distraction",
+                  "pending": None, "calibrated": True, "estimator": "hmm", "confidence": 0.9,
+                  "say": "looking away for 30 s"}
+
+
+def test_hmm_mode_runs_autonomy(make, quick_escalation):
+    wizard, client = make(mode="hmm")
+    assert wizard.mode_implemented and wizard.autonomy is not None
+    wizard.start_session("P40")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10                          # past the grace
+    wizard._state_report(dict(HMM_DISTRACTED, confidence=0.5))
+    assert _recent(wizard, "nudge_decision") == []            # not sure enough yet
+    assert wizard.status()["autonomy"]["next"].startswith("not sure enough yet")
+    wizard._state_report(HMM_DISTRACTED)
+    decision = _recent(wizard, "nudge_decision")
+    assert decision and (decision[0]["ladder"], decision[0]["level"]) == ("refocus", 1)
+    assert decision[0]["context"]["confidence"] == 0.9 and decision[0]["context"]["estimator"] == "hmm"
+    wizard.end_session()
+
+
+def test_estimator_guard(make, quick_escalation):
+    wizard, _ = make(mode="hmm")
+    rules = dict(HMM_DISTRACTED, estimator="rules")
+    for key in ("confidence", "say"):
+        rules.pop(key)
+    wizard._state_report(rules)                               # outside a session: no error
+    assert wizard.last_error is None
+    assert wizard.state_status()["expected_estimator"] == "hmm"
+    wizard.start_session("P41")
+    wizard.calibration_command("skip", reason="test")
+    wizard._state_report(rules)                               # within the 3-s grace: quiet, not fed
+    assert wizard.last_error is None and _recent(wizard, "nudge_decision") == []
+    wizard._session_started_at -= 10
+    wizard._state_report(rules)
+    wizard._state_report(rules)
+    message = wizard.last_error["message"]
+    assert 'Mode "hmm" acts on the hmm estimate, but the vision program sends the rules one' in message
+    assert _recent(wizard, "nudge_decision") == []            # not fed
+    wizard.last_error = None
+    wizard._state_report(rules)
+    assert wizard.last_error is None                          # once per session
+    wizard._state_report(HMM_DISTRACTED)                      # the matching estimator: fed
+    assert len(_recent(wizard, "nudge_decision")) == 1
+    wizard.end_session()
+
+
+def test_session_prior_is_written_before_the_vision_program_can_see_the_session(make, files, tmp_path):
+    prior = tmp_path / "prior.json"
+    prior.write_text(json.dumps({"source": "kss", "inputs": {"kss": 7}, "drowsiness_multiplier": 2.0}))
+    wizard, client = make(mode="hmm", session_prior=prior)
+    client.post("/api/session/start", json={"participant": "P42"})
+    folder = session_folder(files)
+    assert json.loads((folder / "prior.json").read_text())["source"] == "kss"
+    client.post("/api/session/end")
+    prior.write_text("{not json")
+    client.post("/api/session/start", json={"participant": "P43"})
+    newest = sorted(p for p in files["data"].iterdir() if p.is_dir())[-1]
+    assert "_error" in json.loads((newest / "prior.json").read_text())
+    assert "session prior cannot be used" in wizard.last_error["message"]
+    client.post("/api/session/end")
+
+
+# --- belief decisions in the hmm mode (A19) ----------------------------------------------------------
+
+def _belief(distracted: float) -> dict:
+    probs = {"focused": round(1 - distracted, 3), "distracted": distracted, "drowsy": 0.0, "very_drowsy": 0.0}
+    state = "distracted" if distracted > 0.5 else "focused"
+    return {"state": state, "reason": "test", "pending": None, "calibrated": True, "estimator": "hmm",
+            "probs": probs, "confidence": max(distracted, 1 - distracted), "uncertainty": 0.5, "updated": True,
+            "say": "", "evidence": [{"feature": "away_now", "text": "looking away now (30 s) suggests distraction",
+                                     "supports": "distracted", "against": None, "strength": 2.0, "impact": 0.3}]}
+
+
+@pytest.fixture
+def quick_belief(tmp_path, monkeypatch):
+    """The shipped escalation, belief decisions with almost no evidence needed (the panel runs
+    on the real clock; the timings are tested in test_belief.py)."""
+    import yaml
+
+    from eepy.interaction import config as escalation_config
+
+    raw = yaml.safe_load(escalation_config.DEFAULT_PATH.read_text())
+    raw["guards"].update(after_calibration=0, min_gap=0)
+    raw["hmm"]["accumulate"]["needed"] = {"refocus": 0.01, "bedtime": 0.01, "very_drowsy": 0.01}
+    path = tmp_path / "escalation.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    monkeypatch.setattr(escalation_config, "DEFAULT_PATH", path)
+
+
+def test_hmm_mode_belief_decisions_in_the_panel(make, quick_belief):
+    wizard, _ = make(mode="hmm")
+    wizard.start_session("P42")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10
+    wizard._state_report(_belief(0.5))
+    auto = wizard.status()["autonomy"]
+    assert auto["decisions"] == "belief"
+    assert auto["next"] == "Waiting: not sure yet (focused 50%, distracted 50%)"
+    assert _recent(wizard, "nudge_decision") == []
+    assert _recent(wizard, "policy_decision")[0]["decision"] == "wait"
+    assert _until(lambda: wizard._state_report(_belief(0.95)) or _recent(wizard, "nudge_decision"))
+    decision = _recent(wizard, "nudge_decision")             # (a few reports: evidence needs a little time)
+    assert decision and (decision[0]["ladder"], decision[0]["level"]) == ("refocus", 1)
+    assert decision[0]["context"]["evidence"][0]["feature"] == "away_now"
+    acts = [d for d in _recent(wizard, "policy_decision") if d["decision"] == "act"]
+    assert acts and acts[0]["decision_id"] == decision[0]["decision_id"]
+    wizard.end_session()
+
+
+def test_rewards_live_in_the_panel_equal_the_offline_tool(make, files, quick_belief):
+    """A22: the panel logs a nudge_reward per nudge as outcomes come in; the offline tool, fed
+    the same session's logs, gives the same rewards. Includes an operator's nudge (source wizard)."""
+    from eepy.bandit.rewards import load_config, rewards_from_stream, session_stream
+    from eepy.interaction.config import load as load_escalation
+    from eepy.logs.clock import monotonic
+
+    wizard, _ = make(mode="hmm")
+    wizard.start_session("P43")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10
+    folder = wizard.sessions.folder
+    last = {"state": None}
+
+    def report(distracted):
+        est = dict(_belief(distracted), t=monotonic())
+        if est["state"] != last["state"]:             # what the vision process would log
+            last["state"] = est["state"]
+            with open(folder / "events.vision.jsonl", "a") as f:
+                f.write(json.dumps({"type": "state_changed", "t_mono": est["t"], "to": est["state"]}) + "\n")
+        wizard._state_report(est)
+
+    assert _until(lambda: report(0.95) or _recent(wizard, "nudge_decision"))
+    wizard.play("refocus_verbal", 0.7)                 # the operator takes over: a wizard nudge
+    report(0.95)
+    wizard.annotate("user_accepted")
+    wizard.end_session()
+
+    logged = [r for r in lines(files) if r["type"] == "nudge_reward"]
+    assert {r["source"] for r in logged} == {"auto", "wizard"}
+    wizard_reward = next(r for r in logged if r["source"] == "wizard")
+    assert wizard_reward["outcome"] == "success" and wizard_reward["how"] == "reply"
+    assert wizard_reward["context"]["state"] == "distracted"
+    auto = next(r for r in logged if r["source"] == "auto")
+    assert auto["outcome"] == "censored" and auto.get("reward") is None and auto["included"] is False
+    items, info = session_stream(folder)
+    offline = rewards_from_stream(items, load_config(), load_escalation())
+    key = lambda d, o, r: (str(d), o, r)                # noqa: E731
+    assert sorted(key(r["decision_id"], r["outcome"], r.get("reward")) for r in logged) == \
+        sorted(key(e.decision_id, e.outcome, e.reward) for e in offline)
+    assert info["wizard_nudges"] == 1
+
+
+def test_hmm_bandit_mode_chooses_learns_and_shows_its_bars(make, files, quick_belief, monkeypatch):
+    """A24: in the hmm_bandit mode the bandit chooses (inside the allowed set), learns from the
+    reward, saves the participant's posteriors, and the panel status carries the bars."""
+    from eepy.logs import session as session_mod
+
+    monkeypatch.setattr(session_mod, "DATA_DIR", files["data"] / "sessions")   # data/bandit next to it
+    wizard, _ = make(mode="hmm_bandit")
+    assert wizard.mode_implemented and wizard.autonomy.policy.name == "bandit"
+    wizard.start_session("P45")
+    wizard.calibration_command("skip", reason="test")
+    wizard._session_started_at -= 10
+    assert _until(lambda: wizard._state_report(_belief(0.95)) or _recent(wizard, "nudge_decision"))
+    decision = _recent(wizard, "nudge_decision")[0]
+    assert decision["policy"] == "bandit" and decision["chosen_in_allowed"] is True
+    assert decision["bandit"]["bucket"] == "refocus_early" and 0 < decision["propensity"] <= 1
+    bars = wizard.status()["autonomy"]["bandit"]
+    assert bars["chosen"] and {r["arm"] for r in bars["arms"]} >= {"wait"}
+    wizard.annotate("user_accepted")                    # the participant says OK: a reward
+    assert _recent(wizard, "bandit_update")
+    wizard.end_session()
+    saved = json.loads((files["data"] / "bandit" / "P45.json").read_text())
+    assert saved["updates"] >= 1 and "refocus_early" in saved["evidence"]
+    (folder,) = [p for p in files["data"].iterdir() if p.is_dir() and p.name != "bandit"]
+    meta = json.loads((folder / "meta.json").read_text())
+    assert meta["policy"]["name"] == "bandit" and meta["policy"]["setting"] == "auto"

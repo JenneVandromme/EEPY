@@ -10,6 +10,7 @@ Everything lands in data/sessions/<date>_<participant>_<mode>/:
 
     meta.json      who, when, which mode, which code, a snapshot index, notes
     events.jsonl   one JSON object per line, one line per event
+    prior.json     only with a session prior (HMM, A16): what was asked for
     snapshot/      exact copies of the behaviour and config files in use
 
 log.event() validates on the spot -- an unknown type or a missing field raises
@@ -41,6 +42,7 @@ from .writer import Clock, LineWriter, clean, write_json_atomic
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data" / "sessions"
 CURRENT_FILE = "CURRENT"
+PRIOR_FILE = "prior.json"
 DEFAULT_PARTICIPANT_PATTERN = r"^P[0-9]{2,3}$"
 
 # What gets copied into snapshot/ at the start of every session: everything a
@@ -51,6 +53,54 @@ SNAPSHOT_GLOBS = ("behaviors/*.yaml", "config/*.yaml")
 
 class SessionError(Exception):
     """A session request that cannot be honoured. The message is for humans."""
+
+
+def pid_alive(pid: Any) -> bool:
+    """Is the process with this id still running?
+
+    NOT os.kill(pid, 0) on Windows: there, signal 0 is CTRL_C_EVENT, so that
+    "check" sends Ctrl+C to the process's console group -- found when it
+    interrupted CI's Windows test run (and it would interrupt the panel or the
+    vision process on a Windows lab machine). Windows asks the OS instead.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        return _pid_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True            # it exists, it just belongs to someone else
+    except OSError:
+        return False
+
+
+def _pid_alive_windows(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    handle = kernel32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ctypes.get_last_error() == 5                # access denied: it exists
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == 259                           # STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def _sha256(path: Path) -> str:
@@ -173,8 +223,10 @@ class SessionLog:
     # ------------------------------------------------------------------ sessions
 
     def start(self, participant: str, mode: str, backend: Optional[str] = None,
-              notes: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
-        """Open a session folder and start logging into it."""
+              notes: Optional[str] = None, prior: Optional[Dict[str, Any]] = None,
+              **extra: Any) -> Dict[str, Any]:
+        """Open a session folder and start logging into it. `prior`: a per-session prior
+        for the HMM (written to prior.json before the vision process can see the session)."""
         participant = (participant or "").strip()
         if not re.match(self.participant_pattern, participant):
             raise SessionError(
@@ -208,6 +260,9 @@ class SessionLog:
                 **clean(extra, "extra"),
             }
             write_json_atomic(folder / "meta.json", self._meta)
+            if prior is not None:
+                # Before CURRENT: the vision process only finds the session through CURRENT.
+                write_json_atomic(folder / PRIOR_FILE, prior)
             self._writer = LineWriter(folder / "events.jsonl", self.flush_seconds)
             self.folder, self.session = folder, folder.name
             self.participant, self.mode, self.started_mono = participant, mode, t
@@ -250,6 +305,17 @@ class SessionLog:
             self.folder = self.session = self.participant = self.mode = None
             self.started_mono = None
         return record
+
+    def set_meta(self, key: str, value: Any) -> None:
+        """Add (or replace) one field of the running session's meta.json, e.g. the
+        calibration summary. Numbers and text only -- it goes through clean()."""
+        with self._lock:
+            if not self.active:
+                raise SessionError("No session is running.")
+            if key in ("schema_version", "session", "participant", "mode", "started", "ended"):
+                raise SessionError(f'"{key}" is set by the session itself.')
+            self._meta[key] = clean(value, f"meta.{key}")
+            write_json_atomic(self.folder / "meta.json", self._meta)
 
     # ------------------------------------------------------------------ helpers
 
