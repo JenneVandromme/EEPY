@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Session: desk check skipped</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn:hover{transform:translateY(-2px)}
+.ds-btn--primary:hover{box-shadow:var(--glow-focus)}
+.kbd{display:inline-flex;min-width:22px;height:20px;padding:0 6px;box-sizing:border-box;align-items:center;justify-content:center;border-radius:var(--radius-xs);border:1px solid var(--hairline-strong);font-size:11px;font-weight:600}
+.stopbtn{display:inline-flex;align-items:center;gap:var(--space-xs);height:40px;padding:0 14px 0 16px;border-radius:var(--radius-pill);background:var(--surface-2);border:1px solid var(--ink-muted);color:var(--ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:transform .15s ease, background .2s ease}
+.stopbtn:hover{background:var(--hairline);transform:translateY(-2px)}
+.endred{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:var(--radius-pill);background:var(--error);color:var(--on-spotlight);font-size:14px;font-weight:700;text-decoration:none;transition:transform .15s ease, box-shadow .2s ease}
+.endred:hover{color:var(--on-spotlight);transform:translateY(-2px);box-shadow:0 0 0 4px color-mix(in srgb, var(--error) 25%, transparent)}
+.card{background:var(--surface-1);border:1px solid var(--hairline-soft);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:var(--space-md);min-width:0}
+.pick{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md) var(--space-lg);border-radius:var(--radius-lg);background:var(--surface-2);border:1px solid var(--hairline-strong);color:var(--ink);text-decoration:none;cursor:pointer;transition:background .2s ease, transform .15s ease}
+.pick:hover{background:var(--hairline);transform:translateY(-2px);color:var(--ink)}
+.pick.is-on{border-color:var(--accent-blue);box-shadow:0 0 0 1px var(--accent-blue)}
+.ic{display:inline-flex;width:36px;height:36px;flex:none;border-radius:var(--radius-full);background:var(--surface-1);align-items:center;justify-content:center}
+.chk{display:flex;align-items:center;gap:var(--space-sm)}
+.ok{display:inline-flex;color:var(--success)}.wait{display:inline-flex;color:var(--ink-muted)}.bad{display:inline-flex;color:var(--error)}
+@media (prefers-reduced-motion: reduce){.ds-btn,.pick,.stopbtn,.endred{transition:none}.ds-btn:hover,.pick:hover,.stopbtn:hover,.endred:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1440px; height: 960px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 26%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 30%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <div style="padding: var(--space-lg) 80px 0;">
+    <section style="border-radius: var(--radius-xl); padding: var(--space-sm) var(--space-sm) var(--space-sm) 24px; display: flex; align-items: center; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 80%, transparent); border: 1px solid var(--hairline);">
+      <x-import component-from-global-scope="DesignSystem.Badge" tone="neutral">Getting ready</x-import>
+      <span class="body-lg"><b>P05</b></span>
+      <span class="body" style="font-variant-numeric: tabular-nums; color: var(--ink-muted);">{{clock}}</span>
+      <span class="caption" style="color: var(--ink-muted);">The session is open. We study after the desk check.</span>
+      <div style="flex: 1;"></div>
+      <button class="stopbtn" title="Stops my moves and voice at once. Nothing else stops." aria-label="Stop Eepy moving (Esc)"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="2" fill="currentColor"></rect></svg>Stop Eepy<span class="kbd">Esc</span></button>
+      <a href="V5-S3-WrapUp.dc.html" class="endred" title="End the whole session. I ask you to confirm first.">End session</a>
+    </section>
+  </div>
+
+  <header style="padding: var(--space-lg) 80px; display: flex; align-items: flex-end; gap: var(--space-lg);">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: var(--space-xs);">
+      <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Run a session · step 2 of 3 · before we study: your desk</span>
+      <h1 class="display-md" style="margin: 0;">Okay, we’ll skip the desk check.</h1>
+      <span class="body-lg" style="color: var(--ink-muted);">Here’s what that means for today.</span>
+    </div>
+    <ol aria-label="Desk check steps" style="display: flex; gap: var(--space-xxs); list-style: none; margin: 0; padding: 4px; border-radius: var(--radius-pill); background: var(--surface-1); border: 1px solid var(--hairline-soft);"><li class="caption" style="display: inline-flex; align-items: center; gap: 4px; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); color: var(--ink-muted);">Choose</li><li class="caption" style="display: inline-flex; align-items: center; gap: 4px; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); color: var(--ink-muted);">1 · Face</li><li class="caption" style="display: inline-flex; align-items: center; gap: 4px; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); color: var(--ink-muted);">2 · Gaze</li><li class="caption" style="display: inline-flex; align-items: center; gap: 4px; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); color: var(--ink-muted);">3 · Normal work</li><li class="caption" style="display: inline-flex; align-items: center; gap: 4px; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); color: var(--ink-muted);">Done</li></ol>
+  </header>
+
+  <main style="flex: 1; padding: 0 80px; display: grid; grid-template-columns: 1.25fr 1fr; gap: var(--space-lg); min-height: 0;">
+    <section class="card" style="flex-direction: row; align-items: center; gap: var(--space-xl);">
+      <img src="/_blob/5b958025008d52f4c88775c71cb9ceca" alt="" style="width: 150px; height: 150px; object-fit: contain; flex: none;">
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+        <span class="caption" style="color: var(--ink-muted);">You told me why</span>
+        <span class="headline">"No time today"</span>
+        <span class="body" style="color: var(--ink-muted);">That's fine. I'll use my default values instead of P05's own face, and I'll mark this session as <b style="color: var(--ink);">not calibrated</b> in the data.</span>
+      </div>
+    </section>
+    <section class="card">
+      <span class="headline">What changes without it</span>
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+        <span class="body-sm chk"><span class="wait"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{icon}}"></x-import></span>I may be less sure, so I'll step in a bit less often</span>
+        <span class="body-sm chk"><span class="wait"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{icon}}"></x-import></span>"Very drowsy" needs a calibration, so I won't use it</span>
+        <span class="body-sm chk"><span class="ok"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{icon}}"></x-import></span>Everything else works as usual, and it's all recorded</span>
+      </div>
+      <span class="caption" style="margin-top: auto; color: var(--ink-muted);">You can calibrate in a later session; this one stays marked.</span>
+    </section>
+  </main>
+
+  <footer style="margin-top: var(--space-lg); padding: var(--space-md) 80px; display: flex; align-items: flex-end; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 75%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--hairline);">
+    <a href="V5-S2b-Calibration.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-xs);"><span class="ds-btn__label">Back to desks</span></a>
+    <div style="flex: 1;"></div>
+    <span class="body-sm" style="color: var(--ink-muted); align-self: center;">Then we start studying.</span>
+    <a href="V5-S2-Control.dc.html" class="ds-btn ds-btn--primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-xs); box-shadow: var(--glow-focus);"><span class="ds-btn__label">Start without it</span><x-import component-from-global-scope="DesignSystem.Icon" name="ArrowRight" size="{{icon}}"></x-import></a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+var vals = {};
+return Object.assign({
+brand: brand,
+icon: 18, tiny: 12, big: 48,
+clock: '00:20',
+reasons: [{ value: 'hurry', label: 'No time today' }, { value: 'camera', label: 'Camera trouble' }, { value: 'other', label: 'Something else' }],
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html', current: true },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+}, vals);
+}
+}
+</script>
+</body>
+</html>

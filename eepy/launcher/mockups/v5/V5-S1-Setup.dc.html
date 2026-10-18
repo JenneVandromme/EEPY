@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Session step 1: set up</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn--primary:hover{transform:translateY(-2px)}
+.lift{transition:transform .2s ease, box-shadow .2s ease, background .2s ease}
+.lift:hover{transform:translateY(-3px);box-shadow:var(--shadow-float)}
+.chip{font:inherit;color:var(--ink);padding:6px var(--space-md);border-radius:var(--radius-pill);background:var(--surface-2);border:1px solid var(--hairline-strong);cursor:pointer;transition:background .2s ease, transform .15s ease}
+.chip:hover{background:var(--hairline);transform:translateY(-1px)}
+.chip.is-on{border-color:var(--accent-blue);box-shadow:0 0 0 1px var(--accent-blue)}
+@media (prefers-reduced-motion: reduce){.chip,.ds-btn,.lift{transition:none}.lift:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1280px; height: 900px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 30%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 35%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <header style="padding: var(--space-xl) 80px var(--space-lg); display: flex; align-items: flex-end; gap: var(--space-lg);">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: var(--space-xs);">
+      <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Run a session · step 1 of 3</span>
+      <h1 class="display-md" style="margin: 0;">Let's get me ready</h1>
+      <span class="body-lg" style="color: var(--ink-muted);">Tell me who's studying and how we'll work. I'll check myself meanwhile.</span>
+    </div>
+    <ol aria-label="Steps" style="display: flex; gap: var(--space-xs); list-style: none; margin: 0; padding: 0;">
+      <li class="body-sm" aria-current="step" style="padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--primary); color: var(--on-primary);">1 · Set up</li>
+      <li class="body-sm" style="padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1); color: var(--ink-muted);">2 · Session</li>
+      <li class="body-sm" style="padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1); color: var(--ink-muted);">3 · Wrap up</li>
+    </ol>
+  </header>
+
+  <main style="flex: 1; padding: 0 80px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--space-lg); min-height: 0;">
+    <section style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-md);">
+      <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--surface-2); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="GraduationCap" size="{{icon}}"></x-import></span><span class="headline">Who's studying?</span></div>
+      <x-import component-from-global-scope="DesignSystem.TextInput" label="Participant code" default-value="P05" hint="I'll know them by this code only, never by their name."></x-import>
+      <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: center;">
+        <span class="caption" style="color: var(--ink-muted);">Or pick someone I've met:</span>
+        <button class="chip caption">P01</button>
+        <button class="chip caption">P02</button>
+        <button class="chip caption">P03</button>
+        <button class="chip caption is-on" aria-pressed="true">P05</button>
+      </div>
+    </section>
+
+    <section style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-md);">
+      <x-import component-from-global-scope="DesignSystem.RadioGroup" label="Which me are we using?" name="robot" options="{{robots}}" value="{{robot}}"></x-import>
+      <sc-if value="{{isReal}}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="DesignSystem.TextInput" label="My address" placeholder="192.168.50.95" hint="Same Wi-Fi as me, please."></x-import>
+      </sc-if>
+    </section>
+
+    <section style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-md);">
+      <x-import component-from-global-scope="DesignSystem.RadioGroup" label="Who decides when I step in?" name="mode" options="{{modes}}" default-value="hmm_bandit"></x-import>
+    </section>
+
+    <section style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: grid; grid-template-columns: 1fr 96px; gap: var(--space-md); align-content: start;">
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+        <span class="headline">I checked myself</span>
+        <span class="body" style="display: flex; align-items: center; gap: var(--space-xs);"><span style="color: var(--success); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{iconSm}}"></x-import></span>My robot software</span>
+        <span class="body" style="display: flex; align-items: center; gap: var(--space-xs);"><span style="color: var(--success); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{iconSm}}"></x-import></span>No other control panel open</span>
+        <span class="body" style="display: flex; align-items: center; gap: var(--space-xs);"><span style="color: var(--error); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{iconSm}}"></x-import></span>My camera software is missing</span>
+      </div>
+      <img src="/_blob/debdcd9d3b80ea5212334139b6ae736f" alt="" style="width: 96px; height: 96px; object-fit: contain;">
+      <div style="grid-column: 1 / span 2; display: flex; flex-direction: column; gap: var(--space-sm);">
+        <span class="body-sm" style="color: var(--ink-muted);">Without it I can't see how they're doing. We can still do a session where you call the shots.</span>
+        <sc-if value="{{noHelp}}" hint-placeholder-val="{{ true }}">
+          <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2); align-self: flex-start;">How do I install it?</x-import>
+        </sc-if>
+        <sc-if value="{{showHelp}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: var(--space-xs);">
+            <div class="caption" style="background: var(--surface-2); border-radius: var(--radius-md); padding: var(--space-sm); line-height: 1.6;">python3.11 -m venv .venv-vision<br>.venv-vision/bin/pip install -r requirements-vision.txt</div>
+            <div style="display: flex; gap: var(--space-xs);">
+              <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Copy commands</x-import>
+              <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Check again</x-import>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </section>
+  </main>
+
+  <footer style="margin-top: var(--space-lg); padding: var(--space-md) 80px; display: flex; align-items: center; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 75%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--hairline);">
+    <a href="V5-Home.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none;"><span class="ds-btn__label">Back</span></a>
+    <div style="flex: 1;"></div>
+    <span class="body-sm" style="color: var(--ink-muted); text-align: right;">P05 Simulator&nbsp;<br><span class="caption">Then I wake up, check the desk with P05 and start recording</span></span>
+    <a href="V5-S2a-Starting.dc.html" class="ds-btn ds-btn--primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-xs); box-shadow: var(--glow-focus);"><span class="ds-btn__label">Start session</span><x-import component-from-global-scope="DesignSystem.Icon" name="ArrowRight" size="{{iconSm}}"></x-import></a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"robot":{"editor":"enum","options":["dry","sim","real"],"default":"sim"},"help":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+return {
+brand: brand,
+icon: 20, iconSm: 18,
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html', current: true },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+],
+robot: this.props.robot ?? 'sim',
+isReal: (this.props.robot ?? 'sim') === 'real',
+showHelp: this.props.help ?? false,
+noHelp: !(this.props.help ?? false),
+robots: [
+  { value: 'dry', label: 'No robot', description: 'I stay still. Good for a dry run.' },
+  { value: 'sim', label: 'Simulator', description: 'A virtual me, in my own window.' },
+  { value: 'real', label: 'Real robot', description: "The real me. I'll ask for my address." }
+],
+modes: [
+  { value: 'wizard', label: 'You', description: 'I only do what you press.' },
+  { value: 'rules', label: 'Simple rules', description: 'I follow fixed if-then rules.' },
+  { value: 'hmm', label: 'I estimate', description: "I read how they're doing and climb a fixed ladder." },
+  { value: 'hmm_bandit', label: 'I estimate and learn', description: '…and I learn what works for each person.' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

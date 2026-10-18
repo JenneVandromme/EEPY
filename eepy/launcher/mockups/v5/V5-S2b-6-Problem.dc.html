@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Desk check 1: face problem (participant screen)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(77,163,255,.6)}50%{box-shadow:0 0 0 22px rgba(77,163,255,0)}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+.dot{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%}
+.opnote{position:absolute;right:24px;bottom:24px;width:340px;padding:14px 16px;border-radius:12px;border:1px dashed #5c5c5c;background:rgba(20,20,20,.85);color:#e6e6e6;font:500 13px/1.4 Inter, system-ui, sans-serif}
+.opnote b{color:#fff}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none}}
+</style>
+</helmet>
+<div style="position: relative; overflow: hidden; width: 1440px; height: 900px; background: #000; color: #ebebeb; font-family: Inter, system-ui, sans-serif;">
+<svg viewBox="0 0 1440 900" width="1440" height="900" aria-hidden="true" style="position: absolute; inset: 0;">
+    <rect width="1440" height="900" fill="#151515"></rect>
+    <ellipse cx="720" cy="430" rx="150" ry="190" fill="#1b1b1b"></ellipse>
+    <path d="M520 900 C540 720, 900 720, 920 900 Z" fill="#1b1b1b"></path>
+    <ellipse cx="665" cy="405" rx="20" ry="11" fill="#d9d9d9"></ellipse><ellipse cx="775" cy="405" rx="20" ry="11" fill="#d9d9d9"></ellipse>
+    <path d="M685 520 Q720 540 755 520" fill="none" stroke="#d9d9d9" stroke-width="5" stroke-linecap="round"></path>
+    <rect x="500" y="170" width="440" height="560" rx="24" fill="none" stroke="#ffb020" stroke-width="5" stroke-dasharray="18 12"></rect>
+  </svg>
+  <div style="position: absolute; left: 0; right: 0; top: 48px; text-align: center;"><div style="font-size: 34px; font-weight: 600; color: #ffb020;">Your face is too dark for the camera</div><div style="font-size: 18px; color: #bdbdbd; margin-top: 8px;">Turn on a light or face a window. I'll go on by myself as soon as it's fine.</div></div>
+  <div style="position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); display: flex; gap: 10px; font-size: 14px; color: #bdbdbd;">
+    <span style="padding: 6px 12px; border-radius: 99px; border: 1px solid #3d3d3d;">No face found</span><span style="padding: 6px 12px; border-radius: 99px; border: 1px solid #3d3d3d;">Face outside the box</span><span style="padding: 6px 12px; border-radius: 99px; border: 1px solid #3d3d3d;">A bit far</span><span style="padding: 6px 12px; border-radius: 99px; border: 1px solid #ffb020; color: #ffb020;">Too dark</span><span style="padding: 6px 12px; border-radius: 99px; border: 1px solid #3d3d3d;">Too bright</span>
+  </div>
+  <span style="position: absolute; left: 24px; bottom: 20px; font-size: 13px; color: #8a8a8a;">Q: stop</span>
+  <div class="opnote" role="note"><b>Face check problem.</b> The window stays on and shows what to fix, in words and out loud. The 5 possible messages are below it. Help P05 fix it, then it continues by itself. Q stops it; then you can skip with a reason.<br><a href="V5-S2b-1-Face.dc.html">Fixed: back to the face check (demo)</a></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

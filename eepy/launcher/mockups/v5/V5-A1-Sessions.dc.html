@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Analyze: sessions</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.atabs{display:flex;gap:4px;padding:4px;border-radius:var(--radius-pill);background:var(--surface-1);border:1px solid var(--hairline-soft)}
+.atab{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-pill);color:var(--ink-muted);text-decoration:none;font-size:14px;font-weight:500;transition:background .2s ease, color .2s ease}
+.atab:hover{color:var(--ink);background:var(--hairline)}
+.atab.is-on{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--hairline-strong)}
+.golink{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md) var(--space-lg);border-radius:var(--radius-xl);background:color-mix(in srgb, var(--surface-1) 80%, transparent);backdrop-filter:blur(16px);border:1px solid var(--hairline);color:var(--ink);text-decoration:none;transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
+.golink:hover{transform:translateY(-3px);box-shadow:var(--shadow-float);border-color:var(--hairline-strong);color:var(--ink)}
+.golink__ic{display:inline-flex;width:40px;height:40px;border-radius:var(--radius-full);background:var(--surface-2);align-items:center;justify-content:center;color:var(--energy-high);flex:none}
+
+.sess{position:relative;display:flex;flex-direction:column;gap:var(--space-sm);padding:var(--space-md) var(--space-lg) var(--space-sm);border-radius:var(--radius-xl);background:var(--surface-1);border:1px solid var(--hairline-strong);cursor:pointer;color:var(--ink);text-decoration:none;flex:none;transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease}
+.sess:active{transform:translateY(0) scale(.99)}
+.sess:hover{transform:translateY(-2px);border-color:var(--accent-blue);box-shadow:0 0 0 1px var(--accent-blue), var(--shadow-float);color:var(--ink)}
+.sess:hover .open{background:var(--primary);color:var(--on-primary)}
+.open{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 10px 0 14px;border-radius:var(--radius-pill);background:var(--surface-2);border:1px solid var(--hairline-strong);font-size:13px;font-weight:600;transition:background .2s ease, color .2s ease}
+.sess.is-today{background:var(--surface-2)}
+.scroll{overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--hairline-strong) transparent}
+@media (prefers-reduced-motion: reduce){.sess,.golink,.atab,.open{transition:none}.sess:hover,.sess:active,.golink:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1280px; height: 960px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 30%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 35%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+  <div style="padding: var(--space-lg) 80px 0; display: flex; align-items: flex-end; gap: var(--space-md);"><nav class="atabs" aria-label="Analyze"><a href="V5-A1-Sessions.dc.html" class="atab is-on" aria-current="page"><x-import component-from-global-scope="DesignSystem.Icon" name="AlarmClock" size="{{tabIcon}}"></x-import>Sessions</a><a href="V5-A2-Story.dc.html" class="atab"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{tabIcon}}"></x-import>Session story</a><a href="V5-A3-Learned.dc.html" class="atab"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{tabIcon}}"></x-import>What I learned</a></nav><div style="flex: 1;"></div><div style="width: 170px;"><x-import component-from-global-scope="DesignSystem.Select" label="Participant" options="{{people}}" default-value="P05"></x-import></div></div>
+
+  <header style="padding: var(--space-lg) 80px var(--space-md); display: flex; flex-direction: column; gap: var(--space-xs);">
+    <h1 class="display-md" style="margin: 0;">How did it go?</h1>
+    <span class="body-lg" style="color: var(--ink-muted);">Every session with P05, newest first. Click one and I'll tell you its story.</span>
+  </header>
+
+  <main style="flex: 1; padding: 0 80px var(--space-xl); display: grid; grid-template-columns: 1.75fr 1fr; gap: var(--space-lg); min-height: 0;">
+    <section style="display: flex; flex-direction: column; gap: var(--space-sm); min-height: 0; padding: var(--space-lg); border-radius: var(--radius-xxl); background: color-mix(in srgb, var(--surface-1) 55%, transparent); border: 1px solid var(--hairline-soft);">
+      <div style="display: flex; align-items: baseline; gap: var(--space-sm);"><span class="headline" style="flex: 1;">P05's sessions <span style="color: var(--time-break);">6 so far</span><span class="caption" style="display: block; color: var(--ink-muted); font-weight: 500; letter-spacing: 0; margin-top: 2px;">Each card opens that session's story.</span></span><span class="caption" style="color: var(--ink-muted);">bright = focused · grey = drifting · warm = break · pins = I stepped in</span></div>
+      <div style="position: relative; flex: 1; min-height: 0;">
+        <div class="scroll" style="position: absolute; inset: 0; display: flex; flex-direction: column; gap: var(--space-sm); padding: 6px 8px 48px 4px;"><a href="V5-A2-Story.dc.html" class="sess is-today"><div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="BedDouble" size="{{tabIcon}}"></x-import></span><span style="flex: 1; display: flex; flex-direction: column;"><span class="body"><b>Today</b> · Evening</span><span class="caption" style="color: var(--ink-muted);">21:00 – 21:42 · 42 min · 7 nudges</span></span><span class="body-sm" style="color: var(--time-break); font-weight: 700;">74% focused</span><span class="open">See story<x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{tabIcon}}"></x-import></span></div><x-import component-from-global-scope="DesignSystem.DayTimeline" size="sm" start="21:00" end="21:45" show-ends="{{no}}" segments="{{seg0}}" pins="{{pin0}}"></x-import></a><a href="V5-A2-Story.dc.html" class="sess"><div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{tabIcon}}"></x-import></span><span style="flex: 1; display: flex; flex-direction: column;"><span class="body"><b>Today</b> · Afternoon</span><span class="caption" style="color: var(--ink-muted);">15:10 – 15:55 · 45 min · 5 nudges</span></span><span class="body-sm" style="color: var(--time-break); font-weight: 700;">68% focused</span><span class="open">See story<x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{tabIcon}}"></x-import></span></div><x-import component-from-global-scope="DesignSystem.DayTimeline" size="sm" start="15:00" end="16:00" show-ends="{{no}}" segments="{{seg1}}" pins="{{pin1}}"></x-import></a><a href="V5-A2-Story.dc.html" class="sess"><div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="Coffee" size="{{tabIcon}}"></x-import></span><span style="flex: 1; display: flex; flex-direction: column;"><span class="body"><b>Oct 15</b> · Morning</span><span class="caption" style="color: var(--ink-muted);">10:00 – 10:38 · 38 min · 6 nudges</span></span><span class="body-sm" style="color: var(--time-break); font-weight: 700;">61% focused</span><span class="open">See story<x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{tabIcon}}"></x-import></span></div><x-import component-from-global-scope="DesignSystem.DayTimeline" size="sm" start="9:45" end="10:45" show-ends="{{no}}" segments="{{seg2}}" pins="{{pin2}}"></x-import></a><a href="V5-A2-Story.dc.html" class="sess"><div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="BedDouble" size="{{tabIcon}}"></x-import></span><span style="flex: 1; display: flex; flex-direction: column;"><span class="body"><b>Oct 13</b> · Evening <span class="caption" style="color: var(--ink-muted);">· one of the first 3</span></span><span class="caption" style="color: var(--ink-muted);">21:05 – 21:45 · 40 min · 5 nudges</span></span><span class="body-sm" style="color: var(--time-break); font-weight: 700;">50% focused</span><span class="open">See story<x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{tabIcon}}"></x-import></span></div><x-import component-from-global-scope="DesignSystem.DayTimeline" size="sm" start="21:00" end="22:00" show-ends="{{no}}" segments="{{seg3}}" pins="{{pin3}}"></x-import></a><a href="V5-A2-Story.dc.html" class="sess"><div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{tabIcon}}"></x-import></span><span style="flex: 1; display: flex; flex-direction: column;"><span class="body"><b>Oct 12</b> · Afternoon <span class="caption" style="color: var(--ink-muted);">· one of the first 3</span></span><span class="caption" style="color: var(--ink-muted);">14:30 – 15:05 · 35 min · 4 nudges</span></span><span class="body-sm" style="color: var(--time-break); font-weight: 700;">52% focused</span><span class="open">See story<x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{tabIcon}}"></x-import></span></div><x-import component-from-global-scope="DesignSystem.DayTimeline" size="sm" start="14:15" end="15:15" show-ends="{{no}}" segments="{{seg4}}" pins="{{pin4}}"></x-import></a><a href="V5-A2-Story.dc.html" class="sess"><div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="Coffee" size="{{tabIcon}}"></x-import></span><span style="flex: 1; display: flex; flex-direction: column;"><span class="body"><b>Oct 11</b> · Morning <span class="caption" style="color: var(--ink-muted);">· one of the first 3</span></span><span class="caption" style="color: var(--ink-muted);">09:30 – 10:06 · 36 min · 4 nudges</span></span><span class="body-sm" style="color: var(--time-break); font-weight: 700;">48% focused</span><span class="open">See story<x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{tabIcon}}"></x-import></span></div><x-import component-from-global-scope="DesignSystem.DayTimeline" size="sm" start="9:15" end="10:15" show-ends="{{no}}" segments="{{seg5}}" pins="{{pin5}}"></x-import></a></div>
+        <span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 56px; pointer-events: none; background: linear-gradient(transparent, var(--canvas));"></span>
+      </div>
+    </section>
+
+    <aside style="display: flex; flex-direction: column; gap: var(--space-md);">
+      <section style="position: relative; overflow: hidden; border-radius: var(--radius-xl); padding: 24px; background: color-mix(in srgb, var(--surface-1) 80%, transparent); backdrop-filter: blur(16px); border: 1px solid var(--hairline); display: flex; flex-direction: column; gap: var(--space-sm);">
+        <span aria-hidden="true" style="position: absolute; right: -60px; top: -60px; width: 200px; height: 200px; border-radius: var(--radius-full); background: var(--energy-high); filter: blur(70px); opacity: .25;"></span>
+        <div style="position: relative; display: flex; align-items: center; gap: var(--space-sm);">
+          <span style="display: inline-flex; width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--surface-2); align-items: center; justify-content: center; color: var(--energy-high);"><x-import component-from-global-scope="DesignSystem.Icon" name="Zap" size="{{icon}}"></x-import></span>
+          <span class="headline">Time won back</span>
+        </div>
+        <span class="display-lg" style="position: relative; font-variant-numeric: tabular-nums; line-height: 1;">+24%</span>
+        <span class="body-sm" style="position: relative; color: var(--ink-muted);">focused in the latest session, compared with P05's first 3. About 10 minutes more per session.</span>
+        <div style="position: relative; display: flex; flex-direction: column; gap: var(--space-xs); margin-top: var(--space-xs);">
+          <div class="caption" style="display: grid; grid-template-columns: 70px 1fr 36px; gap: var(--space-xs); align-items: center;"><span style="color: var(--ink-muted);">First 3</span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 50%; height: 8px; border-radius: var(--radius-pill); background: var(--time-busy);"></span></span><span>50%</span></div>
+          <div class="caption" style="display: grid; grid-template-columns: 70px 1fr 36px; gap: var(--space-xs); align-items: center;"><span>Latest</span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 74%; height: 8px; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--time-focus-start), var(--time-focus));"></span></span><b>74%</b></div>
+        </div>
+        <span class="caption" style="position: relative; color: var(--ink-muted);">A before-and-after from my own recordings, not a proper experiment.</span>
+      </section>
+
+      <a href="V5-A3-Learned.dc.html" class="golink">
+        <span class="golink__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{icon}}"></x-import></span>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><b class="body">What works for P05</b><span class="caption" style="color: var(--ink-muted);">Tired: the spoken rest check · distracted: the wordless glance</span></span>
+        <x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{icon}}"></x-import>
+      </a>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+return {
+brand: brand,
+icon: 20, tabIcon: 16, no: false,
+people: [{ value: 'P01', label: 'P01' }, { value: 'P02', label: 'P02' }, { value: 'P03', label: 'P03' }, { value: 'P05', label: 'P05' }],
+seg0: [{ from: '21:00', to: '21:06', type: 'focus' }, { from: '21:06', to: '21:11', type: 'busy' }, { from: '21:11', to: '21:27', type: 'focus' }, { from: '21:27', to: '21:32', type: 'break' }, { from: '21:32', to: '21:42', type: 'focus' }],
+pin0: [{ at: '21:09', label: 'Spoken check', icon: 'Play' }, { at: '21:25', label: 'Offer a break', icon: 'Play' }, { at: '21:40', label: 'Spoken rest check', icon: 'Play' }],
+seg1: [{ from: '15:10', to: '15:22', type: 'focus' }, { from: '15:22', to: '15:28', type: 'busy' }, { from: '15:28', to: '15:44', type: 'focus' }, { from: '15:44', to: '15:49', type: 'break' }, { from: '15:49', to: '15:55', type: 'focus' }],
+pin1: [{ at: '15:24', label: 'Glance at notes', icon: 'Play' }, { at: '15:43', label: 'Offer a break', icon: 'Play' }],
+seg2: [{ from: '10:00', to: '10:09', type: 'focus' }, { from: '10:09', to: '10:16', type: 'busy' }, { from: '10:16', to: '10:30', type: 'focus' }, { from: '10:30', to: '10:38', type: 'busy' }],
+pin2: [{ at: '10:12', label: 'Curious tilt', icon: 'Play' }, { at: '10:33', label: 'Spoken check', icon: 'Play' }],
+seg3: [{ from: '21:05', to: '21:13', type: 'focus' }, { from: '21:13', to: '21:23', type: 'busy' }, { from: '21:23', to: '21:33', type: 'focus' }, { from: '21:33', to: '21:45', type: 'busy' }],
+pin3: [{ at: '21:15', label: 'Glance at notes', icon: 'Play' }, { at: '21:36', label: 'Tired look', icon: 'Play' }],
+seg4: [{ from: '14:30', to: '14:38', type: 'focus' }, { from: '14:38', to: '14:48', type: 'busy' }, { from: '14:48', to: '14:58', type: 'focus' }, { from: '14:58', to: '15:05', type: 'busy' }],
+pin4: [{ at: '14:42', label: 'Spoken check', icon: 'Play' }],
+seg5: [{ from: '9:30', to: '9:38', type: 'focus' }, { from: '9:38', to: '9:50', type: 'busy' }, { from: '9:50', to: '9:58', type: 'focus' }, { from: '9:58', to: '10:06', type: 'busy' }],
+pin5: [{ at: '9:44', label: 'Curious tilt', icon: 'Play' }],
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html' },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html', current: true },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

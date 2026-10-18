@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Analyze: session story</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn--primary:hover{box-shadow:var(--glow-focus)}
+.moment{transition:transform .15s ease, background .2s ease;cursor:pointer}
+.moment:hover{transform:translateY(-2px);background:var(--surface-2)}
+.atabs{display:flex;gap:4px;padding:4px;border-radius:var(--radius-pill);background:var(--surface-1);border:1px solid var(--hairline-soft)}
+.atab{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-pill);color:var(--ink-muted);text-decoration:none;font-size:14px;font-weight:500;transition:background .2s ease, color .2s ease}
+.atab:hover{color:var(--ink);background:var(--hairline)}
+.atab.is-on{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--hairline-strong)}
+.golink{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md) var(--space-lg);border-radius:var(--radius-xl);background:color-mix(in srgb, var(--surface-1) 80%, transparent);backdrop-filter:blur(16px);border:1px solid var(--hairline);color:var(--ink);text-decoration:none;transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
+.golink:hover{transform:translateY(-3px);box-shadow:var(--shadow-float);border-color:var(--hairline-strong);color:var(--ink)}
+.golink__ic{display:inline-flex;width:40px;height:40px;border-radius:var(--radius-full);background:var(--surface-2);align-items:center;justify-content:center;color:var(--energy-high);flex:none}
+.circles > span{cursor:pointer;transition:transform .15s ease, box-shadow .2s ease}
+.circles > span:hover{transform:scale(1.15);box-shadow:0 0 0 3px var(--surface-1), 0 0 0 5px var(--accent-blue)}
+.seg{cursor:pointer}.seg:hover{filter:brightness(1.3)}
+.moment{border:1px solid var(--hairline-strong)}
+.moment:hover{border-color:var(--accent-blue)}
+.exr{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.pop{display:none}
+#ex-drift:checked ~ .pop-drift,#ex-away:checked ~ .pop-away,#ex-tired:checked ~ .pop-tired,#ex-moment:checked ~ .pop-moment{display:flex}
+.close{display:inline-flex;width:32px;height:32px;align-items:center;justify-content:center;border-radius:var(--radius-full);background:var(--surface-1);border:1px solid var(--hairline-strong);cursor:pointer;font-size:18px;line-height:1}
+.close:hover{background:var(--hairline)}
+label.moment{cursor:pointer}
+.pop{position:absolute;z-index:8;width:400px;padding:var(--space-lg);border-radius:var(--radius-xl);background:var(--surface-2);border:1px solid var(--hairline-strong);box-shadow:var(--shadow-overlay);flex-direction:column;gap:var(--space-sm)}
+.pop::before{content:"";position:absolute;width:16px;height:16px;background:var(--surface-2);border-left:1px solid var(--hairline-strong);border-top:1px solid var(--hairline-strong);transform:rotate(45deg);top:-9px;left:var(--caret,40px)}
+.fact{display:grid;grid-template-columns:90px 1fr;gap:var(--space-xs);font-size:13px}
+.fact span:first-child{color:var(--ink-muted)}
+@media (prefers-reduced-motion: reduce){.circles > span,.atab,.ds-btn,.moment{transition:none}.moment:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1440px; height: 1420px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 30%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 35%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <input type="radio" name="ex" id="ex-none" class="exr" checked><input type="radio" name="ex" id="ex-drift" class="exr"><input type="radio" name="ex" id="ex-away" class="exr"><input type="radio" name="ex" id="ex-tired" class="exr"><input type="radio" name="ex" id="ex-moment" class="exr">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+  <div style="padding: var(--space-lg) 80px 0; display: flex; align-items: flex-end; gap: var(--space-md);"><nav class="atabs" aria-label="Analyze"><a href="V5-A1-Sessions.dc.html" class="atab"><x-import component-from-global-scope="DesignSystem.Icon" name="AlarmClock" size="{{tabIcon}}"></x-import>Sessions</a><a href="V5-A2-Story.dc.html" class="atab is-on" aria-current="page"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{tabIcon}}"></x-import>Session story</a><a href="V5-A3-Learned.dc.html" class="atab"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{tabIcon}}"></x-import>What I learned</a></nav><div style="flex: 1;"></div><div style="width: 240px;"><x-import component-from-global-scope="DesignSystem.Select" label="Session" options="{{sessions}}" default-value="s1"></x-import></div></div>
+
+  <main style="flex: 1; padding: var(--space-lg) 80px var(--space-xl); display: flex; flex-direction: column; gap: var(--space-lg); min-height: 0;">
+    <header style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-xl); align-items: end;">
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+        <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">P05 · today, 21:00 to 21:42</span>
+        <h1 class="display-md" style="margin: 0;">A good session, mostly.</h1>
+        <div style="display: flex; gap: var(--space-sm); align-items: flex-start; max-width: 760px; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-xl); background: color-mix(in srgb, var(--surface-1) 80%, transparent); backdrop-filter: blur(14px); border: 1px solid var(--hairline);">
+          <img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="32" height="32">
+          <span class="body">P05 was focused for most of it. They drifted early, took a break I offered, and got tired near the end. I suggested a rest and they took it. I stepped in 7 times; 3 worked.</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: var(--space-sm);">
+        <div style="padding: var(--space-md) var(--space-lg); border-radius: var(--radius-xl); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px; min-width: 110px;"><span class="caption" style="color: var(--ink-muted);">Focused</span><span class="display-md" style="font-variant-numeric: tabular-nums;">74%</span></div>
+        <div style="padding: var(--space-md) var(--space-lg); border-radius: var(--radius-xl); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px; min-width: 110px;"><span class="caption" style="color: var(--ink-muted);">Length</span><span class="display-md" style="font-variant-numeric: tabular-nums;">42<span class="headline"> min</span></span></div>
+        <div style="padding: var(--space-md) var(--space-lg); border-radius: var(--radius-xl); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px; min-width: 110px;"><span class="caption" style="color: var(--ink-muted);">Worked</span><span class="display-md" style="font-variant-numeric: tabular-nums;">3<span class="headline"> / 7</span></span></div>
+      </div>
+    </header>
+
+    <x-import component-from-global-scope="DesignSystem.VizPanel" title="Focus, minute by minute:" highlight="74%" subtitle="The curve is how sure I was that P05 was focused. Circles are the moments I stepped in; the strip shows the other states."><x-import component-from-global-scope="DesignSystem.FocusCurve" start="21:00" end="21:42" points="{{curve}}" label="Focus" height="{{curveH}}" show-peak="{{no}}"></x-import><div class="circles" style="position: relative; height: 30px; margin-top: var(--space-sm);" aria-label="Moments I stepped in">
+        <label for="ex-drift" style="position: absolute; left: 16.7%; top: 0; width: 26px; height: 26px; margin-left: -13px; border-radius: var(--radius-full); background: var(--surface-2); color: var(--ink-muted); display: flex; align-items: center; justify-content: center;" class="caption">1</label>
+        <label for="ex-drift" style="position: absolute; left: 21.4%; top: 0; width: 26px; height: 26px; margin-left: -13px; border-radius: var(--radius-full); background: var(--success); color: var(--atmosphere-deep); display: flex; align-items: center; justify-content: center;" class="caption">2</label>
+        <label for="ex-moment" style="position: absolute; left: 57.1%; top: 0; width: 26px; height: 26px; margin-left: -13px; border-radius: var(--radius-full); border: 1px dashed var(--hairline-strong); box-sizing: border-box; color: var(--ink-muted); display: flex; align-items: center; justify-content: center;" class="caption">3</label>
+        <label for="ex-away" style="position: absolute; left: 60.5%; top: 0; width: 26px; height: 26px; margin-left: -13px; border-radius: var(--radius-full); background: var(--success); color: var(--atmosphere-deep); display: flex; align-items: center; justify-content: center;" class="caption">4</label>
+        <label for="ex-tired" style="position: absolute; left: 78.6%; top: 0; width: 26px; height: 26px; margin-left: -13px; border-radius: var(--radius-full); background: var(--surface-2); color: var(--ink-muted); display: flex; align-items: center; justify-content: center;" class="caption">5</label>
+        <label for="ex-tired" style="position: absolute; left: 85.7%; top: 0; width: 26px; height: 26px; margin-left: -13px; border-radius: var(--radius-full); background: var(--time-break); color: var(--atmosphere-deep); display: flex; align-items: center; justify-content: center;" class="caption">6</label>
+        <label for="ex-tired" style="position: absolute; left: 95.2%; top: -3px; width: 32px; height: 32px; margin-left: -16px; border-radius: var(--radius-full); background: var(--success); color: var(--atmosphere-deep); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px var(--surface-1), 0 0 0 5px var(--ink);" class="body-sm">7</label>
+      </div><div style="position: relative; height: 14px; margin-top: var(--space-xs); border-radius: var(--radius-pill); background: var(--time-track); overflow: hidden;" aria-label="Other states">
+        <label for="ex-drift" class="seg" style="position: absolute; left: 14.3%; width: 11.9%; top: 0; bottom: 0; background: var(--energy-low);" title="Distracted 21:06 to 21:11"></label>
+        <label for="ex-away" class="seg" style="position: absolute; left: 64.3%; width: 11.9%; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, var(--hairline-strong) 0 2px, transparent 2px 6px);" title="Away 21:27 to 21:32"></label>
+        <label for="ex-tired" class="seg" style="position: absolute; left: 81%; width: 9.5%; top: 0; bottom: 0; background: color-mix(in srgb, var(--time-sleep) 60%, transparent);" title="Drowsy 21:34 to 21:38"></label>
+        <label for="ex-tired" class="seg" style="position: absolute; left: 90.5%; width: 9.5%; top: 0; bottom: 0; background: var(--time-sleep);" title="Very drowsy 21:38 to 21:42"></label>
+      </div><div class="caption" style="display: flex; gap: var(--space-lg); margin-top: var(--space-sm); color: var(--ink-muted); flex-wrap: wrap;">
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 12px; height: 12px; border-radius: var(--radius-xs); background: var(--energy-low);"></span>Distracted</span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 12px; height: 12px; border-radius: var(--radius-xs); background: color-mix(in srgb, var(--time-sleep) 60%, transparent);"></span>Drowsy</span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 12px; height: 12px; border-radius: var(--radius-xs); background: var(--time-sleep);"></span>Very drowsy</span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 12px; height: 12px; border-radius: var(--radius-xs); background: repeating-linear-gradient(45deg, var(--hairline-strong) 0 2px, transparent 2px 6px);"></span>Away from the desk</span>
+        <span style="flex: 1;"></span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--success);"></span>worked</span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--time-break);"></span>snoozed</span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--surface-2); border: 1px solid var(--hairline-strong); box-sizing: border-box;"></span>no reaction</span>
+        <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); border: 1px dashed var(--hairline-strong); box-sizing: border-box;"></span>not counted</span>
+      </div></x-import>
+
+    <section style="display: flex; flex-direction: column; gap: var(--space-sm);">
+      <div style="display: flex; align-items: baseline; gap: var(--space-sm);"><span class="headline">Moments I stepped in</span><span class="caption" style="color: var(--ink-muted);">Click any circle, coloured strip or card and I'll tell you what happened.</span></div>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-xs);">
+        <label for="ex-drift" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">1 · 21:07</span><span class="body-sm"><b>Glance at notes</b></span><span class="caption" style="color: var(--ink-muted);">No reaction</span></label>
+        <label for="ex-drift" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">2 · 21:09</span><span class="body-sm"><b>Spoken check</b></span><span class="caption" style="color: var(--success);">Worked</span></label>
+        <label for="ex-moment" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">3 · 21:24</span><span class="body-sm"><b>Curious tilt</b></span><span class="caption" style="color: var(--ink-muted);">Not counted</span></label>
+        <label for="ex-away" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">4 · 21:25</span><span class="body-sm"><b>Offer a break</b></span><span class="caption" style="color: var(--success);">Accepted</span></label>
+        <label for="ex-tired" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">5 · 21:33</span><span class="body-sm"><b>Tired look</b></span><span class="caption" style="color: var(--ink-muted);">No reaction</span></label>
+        <label for="ex-tired" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-1); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">6 · 21:36</span><span class="body-sm"><b>Yawn at you</b></span><span class="caption" style="color: var(--ink-muted);">Snoozed</span></label>
+        <label for="ex-tired" class="moment" style="padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: var(--surface-2); outline: 2px solid var(--accent-blue); display: flex; flex-direction: column; gap: 2px;"><span class="caption" style="color: var(--ink-muted);">7 · 21:40</span><span class="body-sm"><b>Spoken rest check</b></span><span class="caption" style="color: var(--success);">Took a rest</span></label>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: var(--space-md); flex: 1; min-height: 0;">
+      <div style="display: flex; align-items: center; gap: var(--space-md);">
+        <span class="headline">Why I acted at 21:40</span>
+        <span class="body-sm" style="color: var(--ink-muted);">I said <i>"Getting late, isn't it?"</i></span>
+        <div style="flex: 1;"></div>
+        <x-import component-from-global-scope="DesignSystem.IconButton" label="Previous moment" icon="ChevronLeft"></x-import>
+        <x-import component-from-global-scope="DesignSystem.IconButton" label="Next moment" icon="ChevronRight"></x-import>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-md); flex: 1;">
+        <div style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-sm);">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-2); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{small}}"></x-import></span><span class="caption" style="color: var(--ink-muted);">1 · What I thought</span></div>
+          <span class="headline">P05 is tired</span>
+          <span class="body-sm" style="color: var(--ink-muted);">rather than focused</span>
+          <div style="display: flex; flex-direction: column; gap: var(--space-xxs); margin-top: var(--space-xs);">
+            <div class="body-sm" style="display: flex; justify-content: space-between;"><span style="color: var(--ink-muted);">How sure I was</span><b>92%</b></div>
+            <span style="position: relative; height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 92%; height: 8px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span><span style="position: absolute; left: 70%; top: -3px; width: 2px; height: 14px; background: var(--ink);"></span></span>
+            <span class="caption" style="color: var(--ink-muted);">I only act past the line (70%).</span>
+          </div>
+        </div>
+
+        <div style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-sm);">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-2); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{small}}"></x-import></span><span class="caption" style="color: var(--ink-muted);">2 · What gave it away</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="body-sm"><b>Eyes closing</b><sc-if value="{{isDetailed}}" hint-placeholder-val="{{ true }}"><span style="color: var(--ink-muted);"> · 29% of the last minute</span></sc-if></span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 78%; height: 8px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="body-sm"><b>Yawning</b><sc-if value="{{isDetailed}}" hint-placeholder-val="{{ true }}"><span style="color: var(--ink-muted);"> · twice</span></sc-if></span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 22%; height: 8px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="body-sm"><b>Head stayed up</b><span style="color: var(--ink-muted);"> · this pointed the other way</span></span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 10%; height: 8px; border-radius: var(--radius-pill); background: var(--time-focus);"></span></span></div>
+          <span class="caption" style="margin-top: auto; color: var(--ink-muted);">Longer bar = it counted more. Dark bars pointed to tired, bright ones to focused.</span>
+        </div>
+
+        <div style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-sm);">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-2); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{small}}"></x-import></span><span class="caption" style="color: var(--ink-muted);">3 · What I picked</span></div>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px;">
+            <span class="micro" style="text-align: center; padding: 5px 0; border-radius: var(--radius-pill); border: 1px dashed var(--hairline-strong); color: var(--ink-disabled);">0</span>
+            <span class="micro" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: var(--surface-2);">1</span>
+            <span class="micro" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: var(--surface-2);">2</span>
+            <span class="micro" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--time-focus-start), var(--time-focus)); color: var(--atmosphere-deep);">3</span>
+            <span class="micro" style="text-align: center; padding: 5px 0; border-radius: var(--radius-pill); border: 1px dashed var(--hairline-strong); color: var(--ink-disabled);">4</span>
+            <span class="micro" style="text-align: center; padding: 5px 0; border-radius: var(--radius-pill); border: 1px dashed var(--hairline-strong); color: var(--ink-disabled);">5</span>
+          </div>
+          <span class="body-sm">The spoken rest check. For P05 it usually works best at this point.</span>
+          <sc-if value="{{isDetailed}}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: var(--space-xs);">
+              <div class="caption" style="display: grid; grid-template-columns: 1fr 70px 36px; gap: var(--space-xs); align-items: center;"><span>The tired look</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 14%; height: 6px; border-radius: var(--radius-pill); background: var(--time-busy);"></span></span><span>+0.10</span></div>
+              <div class="caption" style="display: grid; grid-template-columns: 1fr 70px 36px; gap: var(--space-xs); align-items: center;"><span>The yawn at you</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 30%; height: 6px; border-radius: var(--radius-pill); background: var(--time-busy);"></span></span><span>+0.22</span></div>
+              <div class="caption" style="display: grid; grid-template-columns: 1fr 70px 36px; gap: var(--space-xs); align-items: center;"><b>The spoken rest check</b><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 82%; height: 6px; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--time-focus-start), var(--time-focus));"></span></span><b>+0.61</b></div>
+              <span class="caption" style="color: var(--ink-muted);">Dashed = not allowed right now. Chance I'd pick this one: 62%.</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="background: var(--surface-1); border: 1px solid var(--hairline-soft); border-radius: var(--radius-xl); padding: 24px; display: flex; flex-direction: column; gap: var(--space-sm);">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-2); align-items: center; justify-content: center; color: var(--success);"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{small}}"></x-import></span><span class="caption" style="color: var(--ink-muted);">4 · What happened</span></div>
+          <span class="headline">P05 took a rest</span>
+          <span class="body-sm" style="color: var(--ink-muted);">You marked it 2 minutes later.</span>
+          <div style="display: flex; flex-direction: column; gap: var(--space-xxs); margin-top: var(--space-xs);">
+            <div class="body-sm" style="display: flex; justify-content: space-between;"><span style="color: var(--ink-muted);">How good that was for me</span><b>+0.80</b></div>
+            <span style="position: relative; height: 10px; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--energy-low), var(--surface-2) 50%, var(--success));"><span style="position: absolute; left: 90%; top: -4px; width: 4px; height: 18px; margin-left: -2px; border-radius: var(--radius-xs); background: var(--ink);"></span></span>
+            <div class="caption" style="display: flex; justify-content: space-between; color: var(--ink-muted);"><span>bad</span><span>neutral</span><span>great</span></div>
+          </div>
+          <sc-if value="{{isDetailed}}" hint-placeholder-val="{{ true }}">
+            <span class="caption" style="margin-top: auto; color: var(--ink-muted);">A bit less than +1 because it took a while. I learned from it: that's update 13 for P05.</span>
+          </sc-if>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="pop pop-drift" role="dialog" aria-label="You drifted for about 5 minutes" style="top: 770px; left: 150px; --caret: 60px;">
+      <div style="display: flex; align-items: center; gap: var(--space-sm);"><img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="28" height="28"><span style="flex: 1; display: flex; flex-direction: column;"><span class="caption" style="color: var(--ink-muted);">21:06 – 21:11 · grey strip</span><b class="body">You drifted for about 5 minutes</b></span><label for="ex-none" class="close" title="Close" aria-label="Close">×</label></div>
+      <span class="body-sm">Your eyes kept leaving the screen. First I glanced at my notes, with no reaction. Then I asked "Losing focus a bit?" and you were back on task 20 seconds later.</span>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: var(--space-xs); border-top: 1px solid var(--hairline);"><div class="fact"><span>What I saw</span><span>Looking away 62% of the minute</span></div><div class="fact"><span>What I did</span><span>Glance at notes (21:07), spoken check (21:09)</span></div><div class="fact"><span>Result</span><span>Back on task, counted as a success</span></div></div>
+    </div>
+  <div class="pop pop-away" role="dialog" aria-label="You took the break I offered" style="top: 770px; left: 760px; --caret: 60px;">
+      <div style="display: flex; align-items: center; gap: var(--space-sm);"><img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="28" height="28"><span style="flex: 1; display: flex; flex-direction: column;"><span class="caption" style="color: var(--ink-muted);">21:27 – 21:32 · striped strip</span><b class="body">You took the break I offered</b></span><label for="ex-none" class="close" title="Close" aria-label="Close">×</label></div>
+      <span class="body-sm">You left the desk right after saying yes to my break offer at 21:25. A break is not distraction, so I stayed quiet and started fresh when you came back.</span>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: var(--space-xs); border-top: 1px solid var(--hairline);"><div class="fact"><span>What I saw</span><span>No face in view for 5 minutes</span></div><div class="fact"><span>What I did</span><span>Nothing: I waited</span></div><div class="fact"><span>Result</span><span>Not counted against you</span></div></div>
+    </div>
+  <div class="pop pop-tired" role="dialog" aria-label="You were getting tired" style="top: 770px; left: 960px; --caret: 300px;">
+      <div style="display: flex; align-items: center; gap: var(--space-sm);"><img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="28" height="28"><span style="flex: 1; display: flex; flex-direction: column;"><span class="caption" style="color: var(--ink-muted);">21:34 – 21:42 · purple strip</span><b class="body">You were getting tired</b></span><label for="ex-none" class="close" title="Close" aria-label="Close">×</label></div>
+      <span class="body-sm">Your eyes closed more and more. I went up my tiredness ladder step by step: the tired look, the yawn, then I asked out loud. You took a rest.</span>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: var(--space-xs); border-top: 1px solid var(--hairline);"><div class="fact"><span>What I saw</span><span>Eyes closed 29% of the last minute</span></div><div class="fact"><span>What I did</span><span>Tired look, yawn at you, spoken check</span></div><div class="fact"><span>Result</span><span>You took a rest at 21:42</span></div></div>
+    </div>
+  <div class="pop pop-moment" role="dialog" aria-label="Why this one is "not counted"" style="top: 940px; left: 330px; --caret: 120px;">
+      <div style="display: flex; align-items: center; gap: var(--space-sm);"><img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="28" height="28"><span style="flex: 1; display: flex; flex-direction: column;"><span class="caption" style="color: var(--ink-muted);">Moment 3 · 21:24</span><b class="body">Why this one is "not counted"</b></span><label for="ex-none" class="close" title="Close" aria-label="Close">×</label></div>
+      <span class="body-sm">I tilted my head curiously, but one minute later I offered a break. I couldn't tell which of the two made the difference, so I left the tilt out of my learning.</span>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: var(--space-xs); border-top: 1px solid var(--hairline);"><div class="fact"><span>Outcome</span><span>Censored: the next move came too soon</span></div><div class="fact"><span>Learning</span><span>Skipped for this move</span></div><div class="fact"><span>Shown</span><span>Dashed circle and card</span></div></div>
+    </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"detail":{"editor":"enum","options":["detailed","simple"],"default":"simple"},"$preview":{"width":1440,"height":1420}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+var detail = this.props.detail ?? 'simple';
+return {
+brand: brand,
+small: 16, tabIcon: 16, no: false, curveH: 220,
+sessions: [{ value: 's1', label: 'Today, 21:00 · 42 min' }, { value: 's2', label: 'Today, 15:10 · 45 min' }, { value: 's3', label: 'Oct 15, 10:00 · 38 min' }],
+isDetailed: detail === 'detailed',
+curve: [["21:00",0.85],["21:04",0.82],["21:07",0.35],["21:10",0.30],["21:13",0.80],["21:18",0.86],["21:24",0.72],["21:27",0.40],["21:30",0.30],["21:32",0.62],["21:34",0.38],["21:38",0.12],["21:42",0.05]],
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html' },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html', current: true },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

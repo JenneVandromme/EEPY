@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Session: waking up</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+@keyframes breathe{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.6;transform:scale(1.06)}}
+.breathe{animation:breathe 3.2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(10px)}50%{transform:translateY(-14px)}}
+.bob{animation:bob 2.4s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1.6s linear infinite;transform-origin:50% 50%}
+@keyframes shadow{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(.7);opacity:.35}}
+.shadow{animation:shadow 2.4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.breathe,.bob,.spin,.shadow{animation:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1280px; height: 800px; box-sizing: border-box; background: radial-gradient(700px 520px at 50% 45%, color-mix(in srgb, var(--atmosphere-glow) 35%, transparent), transparent 70%), var(--atmosphere-deep); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <a href="V5-S2b-Calibration.dc.html" aria-label="Waking up. Continue when ready (demo)" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-xl); color: var(--ink); text-decoration: none;">
+    <div style="position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center;">
+      <span class="breathe" aria-hidden="true" style="position: absolute; inset: 0; border-radius: var(--radius-full); background: var(--time-focus); filter: blur(40px);"></span>
+      <svg width="260" height="260" viewBox="0 0 260 260" aria-hidden="true" style="position: absolute; inset: 0;">
+        <circle cx="130" cy="130" r="120" fill="none" style="stroke: var(--time-track);" stroke-width="6"></circle>
+      </svg>
+      <svg class="spin" width="260" height="260" viewBox="0 0 260 260" aria-hidden="true" style="position: absolute; inset: 0;">
+        <defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--time-focus-start);"></stop><stop offset="1" style="stop-color: var(--time-focus);"></stop></linearGradient></defs>
+        <circle cx="130" cy="130" r="120" fill="none" stroke="url(#ring)" stroke-width="6" stroke-linecap="round" stroke-dasharray="250 504"></circle>
+      </svg>
+      <span class="shadow" aria-hidden="true" style="position: absolute; bottom: 52px; width: 90px; height: 12px; border-radius: var(--radius-full); background: var(--atmosphere-deep); filter: blur(6px);"></span>
+      <img class="bob" src="/_blob/debdcd9d3b80ea5212334139b6ae736f" alt="Eepy in a builder's hat, setting up" style="position: relative; width: 150px; height: 150px; object-fit: contain;">
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: var(--space-xs); text-align: center;">
+      <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Run a session · step 2 of 3</span>
+      <span class="display-md">Waking up…</span>
+      <span class="body-lg" style="color: var(--ink-muted); max-width: 520px;">I'm starting everything myself<br>Then we'll check P05's desk together and begin</span>
+    </div>
+
+    <ol style="display: flex; gap: var(--space-sm); list-style: none; margin: 0; padding: 0;">
+      <li class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1);"><span style="color: var(--success); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{icon}}"></x-import></span>My body</li>
+      <li class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-2); box-shadow: var(--glow-focus);"><span style="width: 14px; height: 14px; border-radius: var(--radius-full); border: 2px solid var(--time-focus-start); border-right-color: transparent; box-sizing: border-box;"></span>My control panel</li>
+      <li class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1); color: var(--ink-muted);"><span style="width: 14px; height: 14px; border-radius: var(--radius-full); border: 2px solid var(--hairline-strong); box-sizing: border-box;"></span>My eyes</li>
+    </ol>
+
+    <span class="caption" style="color: var(--ink-muted);">If something won't start, I'll tell you right here what to do.</span>
+  </a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+return {
+brand: brand,
+icon: 16,
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html', current: true },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

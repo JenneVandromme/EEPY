@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Advanced tools</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn--primary:hover{box-shadow:var(--glow-focus)}
+.card{background:var(--surface-1);border:1px solid var(--hairline-soft);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:var(--space-sm)}
+.sec{display:flex;align-items:center;gap:var(--space-sm)}
+.sec__ic{display:inline-flex;width:36px;height:36px;border-radius:var(--radius-full);background:var(--surface-2);align-items:center;justify-content:center;flex:none}
+.mono{background:var(--surface-2);border-radius:var(--radius-md);padding:var(--space-sm) var(--space-md);color:var(--ink-muted);line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+@media (prefers-reduced-motion: reduce){.ds-btn{transition:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1440px; height: 1100px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 26%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 30%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <main style="flex: 1; padding: var(--space-xl) 80px var(--space-xl); display: flex; flex-direction: column; gap: var(--space-lg); min-height: 0;">
+    <header style="display: flex; align-items: flex-end; gap: var(--space-lg);">
+      <img src="/_blob/debdcd9d3b80ea5212334139b6ae736f" alt="" style="width: 84px; height: 84px; object-fit: contain;">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: var(--space-xs);">
+        <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Advanced tools · for developers</span>
+        <h1 class="display-md" style="margin: 0;">Under my hood</h1>
+        <span class="body-lg" style="color: var(--ink-muted);">See what's running, change my settings, fix me when I'm stuck. All of it also works from the terminal.</span>
+      </div>
+      <a href="http://127.0.0.1:8081/" class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xxs);">Open the classic panel <x-import component-from-global-scope="DesignSystem.Icon" name="ArrowRight" size="{{small}}"></x-import></a>
+    </header>
+
+    <section style="display: flex; flex-direction: column; gap: var(--space-sm);">
+      <div class="sec"><span class="sec__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{icon}}"></x-import></span><span class="headline">My programs</span><span class="body-sm" style="color: var(--ink-muted);"><br></span></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md);">
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--success); box-shadow: 0 0 10px var(--success);"></span><b class="body" style="flex: 1;">My body <span style="color: var(--ink-muted); font-weight: 400;">· simulator</span></b><x-import component-from-global-scope="DesignSystem.Badge" tone="success">Running</x-import></div>
+          <span class="caption" style="color: var(--ink-muted);">port 8000 · up 14 min</span>
+          <div style="display: flex; gap: var(--space-xs);"><x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Restart</x-import><x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Stop</x-import></div>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--success); box-shadow: 0 0 10px var(--success);"></span><b class="body" style="flex: 1;">My control panel</b><x-import component-from-global-scope="DesignSystem.Badge" tone="success">Running</x-import></div>
+          <span class="caption" style="color: var(--ink-muted);">port 8081 · up 14 min · P05 recording</span>
+          <div style="display: flex; gap: var(--space-xs);"><x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Restart</x-import><x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Stop</x-import></div>
+        </div>
+        <div class="card" style="box-shadow: var(--shadow-error);">
+          <div style="display: flex; align-items: center; gap: var(--space-sm);"><span style="width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--error);"></span><b class="body" style="flex: 1;">My eyes <span style="color: var(--ink-muted); font-weight: 400;">· camera</span></b><x-import component-from-global-scope="DesignSystem.Badge" tone="error">Not installed</x-import></div>
+          <span class="caption" style="color: var(--ink-muted);">port 8770 · .venv-vision is missing</span>
+          <div style="display: flex; gap: var(--space-xs);"><x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Copy install commands</x-import></div>
+        </div>
+      </div>
+    </section>
+
+    <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: var(--space-md);">
+      <section class="card">
+        <div class="sec"><span class="sec__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="Menu" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><span class="headline">Settings</span><span class="caption" style="color: var(--ink-muted);">Where to find my camera and robot.</span></span></div>
+        <x-import component-from-global-scope="DesignSystem.Select" label="Camera" options="{{cameras}}" default-value=""></x-import>
+        <x-import component-from-global-scope="DesignSystem.TextInput" label="Real robot address" placeholder="192.168.50.95"></x-import>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm);">
+          <x-import component-from-global-scope="DesignSystem.TextInput" label="Panel port" default-value="8081"></x-import>
+          <x-import component-from-global-scope="DesignSystem.TextInput" label="Live page port" default-value="8770"></x-import>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-sm); margin-top: auto;">
+          <x-import component-from-global-scope="DesignSystem.Button" variant="primary">Save settings</x-import>
+          <span class="caption" style="color: var(--ink-muted);">I'll tell you what to restart.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="sec"><span class="sec__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="Zap" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><span class="headline">Fix-it buttons</span><span class="caption" style="color: var(--ink-muted);">Try these first when I act strange.</span></span></div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-xs);">
+          <div style="display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-2);"><span class="body-sm" style="flex: 1;"><b>Reload my behaviour files</b><br><span style="color: var(--ink-muted);">After you edit lines or moves</span></span><x-import component-from-global-scope="DesignSystem.IconButton" label="Reload behaviour files" icon="ArrowRight"></x-import></div>
+          <div style="display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-2);"><span class="body-sm" style="flex: 1;"><b>Reconnect my body</b><br><span style="color: var(--ink-muted);">If I stopped moving</span></span><x-import component-from-global-scope="DesignSystem.IconButton" label="Reconnect body" icon="ArrowRight"></x-import></div>
+        </div>
+        <x-import component-from-global-scope="DesignSystem.TextInput" label="Extra arguments · panel" placeholder="e.g. --session-prior prior.json"></x-import>
+      </section>
+
+      <section class="card">
+        <div class="sec"><span class="sec__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><span class="headline">Saved desks</span><span class="caption" style="color: var(--ink-muted);">The calibrations I keep for each person.</span></span></div>
+        <div style="width: 160px;"><x-import component-from-global-scope="DesignSystem.Select" label="Participant" options="{{people}}" default-value="P05"></x-import></div>
+        <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-2);"><span style="flex: 1;"><b>Desk at home</b><br><span style="color: var(--ink-muted);">3 days ago</span></span><a href="#">Rename</a><a href="#">Delete</a></div>
+        <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-2);"><span style="flex: 1;"><b>Desk at work</b><br><span style="color: var(--ink-muted);">10 days ago</span></span><a href="#">Rename</a><a href="#">Delete</a></div>
+        <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); border: 1px dashed var(--hairline-strong); color: var(--ink-muted);"><span style="flex: 1;"><b>Library</b><br>21 days ago · too old to reuse</span><a href="#">Delete</a></div>
+      </section>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1.6fr 1fr; gap: var(--space-md); flex: 1; min-height: 0;">
+      <section class="card">
+        <div style="display: flex; align-items: flex-end; gap: var(--space-md);">
+          <div class="sec" style="flex: 1;"><span class="sec__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><span class="headline">Everything I printed</span><span class="caption" style="color: var(--ink-muted);">Live messages from all three programs.</span></span></div>
+          <div style="width: 180px;"><x-import component-from-global-scope="DesignSystem.Select" label="Show" options="{{filters}}" default-value="all"></x-import></div>
+          <x-import component-from-global-scope="DesignSystem.Switch" label="Follow" default-checked="{{yes}}"></x-import>
+        </div>
+        <div class="mono" style="flex: 1;">
+          <span style="color: var(--ink);">launcher</span>  Starting: simulator, then panel, then vision<br>
+          <span style="color: var(--ink);">body</span>  Daemon listening on 127.0.0.1:8000<br>
+          <span style="color: var(--ink);">panel</span>  Wizard panel on http://127.0.0.1:8081/ (mode hmm_bandit)<br>
+          <span style="color: var(--ink);">panel</span>  Session started: P05<br>
+          <span style="color: var(--error);">eyes</span>  .venv-vision/bin/python is missing<br>
+          <span style="color: var(--ink);">panel</span>  bedtime_verbal played (intensity 0.7)
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="sec"><span class="sec__ic"><x-import component-from-global-scope="DesignSystem.Icon" name="ChevronRight" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><span class="headline">Same thing, in terminals</span><span class="caption" style="color: var(--ink-muted);">One line per program.</span></span></div>
+        <div class="mono" style="flex: 1;">.venv-robot/bin/mjpython .venv-robot/bin/reachy-mini-daemon --sim<br><br>.venv-robot/bin/python -m eepy.wizard --backend sim --mode hmm_bandit --port 8081<br><br>.venv-vision/bin/python -m eepy.perception --live</div>
+        <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2); align-self: flex-start;">Copy all</x-import>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+return {
+brand: brand,
+icon: 18, small: 16, yes: true,
+filters: [{ value: 'all', label: 'Everything' }, { value: 'launcher', label: 'Launcher' }, { value: 'sim', label: 'Body' }, { value: 'panel', label: 'Panel' }, { value: 'vision', label: 'Eyes' }],
+cameras: [{ value: '', label: 'Default' }, { value: 'auto', label: 'Auto' }, { value: 'robot', label: 'My own camera' }, { value: 'laptop', label: 'Laptop camera' }, { value: 'fake', label: 'No camera (fake)' }],
+people: [{ value: 'P05', label: 'P05' }, { value: 'P03', label: 'P03' }],
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html' },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html', current: true }
+]
+};
+}
+}
+</script>
+</body>
+</html>

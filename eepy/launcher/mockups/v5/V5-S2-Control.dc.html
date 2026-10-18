@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Session step 2: control panel</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn:hover{transform:translateY(-2px)}
+.card{background:var(--surface-1);border:1px solid var(--hairline-soft);border-radius:var(--radius-xl);padding:20px 24px;display:flex;flex-direction:column;gap:var(--space-sm);min-width:0}
+.cardhead{display:flex;align-items:center;gap:var(--space-sm)}
+.cardhead img{width:40px;height:40px;object-fit:contain}
+.how{color:var(--ink-muted)}
+.tile{font:inherit;color:var(--ink);display:flex;align-items:center;gap:var(--space-xs);border:1px solid var(--hairline-strong);background:var(--surface-2);border-radius:var(--radius-md);cursor:pointer;transition:transform .12s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease}
+.tile:hover{background:var(--hairline);border-color:var(--ink-muted);transform:translateY(-2px);box-shadow:var(--shadow-float)}
+.tile:active{transform:scale(.97)}
+.tile:focus-visible{outline:2px solid var(--accent-blue);outline-offset:2px}
+.row{padding:var(--space-xs) var(--space-sm);border-radius:var(--radius-md)}
+.chip{padding:var(--space-xs) var(--space-xs) var(--space-xs) var(--space-md);border-radius:var(--radius-pill)}
+.kbd{display:inline-flex;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;align-items:center;justify-content:center;border-radius:var(--radius-xs);background:var(--surface-1);border:1px solid var(--hairline-strong);font-size:11px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.ladder{display:grid;gap:var(--space-xs)}
+.lbl{display:flex;align-items:baseline;gap:var(--space-xs)}
+.step{background:var(--surface-2);border-radius:var(--radius-lg);padding:var(--space-md);display:flex;flex-direction:column;gap:var(--space-xs);min-width:0}
+.stepn{display:inline-flex;width:22px;height:22px;border-radius:var(--radius-full);background:var(--surface-1);align-items:center;justify-content:center;font-size:12px}
+.stop{display:inline-flex;align-items:center;gap:var(--space-xs);height:40px;padding:0 14px 0 16px;border-radius:var(--radius-pill);background:var(--surface-2);border:1px solid var(--ink-muted);color:var(--ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:transform .15s ease, background .2s ease}
+.stop:hover{background:var(--hairline);transform:translateY(-2px)}
+.endbtn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:var(--radius-pill);background:var(--error);color:var(--on-spotlight);font-size:14px;font-weight:700;text-decoration:none;transition:transform .15s ease, box-shadow .2s ease}
+.endbtn:hover{color:var(--on-spotlight);transform:translateY(-2px);box-shadow:0 0 0 4px color-mix(in srgb, var(--error) 25%, transparent)}
+.sechead{display:flex;align-items:center;gap:var(--space-sm)}
+.sechead__t{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+@media (prefers-reduced-motion: reduce){.stop,.endbtn{transition:none}.ds-btn,.tile{transition:none}.ds-btn:hover,.tile:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1440px; height: 1120px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 26%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 30%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <main style="flex: 1; padding: var(--space-lg) var(--space-xl); display: flex; flex-direction: column; gap: var(--space-md); min-height: 0;">
+    <section style="border-radius: var(--radius-xl); padding: var(--space-sm) var(--space-sm) var(--space-sm) 20px; display: flex; align-items: center; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 80%, transparent); backdrop-filter: blur(14px); border: 1px solid var(--hairline);">
+      <x-import component-from-global-scope="DesignSystem.Badge" tone="error">Recording</x-import>
+      <span class="headline">P05</span>
+      <span class="body-lg" style="font-variant-numeric: tabular-nums; color: var(--ink-muted);">12:04</span>
+      <x-import component-from-global-scope="DesignSystem.Badge" tone="neutral">{{modeLabel}}</x-import>
+      <span class="caption" style="display: inline-flex; align-items: center; gap: var(--space-xxs); color: var(--ink-muted);"><span style="width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--success);"></span>Body</span>
+      <span class="caption" style="display: inline-flex; align-items: center; gap: var(--space-xxs); color: var(--ink-muted);"><span style="width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--success);"></span>Eyes</span>
+      <span class="caption" style="display: inline-flex; align-items: center; gap: var(--space-xxs); color: var(--ink-muted);"><span style="width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--success);"></span>Desk at home</span>
+      <div style="flex: 1;"></div>
+      <button class="stop" title="Stops my moves and voice at once. The session keeps going." aria-label="Stop Eepy now (Esc)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="2" fill="currentColor"></rect></svg>Stop Eepy<span class="kbd">Esc</span></button>
+      <a href="V5-S3-WrapUp.dc.html" class="endbtn" title="End the session and save. I ask you to confirm first.">End session</a>
+    </section>
+
+    <sc-if value="{{problemRobot}}" hint-placeholder-val="{{ false }}">
+      <section role="alert" style="background: var(--surface-2); border-radius: var(--radius-xl); padding: var(--space-sm) 20px; display: flex; align-items: center; gap: var(--space-md); box-shadow: var(--shadow-error);">
+        <span style="color: var(--error); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{icon}}"></x-import></span>
+        <span class="body" style="flex: 1;"><b>I lost my body.</b> Keep marking, I'm still recording. Check the cable or Wi-Fi, then reconnect me.</span>
+        <x-import component-from-global-scope="DesignSystem.Button" variant="primary">Reconnect me</x-import>
+      </section>
+    </sc-if>
+    <sc-if value="{{problemEyes}}" hint-placeholder-val="{{ false }}">
+      <section role="alert" style="background: var(--surface-2); border-radius: var(--radius-xl); padding: var(--space-sm) 20px; display: flex; align-items: center; gap: var(--space-md); box-shadow: var(--shadow-error);">
+        <span style="color: var(--error); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{icon}}"></x-import></span>
+        <span class="body" style="flex: 1;"><b>I can't see right now.</b> My camera program stopped. Carry on by hand; I'll start deciding again when it's back.</span>
+        <a href="V5-Advanced.dc.html" class="ds-btn ds-btn--primary" style="text-decoration: none;"><span class="ds-btn__label">Restart my eyes</span></a>
+      </section>
+    </sc-if>
+
+    <div class="sechead">
+      <span class="sechead__t">{{sectionTitle}}</span>
+      <span class="caption" style="color: var(--ink-muted);">{{sectionHint}}</span>
+      <div style="flex: 1;"></div>
+      <x-import component-from-global-scope="DesignSystem.PricingTabs" label="View" items="{{views}}" default-value="{{view}}"></x-import>
+    </div>
+
+    <sc-if value="{{isControls}}" hint-placeholder-val="{{ true }}">
+      <div style="display: grid; grid-template-columns: 1.15fr 1fr; gap: var(--space-md); align-items: stretch;">
+        <x-import component-from-global-scope="DesignSystem.VizPanel" title="P05 looks" highlight="tired" subtitle="I'm 82% sure · eyes closed 29% of the last minute"><x-import component-from-global-scope="DesignSystem.FocusCurve" start="21:28" end="21:40" points="{{live}}" label="Focus" height="{{curveH}}" show-peak="{{no}}"></x-import><div class="caption" style="display: flex; gap: var(--space-md); margin-top: var(--space-sm); color: var(--ink-muted);"><span>Focused 10%</span><span>Distracted 4%</span><span style="color: var(--ink);">Drowsy 82%</span><span>Very drowsy 4%</span><a href="#" style="margin-left: auto;">See it in Live HMM</a></div></x-import>
+
+        <sc-if value="{{showAuto}}" hint-placeholder-val="{{ true }}">
+          <section class="card">
+            <div class="cardhead"><span class="headline" style="flex: 1;">What I'm doing</span><x-import component-from-global-scope="DesignSystem.Button" variant="secondary" icon="Pause" icon-position="start" style="background: var(--surface-2);">Pause my decisions</x-import></div>
+            <div style="display: grid; grid-template-columns: 76px repeat(6, minmax(0, 1fr)); gap: var(--space-xxs); align-items: center;">
+              <span class="caption" style="color: var(--ink-muted);">Tiredness</span>
+              <span class="caption" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink-muted);">0</span>
+              <span class="caption" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink-muted);">1</span>
+              <span class="caption" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink-muted);">2</span>
+              <span class="caption" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--time-focus-start), var(--time-focus)); color: var(--atmosphere-deep); box-shadow: var(--glow-focus);">3 now</span>
+              <span class="caption" style="text-align: center; padding: 5px 0; border-radius: var(--radius-pill); border: 1px dashed var(--hairline-strong);">4 · 45 s</span>
+              <span class="caption" style="text-align: center; padding: 6px 0; border-radius: var(--radius-pill); border: 1px solid var(--hairline); color: var(--ink-muted);">5</span>
+            </div>
+            <div style="display: flex; gap: var(--space-sm); align-items: flex-start; padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-2);">
+              <img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="28" height="28">
+              <span class="body-sm">I said <i>"Getting late, isn't it?"</i> because P05's eyes kept closing. If nothing changes, I'll offer a wind-down deal in 45 s.</span>
+            </div>
+            <sc-if value="{{showBandit}}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; flex-direction: column; gap: var(--space-xs);">
+                <span class="caption" style="color: var(--ink-muted);">Why this one · what I've learned about P05</span>
+                <div class="caption" style="display: grid; grid-template-columns: 170px 1fr 44px; gap: var(--space-xs); align-items: center;"><span>The tired look</span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 57%; height: 8px; border-radius: var(--radius-pill); background: var(--time-busy);"></span></span><span style="color: var(--ink-muted);">+0.14</span></div>
+                <div class="caption" style="display: grid; grid-template-columns: 170px 1fr 44px; gap: var(--space-xs); align-items: center;"><span>The yawn at you</span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 60%; height: 8px; border-radius: var(--radius-pill); background: var(--time-busy);"></span></span><span style="color: var(--ink-muted);">+0.20</span></div>
+                <div class="caption" style="display: grid; grid-template-columns: 170px 1fr 44px; gap: var(--space-xs); align-items: center;"><b>The spoken rest check</b><span style="height: 8px; border-radius: var(--radius-pill); background: var(--surface-2);"><span style="display: block; width: 79%; height: 8px; border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--time-focus-start), var(--time-focus));"></span></span><b>+0.58</b></div>
+              </div>
+            </sc-if>
+          </section>
+        </sc-if>
+      </div>
+
+      <div class="sechead" style="margin-top: var(--space-xs);">
+        <span class="sechead__t">Your controls</span>
+        <span class="caption" style="color: var(--ink-muted);">Everything with a border is a button. Click it, or press the key in its corner.</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.45fr 1fr 1fr; gap: var(--space-md); flex: 1; min-height: 0;">
+        <section class="card">
+          <div class="cardhead"><img src="/_blob/8cd30e83e5d4fdd5de391320675cf4fc" alt=""><span style="flex: 1; display: flex; flex-direction: column;"><span class="headline">Move me</span><span class="caption how">Dots show how strong the move is</span></span></div>
+          <div class="lbl"><span class="body-sm"><b>Refocus</b></span><span class="caption how">when P05 drifts off</span></div>
+          <div class="ladder" style="grid-template-columns: repeat(5, minmax(0, 1fr));"><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">1</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Just breathes</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">2</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Glance at notes</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">3</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Curious tilt</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">4</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Spoken check</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span></span><span class="kbd">5</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Offer a break</span></button></div>
+          <div class="lbl" style="margin-top: var(--space-xxs);"><span class="body-sm"><b>Tiredness</b></span><span class="caption how">when P05 gets sleepy</span></div>
+          <div class="ladder" style="grid-template-columns: repeat(6, minmax(0, 1fr));"><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">Q</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Quiet company</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">W</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Tired look</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">E</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Yawn at you</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--hairline-strong);"></span></span><span class="kbd">R</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Spoken check</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span></span><span class="kbd">T</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Wind-down deal</span></button><button class="tile" style="min-height: 76px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: var(--space-sm);"><span style="display: flex; justify-content: space-between; align-items: center;"><span style="display: flex; gap: 3px;"><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span><span style="width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--time-focus);"></span></span><span class="kbd">Y</span></span><span class="body-sm" style="text-align: left; line-height: 1.25;">Time to rest</span></button></div>
+          <div style="margin-top: auto; padding-top: var(--space-sm); border-top: 1px solid var(--hairline-soft); display: grid; grid-template-columns: auto auto 1fr; gap: var(--space-md); align-items: center;">
+            <x-import component-from-global-scope="DesignSystem.Switch" label="Breathe while idle · A" default-checked="{{yes}}"></x-import>
+            <button class="tile chip"><span class="body-sm">Approving nod</span><span class="kbd">S</span></button>
+            <div style="display: flex; align-items: center; gap: var(--space-sm);">
+              <span class="caption how" style="white-space: nowrap;">Strength</span>
+              <span style="position: relative; flex: 1; height: 6px; border-radius: var(--radius-pill); background: var(--hairline);"><span style="position: absolute; left: 0; width: 70%; height: 6px; border-radius: var(--radius-pill); background: var(--accent-blue);"></span><span role="slider" aria-label="Strength of the next move" aria-valuenow="70" style="position: absolute; left: 70%; top: -7px; width: 20px; height: 20px; margin-left: -10px; border-radius: var(--radius-full); background: var(--primary); cursor: grab;"></span></span>
+              <span class="caption" style="font-variant-numeric: tabular-nums;">70%</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="cardhead"><img src="/_blob/ff4fa45ac6ecf62bacd6c65e2c775efa" alt=""><span style="flex: 1; display: flex; flex-direction: column;"><span class="headline">Talk</span><span class="caption how">Click a line and I say it</span></span></div>
+          <div style="display: flex; align-items: center; gap: var(--space-sm);">
+            <x-import component-from-global-scope="DesignSystem.PricingTabs" label="Tone" items="{{tones}}" default-value="hedged"></x-import>
+            <span class="kbd">Tab</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-xs) var(--space-md); background: var(--surface-2); border-radius: var(--radius-md);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a10 10 0 0 1 0 14"></path></svg>
+            <span class="body-sm" style="white-space: nowrap;">My volume</span>
+            <span style="position: relative; flex: 1; height: 6px; border-radius: var(--radius-pill); background: var(--hairline);"><span style="position: absolute; left: 0; width: 60%; height: 6px; border-radius: var(--radius-pill); background: var(--accent-blue);"></span><span role="slider" aria-label="My volume" aria-valuenow="60" style="position: absolute; left: 60%; top: -7px; width: 20px; height: 20px; margin-left: -10px; border-radius: var(--radius-full); background: var(--primary); cursor: grab;"></span></span>
+            <span class="body-sm" style="font-variant-numeric: tabular-nums; width: 38px; text-align: right;">60%</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: var(--space-xxs);"><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">Losing focus a bit?</span><span class="kbd">6</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">Maybe a short break would help?</span><span class="kbd">7</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">Getting late, isn't it?</span><span class="kbd">8</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">How about we stop in a little while?</span><span class="kbd">9</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">I'm fading. Goodnight?</span><span class="kbd">0</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">Nice.</span><span class="kbd">-</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">Welcome back.</span><span class="kbd">U</span></button><button class="tile row"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="body-sm" style="flex: 1; text-align: left;">Nearly done? We said we'd stop soon.</span><span class="kbd">I</span></button></div>
+          <div style="margin-top: auto; display: flex; gap: var(--space-xs); align-items: flex-end;">
+            <div style="flex: 1;"><x-import component-from-global-scope="DesignSystem.TextInput" label="Say something else" placeholder="Type, then Enter"></x-import></div>
+            <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" style="background: var(--surface-2);">Say</x-import>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="cardhead"><img src="/_blob/1eba8738003ec9cc2d3cfb0f7a904f42" alt=""><span style="flex: 1; display: flex; flex-direction: column;"><span class="headline">What did you see?</span><span class="caption how">Click the moment you see it</span></span></div>
+          <span class="caption how">P05 did something</span>
+          <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs);"><button class="tile chip"><span class="body-sm">Phone picked up</span><span class="kbd">Z</span></button><button class="tile chip"><span class="body-sm">Looked away</span><span class="kbd">X</span></button><button class="tile chip"><span class="body-sm">Back on task</span><span class="kbd">C</span></button><button class="tile chip"><span class="body-sm">Yawn</span><span class="kbd">V</span></button><button class="tile chip"><span class="body-sm">Eyes closing</span><span class="kbd">B</span></button><button class="tile chip"><span class="body-sm">User replied</span><span class="kbd">N</span></button><button class="tile chip"><span class="body-sm">Stopped to rest</span><span class="kbd">,</span></button></div>
+          <span class="caption how" style="margin-top: var(--space-xs);">Their answer to a break offer or "15 more minutes?"</span>
+          <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs);"><button class="tile chip"><span class="body-sm">Accepted</span><span class="kbd">.</span></button><button class="tile chip"><span class="body-sm">Snoozed</span><span class="kbd">/</span></button><button class="tile chip"><span class="body-sm">Dismissed</span><span class="kbd">M</span></button></div>
+          <span class="caption how" style="margin-top: auto;">Your marks are how I learn what works.</span>
+        </section>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ false }}">
+      <div style="display: grid; grid-template-columns: 380px 1fr; gap: var(--space-md); flex: 1; min-height: 0;">
+        <section class="card">
+          <div class="cardhead"><span class="headline" style="flex: 1;">What my camera sees</span><x-import component-from-global-scope="DesignSystem.Badge" tone="success">● live</x-import></div>
+          <div style="position: relative; height: 250px; border-radius: var(--radius-lg); overflow: hidden; background: radial-gradient(240px 180px at 50% 45%, var(--surface-2), var(--atmosphere-deep));">
+            <svg viewBox="0 0 340 250" width="100%" height="100%" aria-label="Small camera picture with the face box" style="position: absolute; inset: 0;">
+              <rect x="110" y="34" width="120" height="150" rx="10" fill="none" style="stroke: var(--success);" stroke-width="2.5"></rect>
+              <ellipse cx="170" cy="110" rx="44" ry="56" style="fill: var(--surface-1);"></ellipse>
+              <path d="M120 250 C126 196, 214 196, 220 250 Z" style="fill: var(--surface-1);"></path>
+              <path d="M150 104 h14 M176 104 h14" style="stroke: var(--ink);" stroke-width="3" stroke-linecap="round"></path>
+              <path d="M160 140 Q170 146 180 140" fill="none" style="stroke: var(--ink);" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+            <span class="caption" style="position: absolute; left: var(--space-sm); top: var(--space-sm); padding: 2px var(--space-xs); border-radius: var(--radius-xs); background: var(--atmosphere-deep);">gaze: screen</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-xs);">
+            <span class="caption" style="padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); background: var(--surface-2);"><span class="how">Face</span><br><b>found</b></span>
+            <span class="caption" style="padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); background: var(--surface-2);"><span class="how">Eyes judged now</span><br><b>yes</b></span>
+            <span class="caption" style="padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); background: var(--surface-2);"><span class="how">Eye closure now</span><br><b>71%</b></span>
+            <span class="caption" style="padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); background: var(--surface-2);"><span class="how">Calibrated</span><br><b>Desk at home</b></span>
+          </div>
+          <span class="caption how" style="margin-top: auto;">A small picture only on this screen. I never save it.</span>
+        </section>
+
+        <div style="display: flex; flex-direction: column; gap: var(--space-md); min-height: 0;">
+          <section class="card">
+            <div class="cardhead"><span class="headline" style="flex: 1;">How I decide, this second</span><span class="caption how">21:40:12 · updated every second</span></div>
+            <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr 0.9fr 1fr; gap: var(--space-xs); align-items: stretch;">
+              <div class="step">
+                <span class="caption how"><span class="stepn">1</span> Signs from the camera</span>
+                <div class="caption" style="display: grid; grid-template-columns: 1fr 60px; gap: 6px var(--space-xs); align-items: center;">
+                  <span>Eyes closed 29% of the minute</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 80%; height: 6px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span>
+                  <span>Long blinks · 4</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 55%; height: 6px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span>
+                  <span>Yawns · 2</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 30%; height: 6px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span>
+                  <span>Looking at the screen</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 20%; height: 6px; border-radius: var(--radius-pill); background: var(--time-focus);"></span></span>
+                </div>
+              </div>
+              <div class="step">
+                <span class="caption how"><span class="stepn">2</span> What I believe</span>
+                <div class="caption" style="display: grid; grid-template-columns: 70px 1fr 30px; gap: 6px var(--space-xs); align-items: center;">
+                  <span>Focused</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 10%; height: 6px; border-radius: var(--radius-pill); background: var(--time-focus);"></span></span><span>10%</span>
+                  <span>Distracted</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 4%; height: 6px; border-radius: var(--radius-pill); background: var(--energy-low);"></span></span><span>4%</span>
+                  <span>Drowsy</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 82%; height: 6px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span><span><b>82%</b></span>
+                  <span>Very drowsy</span><span style="height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 4%; height: 6px; border-radius: var(--radius-pill); background: var(--time-sleep);"></span></span><span>4%</span>
+                </div>
+              </div>
+              <div class="step">
+                <span class="caption how"><span class="stepn">3</span> I show</span>
+                <span class="headline">Drowsy</span>
+                <span class="caption how">the most likely state</span>
+              </div>
+              <div class="step">
+                <span class="caption how"><span class="stepn">4</span> Sure enough?</span>
+                <span class="headline" style="color: var(--success);">Yes · 82%</span>
+                <span style="position: relative; height: 6px; border-radius: var(--radius-pill); background: var(--surface-1);"><span style="display: block; width: 82%; height: 6px; border-radius: var(--radius-pill); background: var(--success);"></span><span style="position: absolute; left: 70%; top: -3px; width: 2px; height: 12px; background: var(--ink);"></span></span>
+                <span class="caption how">I act from 70%</span>
+              </div>
+              <div class="step">
+                <span class="caption how"><span class="stepn">5</span> The robot</span>
+                <span class="body-sm"><b>Spoken check</b></span>
+                <span class="caption how">Tiredness ladder, level 3. Next: wind-down deal in 45 s.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" style="flex: 1;">
+            <div class="cardhead"><span class="headline" style="flex: 1;">Since the session started</span><span class="caption how">Click a moment to pause there · ● live follows again</span></div>
+            <x-import component-from-global-scope="DesignSystem.FocusCurve" start="21:00" end="21:40" points="{{whole}}" label="Focus" height="{{wholeH}}" show-peak="{{no}}"></x-import>
+            <div style="position: relative; height: 12px; border-radius: var(--radius-pill); background: var(--time-track); overflow: hidden;" aria-label="Other states">
+              <span style="position: absolute; left: 15%; width: 12.5%; top: 0; bottom: 0; background: var(--energy-low);"></span>
+              <span style="position: absolute; left: 67.5%; width: 12.5%; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, var(--hairline-strong) 0 2px, transparent 2px 6px);"></span>
+              <span style="position: absolute; left: 85%; width: 15%; top: 0; bottom: 0; background: var(--time-sleep);"></span>
+            </div>
+            <div class="caption" style="display: flex; gap: var(--space-lg); color: var(--ink-muted);">
+              <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-xs); background: var(--energy-low);"></span>Distracted</span>
+              <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-xs); background: var(--time-sleep);"></span>Drowsy</span>
+              <span style="display: inline-flex; align-items: center; gap: var(--space-xxs);"><span style="width: 10px; height: 10px; border-radius: var(--radius-xs); background: repeating-linear-gradient(45deg, var(--hairline-strong) 0 2px, transparent 2px 6px);"></span>Away</span>
+              <span style="margin-left: auto;">From my vision program, the same numbers I act on</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </sc-if>
+
+    <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-md); color: var(--ink-muted);">
+      <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" icon="Menu" icon-position="start">Session log</x-import>
+      <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" icon="Plus" icon-position="start">Add a note</x-import>
+      <span>Last thing I did: the spoken check · 21:40</span>
+      <div style="flex: 1;"></div>
+      <a href="http://127.0.0.1:8081/">Open the classic panel</a>
+    </div>
+  </main>
+
+  <sc-if value="{{problemSpeech}}" hint-placeholder-val="{{ false }}">
+    <div role="alert" style="position: absolute; right: var(--space-xl); bottom: 90px; width: 380px; z-index: 5; background: var(--surface-2); border-radius: var(--radius-lg); padding: var(--space-md) var(--space-lg); box-shadow: var(--shadow-overlay); display: flex; gap: var(--space-sm);">
+      <span style="color: var(--error); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{icon}}"></x-import></span>
+      <span class="body-sm"><b>I couldn't speak.</b><br>I meant to say "Getting late, isn't it?" Say it yourself if it matters.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{showLog}}" hint-placeholder-val="{{ false }}">
+    <aside aria-label="Session log" style="position: absolute; top: 56px; left: 0; bottom: 0; width: 420px; z-index: 6; background: color-mix(in srgb, var(--surface-1) 92%, transparent); backdrop-filter: blur(16px); box-shadow: var(--shadow-overlay); padding: 24px; display: flex; flex-direction: column; gap: var(--space-md);">
+      <div style="display: flex; align-items: center;"><span class="headline" style="flex: 1;">What happened so far</span><x-import component-from-global-scope="DesignSystem.IconButton" label="Close the log" icon="X"></x-import></div>
+      <div class="body-sm" style="display: flex; flex-direction: column; gap: var(--space-xs); font-variant-numeric: tabular-nums;">
+        <span><span style="color: var(--ink-muted);">21:40</span>  I played the spoken check (tiredness)</span>
+        <span><span style="color: var(--ink-muted);">21:38</span>  You marked: eyes closing</span>
+        <span><span style="color: var(--ink-muted);">21:36</span>  I played the yawn at you · snoozed</span>
+        <span><span style="color: var(--ink-muted);">21:33</span>  I played the tired look · no reaction</span>
+        <span><span style="color: var(--ink-muted);">21:25</span>  I offered a break · accepted</span>
+        <span><span style="color: var(--ink-muted);">21:09</span>  I played the spoken check · it worked</span>
+        <span><span style="color: var(--ink-muted);">21:00</span>  Desk check: reused "Desk at home"</span>
+        <span><span style="color: var(--ink-muted);">21:00</span>  Recording started for P05</span>
+      </div>
+      <span class="caption" style="color: var(--ink-muted); margin-top: auto;">The last 20 things, newest first. Everything is saved in the session folder.</span>
+    </aside>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"view":{"editor":"enum","options":["controls","live"],"default":"controls"},"mode":{"editor":"enum","options":["wizard","hmm","hmm_bandit"],"default":"hmm_bandit"},"problem":{"editor":"enum","options":["none","robot","camera","speech"],"default":"none"},"log":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+var mode = this.props.mode ?? 'hmm_bandit';
+var view = this.props.view ?? 'controls';
+var problem = this.props.problem ?? 'none';
+var labels = { wizard: 'You decide', hmm: 'I estimate', hmm_bandit: 'I estimate and learn' };
+return {
+brand: brand,
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html', current: true },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+],
+views: [{ value: 'controls', label: 'Controls' }, { value: 'live', label: 'Live HMM' }],
+view: view,
+isControls: view === 'controls',
+isLive: view === 'live',
+sectionTitle: view === 'live' ? 'Live HMM' : 'Right now',
+sectionHint: view === 'live' ? 'Exactly what my vision program sees and decides, every second.' : 'How P05 is doing, and what I’m doing about it.',
+tones: [{ value: 'hedged', label: 'Hedged' }, { value: 'direct', label: 'Direct' }],
+live: [["21:28",0.30],["21:30",0.28],["21:32",0.20],["21:34",0.15],["21:36",0.10],["21:38",0.08],["21:40",0.10]],
+whole: [["21:00",0.85],["21:04",0.82],["21:07",0.35],["21:10",0.30],["21:13",0.80],["21:18",0.86],["21:24",0.72],["21:27",0.40],["21:30",0.30],["21:32",0.62],["21:34",0.38],["21:38",0.12],["21:40",0.10]],
+curveH: 150, wholeH: 160,
+modeLabel: labels[mode] || mode,
+showAuto: mode !== 'wizard',
+showBandit: mode === 'hmm_bandit',
+problemRobot: problem === 'robot',
+problemEyes: problem === 'camera',
+problemSpeech: problem === 'speech',
+showLog: this.props.log ?? false,
+icon: 20, small: 14, yes: true, no: false
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Session step 3: wrap up</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn:hover{transform:translateY(-2px)}
+.ds-btn--primary:hover{box-shadow:var(--glow-focus)}
+.golink{display:flex;align-items:stretch;gap:var(--space-xl);padding:24px;border-radius:var(--radius-xl);background:color-mix(in srgb, var(--surface-1) 80%, transparent);backdrop-filter:blur(16px);border:1px solid var(--hairline);color:var(--ink);text-decoration:none;transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
+.golink:hover{transform:translateY(-3px);box-shadow:var(--shadow-float);border-color:var(--hairline-strong);color:var(--ink)}
+.golink__ic{display:inline-flex;width:44px;height:44px;border-radius:var(--radius-full);background:var(--surface-2);align-items:center;justify-content:center;color:var(--energy-high);flex:none}
+.openbtn{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;margin-top:var(--space-xs);height:40px;padding:0 16px 0 18px;border-radius:var(--radius-pill);background:var(--surface-2);border:1px solid var(--ink-muted);font-size:14px;font-weight:700;transition:background .2s ease, color .2s ease}
+.golink:hover .openbtn{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.golink{cursor:pointer;border-color:var(--hairline-strong)!important}
+.golink:hover{border-color:var(--accent-blue)!important;box-shadow:0 0 0 1px var(--accent-blue), var(--shadow-float)!important}
+.endred{display:inline-flex;align-items:center;height:40px;padding:0 18px;border-radius:var(--radius-pill);background:var(--error);color:var(--on-spotlight);font-size:14px;font-weight:700;border:0;cursor:pointer}
+.res{display:flex;align-items:center;gap:var(--space-lg);padding:24px;border-radius:var(--radius-xl);background:var(--surface-1);border:1px solid var(--hairline)}
+.dot{width:18px;height:18px;border-radius:var(--radius-full)}
+.prev{display:flex;flex-direction:column;gap:var(--space-xs);padding:var(--space-md);border-radius:var(--radius-lg);background:var(--surface-2);min-height:120px;box-sizing:border-box}
+.pin{position:absolute;top:5px;width:16px;height:16px;margin-left:-8px;border-radius:var(--radius-full);border:2px dashed var(--hairline-strong);box-sizing:border-box}
+.pin[style*="background"]{border:0}
+.tile{padding:var(--space-lg);border-radius:var(--radius-xl);background:var(--surface-1);border:1px solid var(--hairline-soft);display:flex;flex-direction:column;gap:var(--space-xxs)}
+@keyframes pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+.pop{animation:pop .6s cubic-bezier(.2,.8,.3,1.2) both}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.bob{animation:bob 3s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.ds-btn,.golink{transition:none}.ds-btn:hover,.golink:hover{transform:none}.pop,.bob{animation:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1440px; height: 1060px; box-sizing: border-box; background: radial-gradient(800px 560px at 50% 22%, color-mix(in srgb, var(--atmosphere-glow) 34%, transparent), transparent 70%), radial-gradient(900px 500px at 50% 120%, color-mix(in srgb, var(--atmosphere-mid) 36%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <main style="flex: 1; padding: var(--space-xl) 80px var(--space-lg); display: flex; flex-direction: column; gap: var(--space-xl); min-height: 0;">
+    <section style="display: grid; grid-template-columns: 260px 1fr; gap: var(--space-xxl); align-items: center;">
+      <div style="position: relative; width: 260px; height: 240px; display: flex; align-items: center; justify-content: center;">
+        <span aria-hidden="true" style="{{halo}}"></span>
+        <img class="bob" src="/_blob/733279fc28a034b83093d893750ae138" alt="Eepy waving" style="position: relative; width: 220px; height: 220px; object-fit: contain;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm); align-items: flex-start;">
+        <span class="pop body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md) var(--space-xs) var(--space-xs); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--success) 16%, var(--surface-1)); border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);"><span style="display: inline-flex; width: 26px; height: 26px; border-radius: var(--radius-full); background: var(--success); color: var(--atmosphere-deep); align-items: center; justify-content: center;"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{small}}"></x-import></span><b>Session complete</b><span style="color: var(--ink-muted);">· 42 min · all saved</span></span>
+        <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Run a session · step 3 of 3 · {{endingTag}}</span>
+        <h1 class="display-lg" style="margin: 0;">{{heroTitle}}</h1>
+        <p class="body-lg" style="margin: 0; color: var(--ink-muted); max-width: 720px;">{{heroText}}</p>
+      </div>
+    </section>
+
+    <section aria-label="What you achieved" style="display: flex; flex-direction: column; gap: var(--space-sm);">
+      <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">What you achieved today</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md);">
+        <div class="res">
+          <div style="position: relative; width: 112px; height: 112px; flex: none;">
+            <svg width="112" height="112" viewBox="0 0 112 112" aria-hidden="true"><circle cx="56" cy="56" r="48" fill="none" style="stroke: var(--time-track);" stroke-width="12"></circle><circle cx="56" cy="56" r="48" fill="none" style="stroke: var(--time-focus);" stroke-width="12" stroke-linecap="round" stroke-dasharray="223 302" transform="rotate(-90 56 56)"></circle></svg>
+            <span class="headline" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums;">74%</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: var(--space-xxs);"><span class="caption" style="color: var(--ink-muted);">Focused</span><span class="display-md" style="font-variant-numeric: tabular-nums;">31 min</span><span class="body-sm" style="color: var(--ink-muted);">out of 42 minutes of study</span></div>
+        </div>
+        <div class="res" style="position: relative; overflow: hidden; border-color: color-mix(in srgb, var(--energy-high) 35%, transparent);">
+          <span aria-hidden="true" style="position: absolute; right: -60px; top: -60px; width: 180px; height: 180px; border-radius: var(--radius-full); background: var(--energy-high); filter: blur(70px); opacity: .25;"></span>
+          <div style="position: relative; display: flex; flex-direction: column; gap: var(--space-xs); flex: 1;">
+            <span class="caption" style="color: var(--ink-muted); display: inline-flex; align-items: center; gap: 4px;"><span style="color: var(--energy-high); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="Zap" size="{{small}}"></x-import></span>Time won back</span>
+            <span class="display-md" style="font-variant-numeric: tabular-nums;">+10 min</span>
+            <div class="caption" style="display: grid; grid-template-columns: 74px 1fr 34px; gap: 6px var(--space-xs); align-items: center;"><span style="color: var(--ink-muted);">First 3</span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--time-track);"><span style="display: block; width: 50%; height: 8px; border-radius: var(--radius-pill); background: var(--time-busy);"></span></span><span>50%</span><span>Today</span><span style="height: 8px; border-radius: var(--radius-pill); background: var(--time-track);"><span style="display: block; width: 74%; height: 8px; border-radius: var(--radius-pill); background: var(--energy-high);"></span></span><b>74%</b></div>
+            <span class="caption" style="color: var(--ink-muted);">Enough for a short walk.</span>
+          </div>
+        </div>
+        <div class="res">
+          <div style="display: flex; flex-direction: column; gap: var(--space-xs); flex: 1;">
+            <span class="caption" style="color: var(--ink-muted);">My help worked</span>
+            <span class="display-md" style="font-variant-numeric: tabular-nums;">3 <span class="headline" style="color: var(--ink-muted);">of 7 times</span></span>
+            <div style="display: flex; gap: 6px;" aria-hidden="true">
+              <span class="dot" style="background: var(--success);"></span><span class="dot" style="background: var(--success);"></span><span class="dot" style="background: var(--success);"></span><span class="dot" style="background: var(--time-busy);"></span><span class="dot" style="background: var(--time-busy);"></span><span class="dot" style="background: var(--time-break);"></span><span class="dot" style="border: 2px dashed var(--hairline-strong); box-sizing: border-box;"></span>
+            </div>
+            <span class="caption" style="color: var(--ink-muted);">worked · no reaction · snoozed · not counted</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <a href="V5-A2-Story.dc.html" class="golink" aria-label="Open this session in Analyze">
+      <div style="display: flex; flex-direction: column; gap: var(--space-xs); width: 270px; flex: none;">
+        <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Want to look closer?</span>
+        <span class="headline">This session, step by step</span>
+        <span class="body-sm" style="color: var(--ink-muted);">I'll show you minute by minute what I saw and explain each choice I made.</span>
+        <span class="openbtn">Open in Analyze <x-import component-from-global-scope="DesignSystem.Icon" name="ArrowRight" size="{{small}}"></x-import></span>
+      </div>
+      <div style="flex: 1; display: grid; grid-template-columns: 1.3fr 1fr 1.1fr; gap: var(--space-sm);">
+        <div class="prev">
+          <span class="caption" style="color: var(--ink-muted);">How your focus moved</span>
+          <div style="pointer-events: none;"><x-import component-from-global-scope="DesignSystem.FocusCurve" start="21:00" end="21:42" points="{{curve}}" height="{{curveH}}" show-peak="{{no}}"></x-import></div>
+          <span class="body-sm"><b>74% focused</b> <span style="color: var(--ink-muted);">· a dip at 21:07, tired from 21:34</span></span>
+        </div>
+        <div class="prev">
+          <span class="caption" style="color: var(--ink-muted);">The 7 moments I stepped in</span>
+          <div style="position: relative; height: 26px; border-radius: var(--radius-pill); background: var(--time-track);"><span class="pin" style="left: 17%; background: var(--time-busy);"></span><span class="pin" style="left: 21%; background: var(--success);"></span><span class="pin" style="left: 57%;"></span><span class="pin" style="left: 61%; background: var(--success);"></span><span class="pin" style="left: 79%; background: var(--time-busy);"></span><span class="pin" style="left: 86%; background: var(--time-break);"></span><span class="pin" style="left: 95%; background: var(--success);"></span></div>
+          <div class="caption" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px var(--space-sm); margin-top: auto;">
+            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success);"></span>3 worked</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--time-busy);"></span>2 no reaction</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--time-break);"></span>1 snoozed</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted);"><span style="width: 8px; height: 8px; border-radius: 50%; border: 1px dashed var(--hairline-strong);"></span>1 not counted</span>
+          </div>
+        </div>
+        <div class="prev">
+          <span class="caption" style="color: var(--ink-muted);">Why I chose each move · for example</span>
+          <span class="body-sm"><b>21:40 · spoken rest check</b></span>
+          <span class="caption" style="color: var(--ink-muted); line-height: 1.4;">Your eyes were closed 29% of the last minute, I was 92% sure you were tired, and you took a rest.</span>
+        </div>
+      </div>
+    </a>
+  </main>
+
+  <footer style="padding: var(--space-md) 80px; display: flex; align-items: center; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 75%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--hairline);">
+    <a href="V5-Home.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none;"><span class="ds-btn__label">Shut down</span></a>
+    <span class="caption" style="color: var(--ink-muted);">All saved in data/sessions/ · <a href="#">Copy folder path</a></span>
+    <div style="flex: 1;"></div>
+    <a href="V5-S1-Setup.dc.html" class="ds-btn ds-btn--primary" style="text-decoration: none; box-shadow: var(--glow-focus);"><span class="ds-btn__label">Next participant</span></a>
+  </footer>
+
+  <sc-if value="{{confirm}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; z-index: 10; background: color-mix(in srgb, var(--atmosphere-deep) 60%, transparent); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;">
+      <section role="dialog" aria-label="End the session" style="width: 480px; background: var(--surface-1); border-radius: var(--radius-xl); padding: 28px; box-shadow: var(--shadow-overlay); display: flex; flex-direction: column; gap: var(--space-md);">
+        <div style="display: flex; align-items: center; gap: var(--space-md);"><img src="/_blob/6981a4c8b945761fb5624d42c711735e" alt="" width="40" height="40"><span class="headline">Shall we stop here with P05?</span></div>
+        <p class="body" style="margin: 0; color: var(--ink-muted);">I'll stop recording, save everything and relax back to neutral.</p>
+        <x-import component-from-global-scope="DesignSystem.Textarea" label="Anything I should remember? (optional)" placeholder="e.g. P05 was ill today" rows="{{rows}}"></x-import>
+        <div style="display: flex; gap: var(--space-xs); justify-content: flex-end;">
+          <a href="V5-S2-Control.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none; background: var(--surface-2);"><span class="ds-btn__label">Keep going</span></a>
+          <button class="endred">End the session</button>
+        </div>
+      </section>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"ending":{"editor":"enum","options":["you","eepy","optimal"],"default":"optimal"},"confirm":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1060}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+var ending = this.props.ending ?? 'optimal';
+var E = {
+  you: { tag: 'you ended it', title: 'Nice work, P05!', text: 'You ended the session at 21:42. Everything is saved, and I learned a bit more about what helps you.', c: 'var(--atmosphere-glow)' },
+  eepy: { tag: 'I suggested a rest', title: 'Good call to stop there.', text: 'You were getting tired, so I suggested a rest at 21:41. Next time I’ll try a little earlier.', c: 'var(--time-sleep)' },
+  optimal: { tag: 'perfect ending', title: 'Perfect timing, P05!', text: 'I suggested a rest at 21:40 and you took it. That’s exactly how I hope a session ends.', c: 'var(--time-focus)' }
+}[ending];
+return {
+brand: brand,
+icon: 20, small: 16, rows: 3,
+heroTitle: E.title, heroText: E.text, endingTag: E.tag, no: false, curveH: 70,
+curve: [["21:00",0.85],["21:07",0.35],["21:13",0.80],["21:24",0.72],["21:30",0.30],["21:34",0.38],["21:42",0.05]],
+halo: 'position: absolute; inset: 10px; border-radius: var(--radius-full); background: ' + E.c + '; filter: blur(50px); opacity: .55;',
+confirm: this.props.confirm ?? false,
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html', current: true },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>
