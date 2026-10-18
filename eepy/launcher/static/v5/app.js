@@ -115,7 +115,8 @@
     nav.innerHTML = '<div class="ds-nav__bar">'
       + '<div class="ds-nav__brand"><a href="#/" aria-label="EEPY, back to Home"><img src="img/eepy-mark.svg" alt="">EEPY</a></div>'
       + '<nav class="ds-nav__links" aria-label="Main">' + link("#/", "Home", view === "home")
-      + link("#/setup", "Run a session", view === "setup" || view === "starting") + "</nav>"
+      + link("#/setup", "Run a session", view === "setup" || view === "starting")
+      + link("#/advanced", "Advanced tools", view === "advanced") + "</nav>"
       + '<a class="nav-old" href="/">Current launcher</a></div>';
   }
 
@@ -391,6 +392,161 @@
     }).catch(function () { /* keep the dots */ });
   }
 
+  // --- Advanced tools ------------------------------------------------------------------------------
+
+  var STATE_TEXT = { stopped: "Stopped", starting: "Starting…", running: "Running", stopping: "Stopping…",
+                     crashed: "Crashed", external: "Running in a terminal" };
+  var STATE_TONE = { running: "success", crashed: "error" };
+  var CAMERAS = [
+    { value: "", label: "Default (the robot's camera with the real robot, else config/eepy.yaml)" },
+    { value: "auto", label: "Auto" }, { value: "robot", label: "The robot's camera" },
+    { value: "laptop", label: "Laptop camera" }, { value: "fake", label: "No camera (fake)" }
+  ];
+  var LOG_PARTS = [{ value: "", label: "Everything" }, { value: "launcher", label: "Launcher" }, { value: "sim", label: "My body" },
+                   { value: "panel", label: "My control panel" }, { value: "vision", label: "My eyes" }];
+  var advDirty = false, advMsg = "", pending = {};
+  var logs = [], lastLog = 0, logFilter = "", follow = true;
+
+  function field(id, label, value, hint, type) {
+    return '<div class="ds-field"><label class="ds-field__label" for="' + id + '">' + label + '</label><div class="ds-field__control">'
+      + '<input id="' + id + '" class="ds-input" type="' + (type || "text") + '" spellcheck="false" value="' + esc(value) + '"></div>'
+      + (hint ? '<p class="ds-field__msg">' + hint + "</p>" : "") + "</div>";
+  }
+  function select(id, label, options, value) {
+    return '<div class="ds-field"><label class="ds-field__label" for="' + id + '">' + label + '</label><div class="ds-field__control ds-select">'
+      + '<select id="' + id + '" class="ds-input ds-select__el">' + options.map(function (o) {
+        return '<option value="' + o.value + '"' + (o.value === value ? " selected" : "") + ">" + o.label + "</option>";
+      }).join("") + "</select>" + icon("ChevronRight", 16).replace('class="ds-icon"', 'class="ds-icon ds-select__chev"') + "</div></div>";
+  }
+  function section(ic, title, hint) {
+    return '<div class="cardhead"><span class="ic">' + icon(ic, 18) + '</span><span style="display: flex; flex-direction: column;"><span class="headline">'
+      + title + '</span><span class="caption muted">' + hint + "</span></span></div>";
+  }
+
+  function renderAdvanced() {
+    if (!status) { main.innerHTML = '<p class="body muted" style="padding: 80px;">One moment…</p>'; return; }
+    var s = status.settings;
+    advDirty = false;
+    main.innerHTML = '<header class="pagehead"><img src="img/eepy-builder.svg" alt="" style="width: 84px; height: 84px; object-fit: contain;">'
+      + '<div class="pagehead__text"><span class="caption eyebrow">Advanced tools · for developers</span><h1 class="display-md">Under my hood</h1>'
+      + '<span class="body-lg muted">See what\'s running, change my settings, fix me when I\'m stuck. All of it also works from the terminal.</span></div>'
+      + '<span id="classic"></span></header>'
+      + '<section class="adv">'
+      + '<div class="adv__programs"><div class="cardhead"><span class="ic">' + icon("Play", 18) + '</span><span class="headline">My programs</span></div>'
+      + '<div class="adv__row" id="programs"></div></div>'
+      + '<div class="adv__row adv__row--2">'
+      + '<section class="card">' + section("Menu", "Settings", "Where to find my camera and robot. Saved for this computer.")
+      + '<form id="settings" class="adv__form" autocomplete="off">'
+      + select("appearance", "Appearance", [{ value: "auto", label: "Follow my computer (day/night)" }, { value: "light", label: "Always light" }, { value: "dark", label: "Always dark" }], appearance())
+      + select("camera", "Camera", CAMERAS, s.camera)
+      + field("robot_host", "Real robot address", s.robot_host, "Empty: " + esc(status.robot_host) + ".")
+      + '<div class="adv__pair">' + field("panel_port", "Panel port", s.panel_port, "", "number") + field("live_port", "Live page port", s.live_port, "", "number") + "</div>"
+      + field("sim_extra", "Extra arguments · my body", s.sim_extra, "e.g. --headless")
+      + field("panel_extra", "Extra arguments · my control panel", s.panel_extra, "e.g. --session-prior prior.json")
+      + field("vision_extra", "Extra arguments · my eyes", s.vision_extra, "e.g. --no-aus")
+      + '<div style="display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap;"><button type="submit" class="ds-btn ds-btn--primary"><span class="ds-btn__label">Save settings</span></button>'
+      + '<span class="caption muted" id="save-msg">I\'ll tell you what to restart.</span></div></form></section>'
+      + '<section class="card">' + section("Zap", "Everything at once", "In order: body, control panel, eyes. Stop goes the other way.")
+      + '<div style="display: flex; gap: var(--space-xs); flex-wrap: wrap;"><button type="button" class="ds-btn ds-btn--secondary" data-act="start-all" style="background: var(--surface-2);"><span class="ds-btn__label">Start everything</span></button>'
+      + '<button type="button" class="ds-btn ds-btn--secondary" data-act="stop-all" style="background: var(--surface-2);"><span class="ds-btn__label">Stop everything</span></button></div>'
+      + '<p class="body-sm" id="adv-message" style="margin: 0;"></p>'
+      + '<span class="caption muted">Stopping my control panel ends the session and puts me back to neutral.</span>'
+      + '<div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--hairline-soft); display: flex; flex-direction: column; gap: var(--space-xs);">' + section("ChevronRight", "Same thing, in terminals", "One line per program, in the EEPY folder.")
+      + '<div class="code" id="commands"></div><button type="button" class="ds-btn ds-btn--secondary" data-act="copy-commands" style="background: var(--surface-2); align-self: flex-start;"><span class="ds-btn__label">Copy all</span></button></div></section>'
+      + "</div>"
+      + '<section class="card">'
+      + '<div style="display: flex; align-items: flex-end; gap: var(--space-md); flex-wrap: wrap;">' + '<div style="flex: 1; min-width: 240px;">' + section("Search", "Everything I printed", "Live messages from the launcher and my three programs.") + "</div>"
+      + '<div style="width: 200px;">' + select("log-filter", "Show", LOG_PARTS, logFilter) + "</div>"
+      + '<div class="ds-check"><input id="follow" type="checkbox" class="ds-check__input"' + (follow ? " checked" : "") + '><span class="ds-check__box" aria-hidden="true">' + icon("Check", 14) + '</span><label for="follow" class="ds-check__label">Follow</label></div>'
+      + '<button type="button" class="ds-btn ds-btn--secondary" data-act="clear-log" style="background: var(--surface-2);"><span class="ds-btn__label">Clear view</span></button></div>'
+      + '<div class="logbox" id="log" role="log" aria-live="off"></div></section>'
+      + "</section>";
+    updateAdvanced();
+    renderLog();
+  }
+
+  function updateAdvanced() {
+    if (!status || !$("#programs")) return;
+    var s = status.settings, inUse = needed();
+    $("#programs").innerHTML = ["sim", "panel", "vision"].map(function (name) {
+      var p = parts()[name] || {}, st = p.state || "stopped", busy = pending[name];
+      var used = inUse.indexOf(name) >= 0;
+      var tone = STATE_TONE[st] || "neutral";
+      var badge = '<span class="ds-badge ds-badge--' + tone + '">' + (tone !== "neutral" ? '<span class="ds-badge__dot" aria-hidden="true"></span>' : "") + STATE_TEXT[st] + "</span>";
+      var btn = function (act, text) {
+        return '<button type="button" class="ds-btn ds-btn--secondary" data-act="' + act + '" data-part="' + name + '" style="background: var(--surface-2);"' + (busy ? " disabled" : "") + '><span class="ds-btn__label">' + text + "</span></button>";
+      };
+      var actions;
+      if (st === "external") actions = '<span class="caption muted">Started in a terminal: I leave it alone.</span>';
+      else if (p.pid) actions = btn("part-restart", "Restart") + btn("part-stop", busy === "stop" ? "Stopping…" : "Stop");
+      else if (p.missing && p.missing.length) actions = '<button type="button" class="ds-btn ds-btn--secondary" data-act="copy-install" data-part="' + name + '" style="background: var(--surface-2);"><span class="ds-btn__label">Copy install commands</span></button>';
+      else actions = btn("part-start", busy === "start" ? "Starting…" : "Start");
+      var facts = [];
+      if (p.port) facts.push("port " + p.port);
+      if (p.uptime != null) facts.push("up " + Math.max(1, Math.round(p.uptime / 60)) + " min");
+      if (p.missing && p.missing.length) facts.push(esc(p.missing[0]) + " is missing");
+      if (!used) facts.push("not used with " + labelOf(BACKENDS, s.backend).toLowerCase());
+      return '<div class="card prog' + (st === "crashed" || (p.missing && p.missing.length) ? " is-bad" : "") + '">'
+        + '<div style="display: flex; align-items: center; gap: var(--space-sm);"><span class="state-dot state-dot--' + st + '" aria-hidden="true"></span>'
+        + '<b class="body" style="flex: 1;">' + PART_NAMES[name] + ' <span class="muted" style="font-weight: 400;">· ' + esc(p.label || name) + "</span></b>" + badge + "</div>"
+        + '<span class="caption muted">' + facts.join(" · ") + "</span>"
+        + '<div style="display: flex; gap: var(--space-xs); flex-wrap: wrap;">' + actions + "</div></div>";
+    }).join("");
+    $("#commands").textContent = inUse.map(function (n) { return (parts()[n] || {}).command || ""; }).join("\n\n");
+    $("#adv-message").innerHTML = esc(advMsg || status.step || status.message || "");
+    var panel = parts().panel || {};
+    $("#classic").innerHTML = panel.url && isUp(panel.state)
+      ? '<a href="' + esc(panel.url) + '" target="_blank" rel="noopener" class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xxs);">Open the classic panel ' + icon("ArrowRight", 16) + "</a>" : "";
+    if (!advDirty) {
+      ["robot_host", "panel_port", "live_port", "sim_extra", "panel_extra", "vision_extra"].forEach(function (k) {
+        var el = $("#" + k); if (el && document.activeElement !== el) el.value = s[k];
+      });
+      var cam = $("#camera"); if (cam && document.activeElement !== cam) cam.value = s.camera;
+    }
+  }
+
+  function renderLog() {
+    var box = $("#log");
+    if (!box) return;
+    var rows = logs.filter(function (r) { return !logFilter || r[1] === logFilter; }).slice(-800);
+    box.textContent = rows.map(function (r) { return (r[1] + "        ").slice(0, 9) + r[2]; }).join("\n");
+    if (follow) box.scrollTop = box.scrollHeight;
+  }
+
+  function pollLogs() {
+    if (view !== "advanced") return;
+    getJSON("/api/logs?since=" + lastLog).then(function (data) {
+      if (data.lines && data.lines.length) {
+        logs = logs.concat(data.lines).slice(-4000);
+        renderLog();
+      }
+      lastLog = data.last || lastLog;
+    }).catch(function () { /* next second */ });
+  }
+
+  function saveSettings() {
+    var num = function (id) { return parseInt($("#" + id).value, 10); };
+    var body = { camera: $("#camera").value, robot_host: $("#robot_host").value.trim(), panel_port: num("panel_port"), live_port: num("live_port"),
+                 sim_extra: $("#sim_extra").value, panel_extra: $("#panel_extra").value, vision_extra: $("#vision_extra").value };
+    post("/api/settings", body).then(function (res) {
+      var msg = $("#save-msg");
+      if (msg) { msg.textContent = res.message || ""; msg.style.color = res.ok ? "" : "var(--error)"; }
+      if (res.ok) { advDirty = false; refresh(); }
+    });
+  }
+
+  function partAction(act, name) {
+    var path = { "part-start": "/api/start", "part-stop": "/api/stop", "part-restart": "/api/restart" }[act];
+    pending[name] = act === "part-stop" ? "stop" : "start";
+    updateAdvanced();
+    post(path, { part: name }).then(function (res) {
+      advMsg = res.message || "";
+      delete pending[name];
+      refresh();
+      setTimeout(function () { advMsg = ""; }, 6000);
+    });
+  }
+
   // --- wiring ------------------------------------------------------------------------------------
 
   main.addEventListener("click", function (e) {
@@ -413,14 +569,31 @@
     } else if (act === "recheck") refresh();
     else if (act === "start") startSession();
     else if (act === "retry") post("/api/start-all", {}).then(refresh);
+    else if (act === "part-start" || act === "part-stop" || act === "part-restart") partAction(act, el.getAttribute("data-part"));
+    else if (act === "start-all" || act === "stop-all") {
+      el.disabled = true;
+      post("/api/" + act, {}).then(function (res) { advMsg = res.message || ""; el.disabled = false; refresh(); setTimeout(function () { advMsg = ""; }, 6000); });
+    } else if (act === "copy-commands" || act === "copy-install") {
+      var copy = act === "copy-install" ? (el.getAttribute("data-part") === "vision" ? INSTALL.vision : INSTALL.robot) : $("#commands").textContent;
+      if (navigator.clipboard) navigator.clipboard.writeText(copy).then(function () { el.querySelector(".ds-btn__label").textContent = "Copied"; });
+    } else if (act === "clear-log") { logs = []; renderLog(); }
+  });
+
+  main.addEventListener("submit", function (e) {
+    if (e.target.id === "settings") { e.preventDefault(); saveSettings(); }
   });
 
   main.addEventListener("input", function (e) {
+    if (e.target.closest && e.target.closest("#settings")) { advDirty = true; return; }
     if (!draft) return;
     if (e.target.id === "code") { draft.participant = e.target.value.trim().toUpperCase(); showCodeError(""); renderKnown(); updateSetup(); }
     else if (e.target.id === "host") { draft.robot_host = e.target.value; }
   });
   main.addEventListener("change", function (e) {
+    if (e.target.id === "appearance") { setAppearance(e.target.value); return; }
+    if (e.target.id === "camera") { advDirty = true; return; }
+    if (e.target.id === "log-filter") { logFilter = e.target.value; renderLog(); return; }
+    if (e.target.id === "follow") { follow = e.target.checked; renderLog(); return; }
     if (!draft || e.target.type !== "radio") return;
     draft[e.target.name] = e.target.value;
     if (e.target.name === "backend") $("#host-field").hidden = draft.backend !== "real";
@@ -429,7 +602,7 @@
 
   function route() {
     var h = location.hash.replace(/^#\/?/, "");
-    return h === "setup" ? "setup" : h === "starting" ? "starting" : "home";
+    return h === "setup" ? "setup" : h === "starting" ? "starting" : h === "advanced" ? "advanced" : "home";
   }
 
   function show() {
@@ -439,6 +612,7 @@
     renderNav();
     if (view === "home") renderHome();
     else if (view === "setup") renderSetup();
+    else if (view === "advanced") renderAdvanced();
     else renderStarting();
     main.focus({ preventScroll: true });
   }
@@ -448,6 +622,8 @@
       var first = !status;
       status = data;
       if (first && view === "setup") renderSetup();
+      else if (first && view === "advanced") renderAdvanced();
+      else if (view === "advanced") updateAdvanced();
       else if (view === "home") updateHome();
       else if (view === "setup") updateSetup();
       else if (view === "starting") renderStarting();
@@ -459,4 +635,5 @@
   show();
   refresh();
   setInterval(refresh, 1000);
+  setInterval(pollLogs, 1000);
 })();
