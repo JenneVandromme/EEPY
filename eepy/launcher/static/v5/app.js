@@ -379,7 +379,8 @@
         + '<span class="caption eyebrow">What happened</span><span class="body-sm">' + esc(status.message) + "</span>"
         + (missing(w.bad) ? '<span class="body-sm muted">Its software is missing: set it up first (README, step 1).</span>' : "")
         + '</div><div style="display: flex; flex-direction: column; gap: var(--space-xs);"><span class="caption eyebrow">What its log says</span>'
-        + '<span class="code">' + esc(logTail.lines.join("\n") || "…") + "</span>"
+        + (logTail.lines.length ? '<span class="code">' + esc(logTail.lines.join("\n")) + "</span>"
+          : '<span class="body-sm muted">Nothing: it never got to start.</span>')
         + '<a href="/" class="caption">Open the full log in the current launcher</a></div></section>';
       // Without my eyes a session still works (you call the shots, nothing is estimated): offer it.
       var noEyes = w.bad === "vision" && isUp((parts().panel || {}).state) && lastRun();
@@ -603,12 +604,24 @@
 
   function ps() { return pstate && pstate.status; }
   function pollPanel() {
-    return fetch("/api/v5/panel/state", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (data) {
+    return fetch("/api/v5/panel/state", { cache: "no-store" }).then(function (r) {
+      return r.json().then(function (data) { return { code: r.status, data: data }; });
+    }).then(function (res) {
+      var data = res.data;
       if (data && data.status) { pstate = data; pError = ""; }
+      else if (res.code === 404 && data && data.error === "not found") {
+        // The page is new but the launcher process is older: it serves these files, not these calls.
+        pstate = null; pError = OLD_LAUNCHER;
+      }
       else { pstate = null; pError = (data && data.message) || "My control panel isn't answering."; }
     }).catch(function () { pstate = null; pError = "The launcher did not answer."; });
   }
-  function panelPost(path, body) { return post("/api/v5/panel/" + path, body); }
+  var OLD_LAUNCHER = "The launcher running now is an older version. Stop it (Ctrl+C in its terminal) and start python3 launch.py again.";
+  function panelPost(path, body) {
+    return post("/api/v5/panel/" + path, body).then(function (res) {
+      return res && res.error === "not found" ? { ok: false, message: OLD_LAUNCHER } : res;
+    });
+  }
   function setHTML(el, html) { if (el && el.__html !== html) { el.innerHTML = html; el.__html = html; } }
 
   var STATE_NAME = { focused: "Focused", tired: "A bit tired", distracted: "Drifting", drowsy: "Drowsy", very_drowsy: "Very drowsy",
@@ -693,8 +706,9 @@
 
   function panelMissing(where) {
     var up = isUp((parts().panel || {}).state);
-    return '<div class="empty"><img src="img/eepy-builder.svg" alt=""><h1 class="display-sm">' + (up ? "My control panel isn't answering." : "My control panel isn't running.") + "</h1>"
-      + '<p class="body muted">' + esc(pError || "") + (up ? " Give it a second." : " Wake me up first: set up a session.") + "</p>"
+    var title = pError === OLD_LAUNCHER ? "Please restart the launcher." : up ? "My control panel isn't answering." : "My control panel isn't running.";
+    return '<div class="empty"><img src="img/eepy-builder.svg" alt=""><h1 class="display-sm">' + title + "</h1>"
+      + '<p class="body muted">' + esc(pError || "") + (pError === OLD_LAUNCHER ? "" : up ? " Give it a second." : " Wake me up first: set up a session.") + "</p>"
       + '<div class="actions"><a class="ds-btn ds-btn--primary" href="#/setup"><span class="ds-btn__label">Go to set up</span></a>'
       + '<a class="ds-btn ds-btn--secondary" href="#/advanced"><span class="ds-btn__label">Advanced tools</span></a></div></div>';
   }
