@@ -26,7 +26,8 @@ from .parts import DAEMON_PORT, LogBook, Part, Settings, make_parts, port_open, 
 PAGE = Path(__file__).with_name("static") / "index.html"
 V5 = Path(__file__).with_name("static") / "v5"        # the new UI (try/launcher-ui), next to the old page
 V5_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-            ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
+            ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+            ".woff2": "font/woff2"}
 
 
 def v5_file(path: str) -> Optional[Path]:
@@ -220,6 +221,8 @@ def _handler(launcher: Launcher):
                 self._json(found if found is not None else {"error": "no such session"}, 200 if found else 404)
             elif path == "progress":
                 self._json(v5api.progress(v5api.SESSIONS, arg("participant")))
+            elif path == "model":
+                self._json(v5api.model())
             else:
                 self._json({"error": "not found"}, 404)
 

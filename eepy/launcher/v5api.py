@@ -26,6 +26,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from .parts import DAEMON_PORT, REPO, Settings, robot_host
 
 SESSIONS = REPO / "data" / "sessions"
+HMM_CONFIG = REPO / "config" / "state_hmm.yaml"
+ESCALATION_CONFIG = REPO / "config" / "escalation.yaml"
+LINES = REPO / "behaviors" / "lines.yaml"
 
 # The panel's own API (eepy/wizard/server.py create_app): only these are passed through.
 PANEL_GET = {"state"}
@@ -104,6 +107,90 @@ def volume(settings: Settings, method: str, body: Optional[dict] = None) -> Tupl
         return 502, {"ok": False, "message": "My body isn't answering, so I can't reach my speaker."}
     return code, {"ok": True, "volume": data.get("volume"), "device": data.get("device"),
                   "platform": data.get("platform"), "simulator": settings.backend == "sim"}
+
+
+# --- the model, as configured (for the Live HMM graph and the "I act from 70 %" line) ---
+
+def _section(lines: List[str], name: str) -> List[str]:
+    """The indented lines under a top-level `name:` key of a simple YAML file."""
+    out, inside = [], False
+    for line in lines:
+        if re.match(r"^\S", line):
+            inside = line.split("#")[0].strip() == name + ":"
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+def lines(path: Path = LINES) -> Dict[str, Dict[str, str]]:
+    """The first hedged and direct words of every line in behaviors/lines.yaml, to show on the line
+    buttons (the robot still picks a variant itself). {line_id: {"hedged": ..., "direct": ...}}."""
+    out: Dict[str, Dict[str, str]] = {}
+    current, tone = None, None
+    try:
+        text = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in _section(text, "lines"):
+        m = re.match(r"^  (\w+):\s*(#.*)?$", line)
+        if m:
+            current, tone = m.group(1), None
+            continue
+        m = re.match(r'^      (hedged|direct):\s*\["(.*?)"', line)          # hedged: ["One line."]
+        if m and current:
+            out.setdefault(current, {}).setdefault(m.group(1), m.group(2))
+            continue
+        m = re.match(r"^      (hedged|direct):\s*$", line)
+        if m:
+            tone = m.group(1)
+            continue
+        m = re.match(r'^        - "(.*)"\s*$', line)
+        if m and current and tone and tone not in out.get(current, {}):
+            out.setdefault(current, {})[tone] = m.group(1)
+    return out
+
+
+def model(hmm_path: Path = HMM_CONFIG, escalation_path: Path = ESCALATION_CONFIG, lines_path: Path = LINES) -> Dict[str, Any]:
+    """The HMM's states and transitions per hour (config/state_hmm.yaml), the confidence EEPY
+    needs before it acts (config/escalation.yaml) and the words of each line (lines.yaml). Read
+    with the standard library: only these simple keys, and anything unreadable is left out."""
+    out: Dict[str, Any] = {"states": [], "transitions": {}, "act_confidence": {}, "direct_confidence": None,
+                           "lines": lines(lines_path)}
+    try:
+        hmm = hmm_path.read_text(encoding="utf-8").splitlines()
+        found = next((ln for ln in hmm if ln.startswith("states:")), "")
+        out["states"] = [x.strip() for x in found.split("[", 1)[-1].split("]", 1)[0].split(",") if x.strip()] if "[" in found else []
+        source = None
+        for line in _section(hmm, "transitions_per_hour"):
+            m = re.match(r"^  (\w+):\s*(#.*)?$", line)
+            if m:
+                source = m.group(1)
+                continue
+            m = re.match(r"^    (\w+):\s*\{\s*value:\s*([0-9.]+)", line)
+            if m and source:
+                out["transitions"].setdefault(source, {})[m.group(1)] = float(m.group(2))
+    except (OSError, ValueError):
+        pass
+    try:
+        conf = _section(escalation_path.read_text(encoding="utf-8").splitlines(), "confidence")
+        in_act = False
+        for line in conf:
+            if re.match(r"^  act:", line):
+                in_act = True
+                continue
+            m = re.match(r"^    (\w+):\s*([0-9.]+)", line)
+            if in_act and m:
+                out["act_confidence"][m.group(1)] = float(m.group(2))
+                continue
+            m = re.match(r"^  direct:\s*([0-9.]+)", line)
+            if m:
+                out["direct_confidence"] = float(m.group(1))
+            if re.match(r"^  \w", line):
+                in_act = False
+    except (OSError, ValueError):
+        pass
+    return out
 
 
 # --- recorded sessions ----------------------------------------------------------------
@@ -200,11 +287,13 @@ def _summary(folder: Path, events: List[Dict[str, Any]], states: List[Dict[str, 
     rest = [w for w in steps if w in ("went_to_bed", "back_after_bed")]
     ending = ("rest" if rest and rest[-1] == "went_to_bed"
               else "suggested" if {"goodnight", "wind_down_started"} & set(steps) else "you")
+    suggested = next((e for e in events if e.get("type") == "escalation" and e.get("what") in ("goodnight", "wind_down_started")), None)
     return {"name": folder.name, "participant": meta.get("participant") or start.get("participant") or (found.group(1) if found else ""),
             "mode": meta.get("mode") or start.get("mode") or "", "start": start.get("t_wall"),
             "date": str(start.get("t_wall") or "")[:10], "clock": _clock(start.get("t_wall"), t0, t0),
             "end_clock": _clock(start.get("t_wall"), t0, t1), "duration_s": round(max(0.0, t1 - t0)),
             "ended": end is not None, "end_reason": (end or {}).get("reason"), "ending": ending,
+            "suggested_clock": _clock(start.get("t_wall"), t0, float(suggested["t_mono"])) if suggested else None,
             "nudges": auto, "by_hand": by_hand, "outcomes": outcomes,
             "calibration": (meta.get("calibration") or {}).get("result") if isinstance(meta.get("calibration"), dict) else None,
             "has_state": bool(states), **_focus(states)}
@@ -294,6 +383,7 @@ def detail(root: Path = SESSIONS, name: str = "") -> Optional[Dict[str, Any]]:
     # A nudge played by hand has no decision_id of its own: its verdict is the nudge_reward
     # with decision_id "w1", "w2", ... in the order they were played (eepy/bandit/rewards.py).
     by_hand = {e.get("decision_id"): e for e in events if e.get("type") == "nudge_reward" and e.get("source") == "wizard"}
+    rewards = {str(e.get("decision_id")): e for e in events if e.get("type") == "nudge_reward"}
     moments, hand = [], 0
     for e in events:
         if e.get("type") not in ("nudge_decision", "wizard_nudge"):
@@ -305,6 +395,9 @@ def detail(root: Path = SESSIONS, name: str = "") -> Optional[Dict[str, Any]]:
             out = by_hand.get(f"w{hand}")
         context = e.get("context") if isinstance(e.get("context"), dict) else {}
         explanation = e.get("explanation") if isinstance(e.get("explanation"), dict) else {}
+        reward = rewards.get(str(e.get("decision_id")) if e.get("type") == "nudge_decision" else f"w{hand}") or {}
+        bandit = e.get("bandit") if isinstance(e.get("bandit"), dict) else {}
+        allowed = [str(a).split() for a in (e.get("allowed") or []) if isinstance(a, str)]
         moments.append({
             "t": round(e["t_mono"] - t0), "clock": _clock(wall, t0, e["t_mono"]),
             "by": "eepy" if e.get("type") == "nudge_decision" else "you",
@@ -319,6 +412,12 @@ def detail(root: Path = SESSIONS, name: str = "") -> Optional[Dict[str, Any]]:
             "items": [{"type": i.get("type"), "share": i.get("share")} for i in (explanation.get("items") or [])[:4]
                       if isinstance(i, dict)],
             "propensity": e.get("propensity"),
+            # A23/A24: the levels it could choose from, the bandit's view of each move, and the reward
+            "allowed_levels": sorted({int(a[1]) for a in allowed if len(a) >= 2 and a[0] == e.get("ladder") and a[1].isdigit()}),
+            "arms": [{"arm": a.get("arm"), "mean": a.get("mean"), "n": a.get("n")} for a in (bandit.get("arms") or [])
+                     if isinstance(a, dict)],
+            "chosen": bandit.get("chosen"), "bucket": bandit.get("bucket"),
+            "reward": reward.get("reward"), "included": reward.get("included"),
         })
     marks = [{"t": round(e["t_mono"] - t0), "clock": _clock(wall, t0, e["t_mono"]), "marker": e.get("marker")}
              for e in events if e.get("type") == "annotation"]

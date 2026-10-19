@@ -55,7 +55,7 @@ card lo dice, ma per lavorare sulla UI non serve (basta il dry run). Il launcher
 | `eepy/launcher/parts.py` | I tre programmi (sim, panel, vision): comandi, stati, porte, impostazioni. |
 | `eepy/launcher/bandit.py`, `decisions.py`, `rewards.py` | Backend dei tab Bandit, Decisions, Rewards. |
 | `eepy/launcher/README.md` | Cosa fa il launcher, dal punto di vista dell'utente. |
-| `tests/test_launcher.py` | Test (23). Controllano la logica e l'API, non l'aspetto. |
+| `tests/test_launcher.py` | Test (24). Controllano la logica e l'API, non l'aspetto. |
 | `eepy/launcher/static/v5/` | La **pagina nuova** (`/v5`): `index.html`, `app.js`, `app.css`, `ds/` (design system) e `img/`. Vedi la sezione 9. |
 | `eepy/launcher/v5api.py` | Il backend della pagina nuova: passa le chiamate al panel, il volume del robot, legge le sessioni registrate. |
 
@@ -229,10 +229,19 @@ Fino ad allora tutto resta su questo computer.
 
 `python3 launch.py`, poi **http://127.0.0.1:8090/v5**. La pagina vecchia su `/` resta com'era.
 
-- **File:** `static/v5/index.html` (la cornice), `app.js` (tutte le schermate, route con `#/...`),
-  `app.css`, `ds/` (token, `launcher-calm.css`, `bundle.css` senza Google Fonts, `icons.js`
-  estratto da `bundle.js`, che richiede React e non si usa) e `img/`. Nessun build step: basta
-  ricaricare la pagina.
+- **File:** `static/v5/index.html` (la cornice), `app.css` (tutti gli stili, presi dalle schermate della
+  proposta e limitati per schermata con `main.scr-<nome>`), `js/` (nessun build step: basta ricaricare):
+  - `ui.js`: aiuti e i componenti del design system scritti in HTML semplice (TopNav, Button, Badge,
+    TextInput, Select, RadioGroup, Switch, PricingTabs, VizPanel, FocusCurve, DayTimeline, Modal),
+    con lo stesso markup che producono i componenti del canvas;
+  - `app.js`: stato, polling, barra in alto, route, collegamento di click e tasti;
+  - `start.js` (Home, Set up, Waking up), `session.js` (desk check, control panel con Live HMM, fine
+    sessione, wrap up), `analyze.js` (Sessions, Session story, What I learned), `advanced.js`, `boot.js`.
+  - `ds/` (token, `launcher-calm.css`, `bundle.css` senza Google Fonts, `icons.js`), `fonts/` (Inter e
+    Mona Sans, licenza OFL, serviti dalla pagina: niente internet) e `img/` (le illustrazioni del canvas).
+- **Confronto con la proposta:** le schermate seguono le pagine `V5-*` del canvas (stessi padding,
+  componenti e testi). Dove la proposta mostrava cose che EEPY non sa ancora fare (desk salvati per nome,
+  "Save this desk as"), la pagina mostra solo ciò che esiste: l'ultima calibrazione riutilizzabile.
 - **Schermate:** `#/` Home, `#/setup`, `#/starting`, `#/desk` (desk check), `#/control`,
   `#/done/<sessione>`, `#/sessions`, `#/story/<sessione>`, `#/learned`, `#/advanced`.
 - **API in più** (solo `v5api.py`, libreria standard):
@@ -241,6 +250,9 @@ Fino ad allora tutto resta su questo computer.
   - `GET/POST /api/v5/volume`: il volume del robot dal suo daemon (con dry run: 409).
   - `GET /api/v5/sessions?participant=`, `/api/v5/session?name=`, `/api/v5/progress?participant=`:
     leggono `data/sessions/` (events.jsonl, state.csv, meta.json). Non scrivono niente.
+  - `GET /api/v5/model`: gli stati e le transizioni dell'HMM (config/state_hmm.yaml), le soglie di
+    confidenza (config/escalation.yaml) e le parole delle frasi (behaviors/lines.yaml), per il grafo
+    Live HMM, la riga "agisco dal 70%" e i pulsanti di Talk.
 - **Provare senza robot né camera:** Set up → No robot, un codice tipo P99, Start session.
   Il panel parte, la sessione si apre, il desk check si salta ("Skip the check") e il control
   panel funziona (le mosse vengono registrate, il robot non c'è). Le schermate di analisi usano le

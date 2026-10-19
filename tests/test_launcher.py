@@ -269,7 +269,7 @@ def test_the_v5_page_serves_only_its_own_files():
     from eepy.launcher.__main__ import v5_file
 
     assert v5_file("/v5/") is not None and v5_file("/v5/").name == "index.html"
-    assert v5_file("/v5/app.js") is not None
+    assert v5_file("/v5/js/app.js") is not None and v5_file("/v5/fonts/inter-latin.woff2") is not None
     assert v5_file("/v5/../__main__.py") is None          # outside static/v5
     assert v5_file("/v5/../index.html") is None           # the old page is served at / only
     assert v5_file("/v5/nothing-here.js") is None
@@ -466,6 +466,24 @@ def test_the_v5_routes(tmp_path, monkeypatch):
         assert call("/api/v5/panel/nope", {})[0] == 404
         assert call("/api/v5/volume")[0] == 409                                         # dry: no speaker
         assert call("/api/v5/whatever", {})[0] == 404
+        assert "refocus" in call("/api/v5/model")[1]["act_confidence"]
         assert call("/api/v5/panel/play", [1, 2])[0] == 400                             # not a JSON object
     finally:
         server.shutdown()
+
+
+def test_v5_reads_the_configured_model_and_the_line_words(tmp_path):
+    from eepy.launcher import v5api
+
+    m = v5api.model()                                                     # the real config files
+    assert m["states"][:2] == ["focused", "distracted"] and m["transitions"]["distracted"]["focused"] > 0
+    assert 0 < m["act_confidence"]["refocus"] < 1 and 0 < m["direct_confidence"] <= 1
+    assert m["lines"]["refocus_check"]["hedged"] and m["lines"]["refocus_check"]["direct"]
+    (tmp_path / "hmm.yaml").write_text("states: [a, b]\ntransitions_per_hour:\n  a:\n    b:  {value: 6, why: x}\n  b:\n    a: {value: 60}\n")
+    (tmp_path / "esc.yaml").write_text("confidence:\n  act:\n    refocus: 0.7\n  direct: 0.85\nother: 1\n")
+    (tmp_path / "lines.yaml").write_text('lines:\n  hi:\n    variants:\n      hedged:\n        - "Hello?"\n      direct: ["Hello."]\n')
+    m = v5api.model(tmp_path / "hmm.yaml", tmp_path / "esc.yaml", tmp_path / "lines.yaml")
+    assert m["states"] == ["a", "b"] and m["transitions"] == {"a": {"b": 6.0}, "b": {"a": 60.0}}
+    assert m["act_confidence"] == {"refocus": 0.7} and m["direct_confidence"] == 0.85
+    assert m["lines"] == {"hi": {"hedged": "Hello?", "direct": "Hello."}}
+    assert v5api.model(tmp_path / "none.yaml", tmp_path / "none.yaml", tmp_path / "none.yaml")["states"] == []
