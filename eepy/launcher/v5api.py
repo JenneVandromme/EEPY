@@ -38,6 +38,7 @@ SLOW = {"session/end": 25.0, "session/start": 15.0, "reconnect": 20.0, "reload":
 
 FOLDER = re.compile(r"^[A-Za-z0-9_.-]{1,120}$")
 PARTICIPANT = re.compile(r"_(P[0-9]{2,3})_")
+BELIEF = ("focused", "distracted", "drowsy", "very_drowsy")    # the HMM's belief, stacked in this order (bottom first)
 DESK_STATES = ("focused", "tired", "distracted", "drowsy", "very_drowsy")    # at the desk (not absent / unknown)
 
 
@@ -109,6 +110,18 @@ def volume(settings: Settings, method: str, body: Optional[dict] = None) -> Tupl
                   "platform": data.get("platform"), "simulator": settings.backend == "sim"}
 
 
+# --- the camera picture (the vision program's live page keeps one in memory, ~5 a second) ---
+
+def frame(settings: Settings) -> Optional[bytes]:
+    """The latest camera picture (JPEG, face box drawn in) from the vision program, or None when it
+    has none (not running, or no picture yet). Passed through only, never written."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{settings.live_port}/frame.jpg", timeout=1.5) as response:
+            return response.read() or None
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
 # --- the model, as configured (for the Live HMM graph and the "I act from 70 %" line) ---
 
 def _section(lines: List[str], name: str) -> List[str]:
@@ -156,7 +169,7 @@ def model(hmm_path: Path = HMM_CONFIG, escalation_path: Path = ESCALATION_CONFIG
     needs before it acts (config/escalation.yaml) and the words of each line (lines.yaml). Read
     with the standard library: only these simple keys, and anything unreadable is left out."""
     out: Dict[str, Any] = {"states": [], "transitions": {}, "act_confidence": {}, "direct_confidence": None,
-                           "lines": lines(lines_path)}
+                           "switch_probability": None, "lines": lines(lines_path)}
     try:
         hmm = hmm_path.read_text(encoding="utf-8").splitlines()
         found = next((ln for ln in hmm if ln.startswith("states:")), "")
@@ -170,6 +183,10 @@ def model(hmm_path: Path = HMM_CONFIG, escalation_path: Path = ESCALATION_CONFIG
             m = re.match(r"^    (\w+):\s*\{\s*value:\s*([0-9.]+)", line)
             if m and source:
                 out["transitions"].setdefault(source, {})[m.group(1)] = float(m.group(2))
+        for line in _section(hmm, "report"):                      # when the panel shows another state
+            m = re.match(r"^  switch_probability:\s*\{\s*value:\s*([0-9.]+)", line)
+            if m:
+                out["switch_probability"] = float(m.group(1))
     except (OSError, ValueError):
         pass
     try:
@@ -229,7 +246,9 @@ def _states(folder: Path) -> List[Dict[str, Any]]:
                     continue
                 rows.append({"t": t, "state": row.get("state") or "unknown",
                              "p_focused": _float(row.get("p_focused")), "confidence": _float(row.get("confidence")),
-                             "estimator": row.get("estimator") or "rules"})
+                             "estimator": row.get("estimator") or "rules",
+                             "probs": [_float(row.get(f"p_{h}")) for h in BELIEF],
+                             "updated": row.get("updated") not in ("0", "False", "false")})
     except OSError:
         pass
     return rows
@@ -347,6 +366,17 @@ def _curve(states: List[Dict[str, Any]], t0: float, points: int = 90) -> List[Li
     return out
 
 
+def _belief(states: List[Dict[str, Any]], t0: float, points: int = 600) -> List[List[Any]]:
+    """The HMM's belief over the session, like the old Live HMM timeline: at most `points` rows of
+    [seconds, p_focused, p_distracted, p_drowsy, p_very_drowsy, confidence, state shown, updated (1/0)].
+    Only the HMM's seconds (the rules give no probabilities)."""
+    rows = [r for r in states if r["estimator"] == "hmm" and all(p is not None for p in r["probs"])]
+    size = max(1, -(-len(rows) // points))
+    return [[round(r["t"] - t0, 1)] + [round(p, 3) for p in r["probs"]]
+            + [None if r["confidence"] is None else round(r["confidence"], 3), r["state"], 1 if r["updated"] else 0]
+            for r in rows[::size]]
+
+
 def _strip(states: List[Dict[str, Any]], t0: float, shortest: float = 15.0) -> List[Dict[str, Any]]:
     """The states as runs: [{"from", "to", "state"}], runs shorter than `shortest` merged away."""
     runs: List[Dict[str, Any]] = []
@@ -423,5 +453,5 @@ def detail(root: Path = SESSIONS, name: str = "") -> Optional[Dict[str, Any]]:
              for e in events if e.get("type") == "annotation"]
     notes = [{"t": round(e["t_mono"] - t0), "clock": _clock(wall, t0, e["t_mono"]), "text": e.get("text")}
              for e in events if e.get("type") == "note"]
-    return {**summary, "curve": _curve(states, t0), "strip": _strip(states, t0), "moments": moments,
+    return {**summary, "curve": _curve(states, t0), "strip": _strip(states, t0), "belief": _belief(states, t0), "moments": moments,
             "marks": marks, "notes": notes}

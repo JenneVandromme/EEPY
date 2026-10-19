@@ -480,12 +480,56 @@ def test_v5_reads_the_configured_model_and_the_line_words(tmp_path):
     m = v5api.model()                                                     # the real config files
     assert m["states"][:2] == ["focused", "distracted"] and m["transitions"]["distracted"]["focused"] > 0
     assert 0 < m["act_confidence"]["refocus"] < 1 and 0 < m["direct_confidence"] <= 1
+    assert 0.5 <= m["switch_probability"] < 1                            # when the panel shows another state
     assert m["lines"]["refocus_check"]["hedged"] and m["lines"]["refocus_check"]["direct"]
-    (tmp_path / "hmm.yaml").write_text("states: [a, b]\ntransitions_per_hour:\n  a:\n    b:  {value: 6, why: x}\n  b:\n    a: {value: 60}\n")
+    (tmp_path / "hmm.yaml").write_text("states: [a, b]\ntransitions_per_hour:\n  a:\n    b:  {value: 6, why: x}\n  b:\n    a: {value: 60}\n"
+                                       "report:\n  switch_probability: {value: 0.6, why: x}\n")
     (tmp_path / "esc.yaml").write_text("confidence:\n  act:\n    refocus: 0.7\n  direct: 0.85\nother: 1\n")
     (tmp_path / "lines.yaml").write_text('lines:\n  hi:\n    variants:\n      hedged:\n        - "Hello?"\n      direct: ["Hello."]\n')
     m = v5api.model(tmp_path / "hmm.yaml", tmp_path / "esc.yaml", tmp_path / "lines.yaml")
     assert m["states"] == ["a", "b"] and m["transitions"] == {"a": {"b": 6.0}, "b": {"a": 60.0}}
-    assert m["act_confidence"] == {"refocus": 0.7} and m["direct_confidence"] == 0.85
+    assert m["act_confidence"] == {"refocus": 0.7} and m["direct_confidence"] == 0.85 and m["switch_probability"] == 0.6
     assert m["lines"] == {"hi": {"hedged": "Hello?", "direct": "Hello."}}
     assert v5api.model(tmp_path / "none.yaml", tmp_path / "none.yaml", tmp_path / "none.yaml")["states"] == []
+
+
+def test_v5_passes_the_camera_picture_through():
+    from http.server import BaseHTTPRequestHandler
+
+    from eepy.launcher import v5api
+
+    picture = b"\xff\xd8 a jpeg \xff\xd9"
+
+    class Vision(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            ok = self.path == "/frame.jpg"
+            self.send_response(200 if ok else 404)
+            self.send_header("Content-Length", str(len(picture) if ok else 0))
+            self.end_headers()
+            if ok:
+                self.wfile.write(picture)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Vision)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        assert v5api.frame(Settings(backend="dry", live_port=server.server_address[1])) == picture
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert v5api.frame(Settings(backend="dry", live_port=free_port())) is None     # vision not running
+
+
+def test_v5_session_detail_has_the_belief_over_time():
+    from eepy.launcher import v5api
+
+    states = [{"t": 100.0 + i, "state": "focused", "p_focused": 0.9, "confidence": 0.9, "estimator": "hmm",
+               "probs": [0.9, 0.05, 0.03, 0.02], "updated": i != 1} for i in range(3)]
+    states.append({"t": 103.0, "state": "focused", "p_focused": None, "confidence": None, "estimator": "rules",
+                   "probs": [None] * 4, "updated": True})                           # the rules give no belief
+    rows = v5api._belief(states, 100.0)
+    assert rows == [[0.0, 0.9, 0.05, 0.03, 0.02, 0.9, "focused", 1], [1.0, 0.9, 0.05, 0.03, 0.02, 0.9, "focused", 0],
+                    [2.0, 0.9, 0.05, 0.03, 0.02, 0.9, "focused", 1]]
+    assert len(v5api._belief(states * 400, 100.0, points=600)) <= 600

@@ -240,9 +240,12 @@ a.ds-btn { text-decoration: none; display: inline-flex; align-items: center; gap
 .drawer { position: fixed; top: 56px; left: 0; bottom: 0; width: 420px; max-width: 100%; z-index: 30; background: color-mix(in srgb, var(--surface-1) 92%, transparent); backdrop-filter: blur(16px); box-shadow: var(--shadow-overlay); padding: 24px; display: flex; flex-direction: column; gap: var(--space-md); }
 .drawer__rows { display: flex; flex-direction: column; gap: var(--space-xs); font-variant-numeric: tabular-nums; overflow-y: auto; white-space: pre-wrap; }
 /* Live HMM */
-.lgrid { display: grid; grid-template-columns: 300px 1fr 330px; gap: var(--space-md); align-items: stretch; }
-.campic { position: relative; height: 200px; border-radius: var(--radius-lg); overflow: hidden; background: radial-gradient(240px 180px at 50% 45%, var(--surface-2), var(--atmosphere-deep)); }
+.lgrid { display: grid; grid-template-columns: 400px 1fr 330px; gap: var(--space-md); align-items: stretch; }
+.campic { position: relative; aspect-ratio: 4 / 3; min-height: 200px; border-radius: var(--radius-lg); overflow: hidden; background: radial-gradient(240px 180px at 50% 45%, var(--surface-2), var(--atmosphere-deep)); }
 .campic svg { position: absolute; inset: 0; }
+.campic__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; background: var(--atmosphere-deep); }
+.campic.has-pic .campic__img { display: block; }
+.campic.has-pic svg { display: none; }
 .campic__tag { position: absolute; left: var(--space-sm); top: var(--space-sm); padding: 2px var(--space-xs); border-radius: var(--radius-xs); background: var(--atmosphere-deep); }
 .facts2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-xs); }
 .fact2 { padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); background: var(--surface-2); }
@@ -264,6 +267,23 @@ a.ds-btn { text-decoration: none; display: inline-flex; align-items: center; gap
 .statestrip > span { position: absolute; top: 0; bottom: 0; }
 .stripleg { display: flex; gap: var(--space-lg); color: var(--ink-muted); flex-wrap: wrap; }
 .stripleg > span { display: inline-flex; align-items: center; gap: var(--space-xxs); }
+/* step 3 and 4 of the Live HMM, like the old Live HMM page: the shown state and the confidence gate */
+.statechip { display: inline-block; padding: 4px 12px; border-radius: var(--radius-pill); font-weight: 700; color: #fff; }
+.gate2 { position: relative; height: 18px; border-radius: var(--radius-xs); background: var(--surface-1); margin: 22px 0 22px; }
+.gate2__fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: var(--radius-xs); transition: width .4s ease; }
+.gate2__tick { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
+.gate2__tick span { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--ink-muted); white-space: nowrap; }
+.gate2__tick--direct { opacity: .5; }
+.gate2__tick--direct span { top: -18px; }
+/* the belief over the session, like the old Live HMM page's timeline */
+.btl { display: grid; grid-template-columns: 76px 1fr; gap: 6px var(--space-sm); align-items: center; }
+.btl__area { width: 100%; height: 130px; display: block; border-radius: var(--radius-xs); background: var(--surface-2); }
+.btl__strip { width: 100%; height: 14px; display: block; border-radius: var(--radius-xs); }
+.btl__axis { position: relative; height: 16px; }
+.btl__axis > span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.btl__axis > span:first-child { transform: none; }
+.stripleg .ln { display: inline-block; width: 16px; border-top: 2px solid var(--ink); }
+.stripleg .ln--dash { border-top: 1.5px dashed var(--ink); opacity: .6; }
 .sq { width: 10px; height: 10px; border-radius: var(--radius-xs); }
 
 /* ---------- wrap up (V5-S3-WrapUp) ---------- */
@@ -465,4 +485,17 @@ a.ds-btn { text-decoration: none; display: inline-flex; align-items: center; gap
   .movefoot { grid-template-columns: 1fr; }
   .ds-nav__bar { padding: 0 var(--space-md); gap: var(--space-md); }
   .ds-nav__actions .nav-old { display: none; }
+}
+
+/* The HMM's state colours, as on the old Live HMM page (eepy/state/explain_viewer.html), per theme */
+:root, [data-theme="dark"] {
+  --hmm-focused: #4cc785; --hmm-distracted: #e0b040; --hmm-drowsy: #e8913e; --hmm-very: #ef6b6b; --hmm-absent: #77777f; --hmm-unknown: #55555c; --hmm-warn: #e0a040;
+}
+[data-theme="light"] {
+  --hmm-focused: #1f8a4c; --hmm-distracted: #c98a00; --hmm-drowsy: #d9771e; --hmm-very: #c62828; --hmm-absent: #8d8d93; --hmm-unknown: #b9b9be; --hmm-warn: #b26a00;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --hmm-focused: #1f8a4c; --hmm-distracted: #c98a00; --hmm-drowsy: #d9771e; --hmm-very: #c62828; --hmm-absent: #8d8d93; --hmm-unknown: #b9b9be; --hmm-warn: #b26a00;
+  }
 }

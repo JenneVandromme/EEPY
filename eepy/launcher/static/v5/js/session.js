@@ -305,14 +305,14 @@
   var ctrl = { tone: "hedged", intensity: null, tab: "controls", version: null, msg: "", msgBad: false, prevProbs: null };
   var buttons = {}, keys = {};
   var volumeInfo = null;
-  var whole = null, wholeAt = 0, live = [];        // the recorded session so far, and the live points since
+  var whole = null, wholeAt = 0, live = [], liveB = [];   // the recorded session so far, and the live points since
 
   function loadWhole() {
     var sess = EE.session();
     if (!sess.active || !sess.session) return;
     wholeAt = Date.now();
     EE.getJSON("/api/v5/session?name=" + encodeURIComponent(sess.session)).then(function (d) {
-      if (d && d.name === EE.session().session) { whole = d; live = live.filter(function (p) { return p[0] > (d.duration_s || 0); }); drawCharts(); }
+      if (d && d.name === EE.session().session) { whole = d; live = live.filter(function (p) { return p[0] > (d.duration_s || 0); }); liveB = liveB.filter(function (p) { return p[0] > (d.duration_s || 0); }); drawCharts(); }
     }).catch(function () { /* the next poll tries again */ });
   }
   // P(focused) over the session: the recorded curve, then this second's numbers.
@@ -320,7 +320,18 @@
     var pts = (whole && whole.curve ? whole.curve.slice() : []);
     return pts.concat(live);
   }
+  // The HMM's belief over the session, like the old Live HMM timeline: [t, p x4 (BELIEF order), confidence, state shown, updated].
+  var BELIEF = ["focused", "distracted", "drowsy", "very_drowsy"];
+  function addLiveBelief(st) {
+    var us = st.user_state, sess = st.session || {};
+    if (!us || !us.probs || us.fresh === false || BELIEF.some(function (b) { return us.probs[b] == null; })) return;
+    var t = sess.elapsed_s || 0;
+    if (liveB.length && t - liveB[liveB.length - 1][0] < 1) return;
+    liveB.push([t].concat(BELIEF.map(function (b) { return us.probs[b]; }), [us.confidence, us.state, us.updated === false ? 0 : 1]));
+    if (liveB.length > 4000) liveB.shift();
+  }
   function addLive(st) {
+    addLiveBelief(st);
     var us = st.user_state, sess = st.session || {};
     if (!us || !us.probs || us.probs.focused == null || us.fresh === false) return;
     var t = sess.elapsed_s || 0;
@@ -483,8 +494,9 @@
 
   // --- the Live HMM view ---
 
-  var NODES = { focused: [60, 62, "var(--time-focus)", 0.9], distracted: [240, 62, "var(--energy-low)", 0.9], tired: [55, 196, "var(--time-focus)", 0.55],
-                drowsy: [150, 196, "var(--time-sleep)", 0.9], very_drowsy: [245, 196, "var(--error)", 0.9] };
+  // Colours as on the old Live HMM page (--hmm-* in app.css): green, amber, orange, red; tired is a paler green.
+  var NODES = { focused: [60, 62, "var(--hmm-focused)", 0.9], distracted: [240, 62, "var(--hmm-distracted)", 0.9], tired: [55, 196, "var(--hmm-focused)", 0.5],
+                drowsy: [150, 196, "var(--hmm-drowsy)", 0.9], very_drowsy: [245, 196, "var(--hmm-very)", 0.9] };
   function hmmGraph(us) {
     var probs = (us && us.probs) || {}, prev = ctrl.prevProbs || {};
     var tr = (EE.model && EE.model.transitions) || {};
@@ -521,6 +533,35 @@
       + arrows + nodes + "</svg>";
   }
 
+  // The live camera picture, like the old launcher's Live HMM page: the vision program keeps the latest
+  // one in memory and the launcher passes it through (/api/v5/frame.jpg). One <img> is kept across
+  // redraws, so it does not flicker, and it asks for the next picture once the last one has loaded.
+  // No picture (vision not running, no camera yet): the face drawn from the numbers stays.
+  var cam = { img: null, ok: false, busy: false };
+  function camLoad() {
+    cam.busy = true;
+    cam.img.src = "/api/v5/frame.jpg?t=" + Date.now();
+  }
+  function camNext(ok, wait) {
+    cam.ok = ok;
+    var slot = cam.img.parentNode;
+    if (slot) slot.classList.toggle("has-pic", ok);
+    setTimeout(function () { cam.busy = false; if (document.body.contains(cam.img)) camLoad(); }, wait);
+  }
+  function camPicture() {
+    var slot = $("#cam .campic");
+    if (!slot) return;
+    if (!cam.img) {
+      cam.img = document.createElement("img");
+      cam.img.className = "campic__img";
+      cam.img.alt = "What my camera sees right now";
+      cam.img.onload = function () { camNext(true, 200); };
+      cam.img.onerror = function () { camNext(false, 2000); };
+    }
+    if (cam.img.parentNode !== slot) slot.insertBefore(cam.img, slot.firstChild);
+    if (!cam.busy) camLoad();
+  }
+
   function drawLive(st) {
     var us = st.user_state, cal = st.calibration || {}, au = st.autonomy || {};
     var vals = (us && us.values) || {};
@@ -528,51 +569,106 @@
     var face = vals.face_present_ratio_10s, eyes = vals.perclos_60s, away = vals.gaze_off_ratio_60s;
     var fact = function (k, v) { return '<span class="caption fact2"><span class="how">' + k + "</span><br><b>" + v + "</b></span>"; };
     EE.setHTML($("#cam"), '<div class="cardhead"><span class="headline" style="flex: 1;">What my camera sees</span>' + (us && us.fresh !== false ? EE.badge("success", "live") : EE.badge("neutral", "not live")) + "</div>"
-      + '<div class="campic"><svg viewBox="0 0 340 250" width="100%" height="100%" aria-label="Face box, drawn from the numbers (no picture)"><rect x="110" y="34" width="120" height="150" rx="10" fill="none" style="stroke: ' + (face == null ? "var(--hairline-strong)" : face > 0.5 ? "var(--success)" : "var(--error)") + ';" stroke-width="2.5"></rect><ellipse cx="170" cy="110" rx="44" ry="56" style="fill: var(--surface-1);"></ellipse><path d="M120 250 C126 196, 214 196, 220 250 Z" style="fill: var(--surface-1);"></path><path d="M150 104 h14 M176 104 h14" style="stroke: var(--ink);" stroke-width="3" stroke-linecap="round"></path><path d="M160 140 Q170 146 180 140" fill="none" style="stroke: var(--ink);" stroke-width="2" stroke-linecap="round"></path></svg>'
+      + '<div class="campic' + (cam.ok ? " has-pic" : "") + '"><svg viewBox="0 0 340 250" width="100%" height="100%" aria-label="Face box, drawn from the numbers (no picture)"><rect x="110" y="34" width="120" height="150" rx="10" fill="none" style="stroke: ' + (face == null ? "var(--hairline-strong)" : face > 0.5 ? "var(--success)" : "var(--error)") + ';" stroke-width="2.5"></rect><ellipse cx="170" cy="110" rx="44" ry="56" style="fill: var(--surface-1);"></ellipse><path d="M120 250 C126 196, 214 196, 220 250 Z" style="fill: var(--surface-1);"></path><path d="M150 104 h14 M176 104 h14" style="stroke: var(--ink);" stroke-width="3" stroke-linecap="round"></path><path d="M160 140 Q170 146 180 140" fill="none" style="stroke: var(--ink);" stroke-width="2" stroke-linecap="round"></path></svg>'
       + (away != null ? '<span class="caption campic__tag">looking away ' + EE.pct(away) + " of the minute</span>" : "") + "</div>"
       + '<div class="facts2">' + fact("Face", face == null ? "–" : face > 0.5 ? "found" : "not found") + fact("Eyes closed (last minute)", eyes == null ? "–" : EE.pct(eyes))
       + fact("Yawns (last minute)", vals.yawns_60s == null ? "–" : vals.yawns_60s) + fact("Calibrated", { done: "this desk", reused: "last desk check", skipped: "no" }[cal.state] || "no") + "</div>"
-      + '<span class="caption how" style="margin-top: auto;">Drawn from my numbers: no picture here, and I never save one.' + (vision.url && EE.isUp(vision.state) ? ' <a href="' + esc(vision.url) + '" target="_blank" rel="noopener">My live page</a>' : "") + "</span>");
+      + '<span class="caption how" style="margin-top: auto;">' + (cam.ok ? "Live from my camera, with the face box I judge. I never save a picture." : "Drawn from my numbers: no camera picture yet, and I never save one.") + (vision.url && EE.isUp(vision.state) ? ' <a href="' + esc(vision.url) + '" target="_blank" rel="noopener">My live page</a>' : "") + "</span>");
     EE.setHTML($("#graph"), '<div class="cardhead"><span style="flex: 1; display: flex; flex-direction: column;"><span class="headline" style="display: inline-flex; align-items: center; gap: var(--space-xs);"><span class="stepn">2</span>What I believe right now</span><span class="caption how">The HMM\'s 5 states. Each circle fills up with how likely it is.</span></span><span class="caption how">' + EE.hhmm(new Date()) + "</span></div>"
       + '<div class="graphbox">' + (us && us.probs ? hmmGraph(us) : '<span class="caption how">' + (us ? "These are my simple rules: they give no probabilities. The HMM runs in the “I estimate” modes." : "Nothing yet: my eyes aren't sending.") + "</span>") + "</div>"
-      + '<div class="caption how graphlegend"><span>★ most likely</span><span>thick ring: the state I show</span><span>▲▼ change this second</span><span>arrows: how often people switch, per hour</span></div>');
+      + '<div class="caption how graphlegend"><span>★ most likely</span><span>thick ring: the state I show</span><span>▲▼ change this second</span><span>arrows: how often people switch, per hour</span></div>'
+      + (us && us.probs ? '<div class="caption how">Uncertainty <b style="color: var(--ink);">' + (us.uncertainty == null ? "–" : Number(us.uncertainty).toFixed(2)) + "</b> (0 sure, 1 no idea) · "
+        + (us.updated === false ? "on hold: the belief only drifts (no usable signs)" : "updated with this second's signs") + "</div>" : ""));
     var ev = ((us && us.evidence) || []).slice(0, 4);
     var maxS = ev.reduce(function (m, e) { return Math.max(m, Math.abs(e.strength || 0)); }, 0.0001);
+    // 3 and 4 as on the old Live HMM page (v1): the shown state with how sure, and the confidence gate.
+    var FAMILY = { focused: "focus", tired: "focus", distracted: "distraction", drowsy: "drowsiness", very_drowsy: "drowsiness" };
     var ladder = us && us.state === "distracted" ? "refocus" : us && (us.state === "drowsy" || us.state === "very_drowsy") ? "bedtime" : null;
-    var need = ladder && EE.model && EE.model.act_confidence ? EE.model.act_confidence[ladder] : null;
-    var conf = us ? us.confidence : null;
+    var m = EE.model || {};
+    var need = ladder && m.act_confidence ? m.act_confidence[ladder] : null, direct = m.direct_confidence;
+    var conf = us ? us.confidence : null, sw = m.switch_probability;
     var enough = need != null && conf != null && conf >= need;
+    var shown = '<div class="step2"><span class="caption how"><span class="stepn">3</span> I show</span>'
+      + '<span><span class="statechip" style="background: ' + (BELIEF_COL[us && us.state] || "var(--hmm-unknown)") + ';">' + (us ? esc(EE.STATE_NAME[us.state] || us.state) : "–") + "</span></span>"
+      + (us && FAMILY[us.state] && conf != null ? '<span class="headline">' + EE.pct(conf) + '</span><span class="caption how">sure it is ' + FAMILY[us.state] + " (the chance of that whole family)</span>" : "")
+      + (us && us.pending ? '<span class="caption">→ <b>' + esc(EE.STATE_NAME[us.pending] || us.pending) + "</b> is becoming more likely</span>" : "")
+      + (sw != null ? '<span class="caption how">I switch when another family reaches ' + EE.pct(sw) + ", or when this one falls below " + EE.pct(1 - sw) + ".</span>" : "")
+      + "</div>";
+    var gate;
+    if (!ladder) {
+      gate = '<span class="headline" style="color: var(--ink-muted);">—</span><span class="caption how">' + (us && us.state === "focused" ? "Focused: nothing to act on." : us && us.state === "absent" ? "Nobody there: the robot waits." : "No usable data: the robot waits.") + "</span>";
+    } else if (need == null || conf == null) {
+      gate = '<span class="headline" style="color: var(--ink-muted);">No gate</span><span class="caption how">No confidence threshold in config/escalation.yaml.</span>';
+    } else {
+      gate = '<div class="gate2"><div class="gate2__fill" style="width: ' + (conf * 100).toFixed(1) + "%; background: " + (enough ? "var(--hmm-focused)" : "var(--hmm-warn)") + ';"></div>'
+        + '<div class="gate2__tick" style="left: ' + (need * 100).toFixed(1) + '%;"><span>acts ' + EE.pct(need) + "</span></div>"
+        + (direct != null ? '<div class="gate2__tick gate2__tick--direct" style="left: ' + (direct * 100).toFixed(1) + '%;"><span>direct ' + EE.pct(direct) + "</span></div>" : "") + "</div>"
+        + '<span class="headline" style="color: ' + (enough ? "var(--hmm-focused)" : "var(--hmm-warn)") + ';">' + (enough ? "✓ Sure enough" : "✗ Not sure enough") + "</span>"
+        + '<span class="caption how">' + esc(EE.STATE_NAME[us.state]) + " " + EE.pct(conf) + (enough ? " ≥ " : " < ") + EE.pct(need) + " for the " + (ladder === "bedtime" ? "tiredness" : "refocus") + " ladder"
+        + (enough && direct != null ? (conf >= direct ? "; the firm tone is allowed" : "; the tone stays gentle (below " + EE.pct(direct) + ")") : "") + ".</span>";
+    }
     EE.setHTML($("#decide"), '<div class="cardhead"><span class="headline" style="flex: 1;">How I decide</span></div>'
       + '<div class="step2"><span class="caption how"><span class="stepn">1</span> Signs from the camera</span><div class="caption signs2">'
       + (ev.length ? ev.map(function (e) {
         var focusy = /focus/.test(String(e.supports || ""));
         return "<span>" + esc(e.text || e.feature || "") + '</span><span class="sbar"><span style="width: ' + Math.max(6, Math.abs(e.strength || 0) / maxS * 100).toFixed(0) + "%; background: " + (focusy ? "var(--time-focus)" : "var(--time-sleep)") + ';"></span></span>';
       }).join("") : '<span class="how">No strong signs this second.</span><span></span>') + "</div></div>"
-      + '<div class="step2"><span class="caption how"><span class="stepn">3</span> I show</span><span class="headline">' + (us ? esc(EE.STATE_NAME[us.state] || us.state) : "–") + '</span><span class="caption how">' + (us && us.pending ? "maybe becoming " + esc(EE.STATE_NAME[us.pending] || us.pending) : "the most likely state") + "</span></div>"
-      + '<div class="step2"><span class="caption how"><span class="stepn">4</span> Sure enough?</span>'
-      + (need != null && conf != null
-        ? '<span class="headline" style="color: ' + (enough ? "var(--success)" : "var(--ink-muted)") + ';">' + (enough ? "Yes" : "Not yet") + " · " + EE.pct(conf) + '</span><span class="surebar"><span style="width: ' + (conf * 100).toFixed(0) + "%; background: " + (enough ? "var(--success)" : "var(--time-busy)") + ';"></span><span class="surebar__line" style="left: ' + (need * 100).toFixed(0) + '%;"></span></span><span class="caption how">I act from ' + EE.pct(need) + "</span>"
-        : '<span class="headline" style="color: var(--ink-muted);">' + (conf != null ? EE.pct(conf) : "–") + '</span><span class="caption how">' + (us && us.state === "focused" ? "Focused: nothing to do." : "Only distracted or tired count.") + "</span>") + "</div>"
+      + shown
+      + '<div class="step2"><span class="caption how"><span class="stepn">4</span> Sure enough to act?</span>' + gate + "</div>"
       + '<div class="step2"><span class="caption how"><span class="stepn">5</span> The robot</span><span class="body-sm"><b>' + (st.playing ? esc(EE.behaviorName(st.playing)) : "Resting") + '</b></span><span class="caption how">' + (au.ladder ? (au.ladder === "bedtime" ? "Tiredness" : "Refocus") + " ladder" + (au.level != null ? ", level " + au.level : "") + ". " : "") + (au.next ? "Next: " + esc(au.next) + "." : "") + "</span></div>");
     drawSince(st);
+  }
+
+  var BELIEF_COL = { focused: "var(--hmm-focused)", tired: "var(--hmm-focused)", distracted: "var(--hmm-distracted)", drowsy: "var(--hmm-drowsy)",
+                     very_drowsy: "var(--hmm-very)", absent: "var(--hmm-absent)", unknown: "var(--hmm-unknown)" };
+  function beliefTimeline(rows, dur) {
+    var W = 1000, H = 130, t0 = rows[0][0], t1 = Math.max(dur, rows[rows.length - 1][0], t0 + 1);
+    var x = function (t) { return ((t - t0) / (t1 - t0) * W).toFixed(1); };
+    var y = function (p) { return (H - p * H).toFixed(1); };
+    var svg = "";
+    for (var k = 3; k >= 0; k--) {                                   // stacked: focused at the bottom
+      var d = "M" + x(rows[0][0]) + " " + H;
+      rows.forEach(function (r) { var cum = 0; for (var j = 0; j <= k; j++) cum += r[1 + j]; d += " L" + x(r[0]) + " " + y(Math.min(1, cum)); });
+      d += " L" + x(rows[rows.length - 1][0]) + " " + H + " Z";
+      svg += '<path d="' + d + '" style="fill: ' + BELIEF_COL[BELIEF[k]] + ';" fill-opacity=".85"></path>';
+    }
+    rows.forEach(function (r, i) {                                   // greyed where the belief only drifted (no usable signs)
+      if (!r[7] && i + 1 < rows.length) svg += '<rect x="' + x(r[0]) + '" y="0" width="' + Math.max(0.5, x(rows[i + 1][0]) - x(r[0])).toFixed(1) + '" height="' + H + '" style="fill: var(--surface-1);" fill-opacity=".55"></rect>';
+    });
+    var acts = EE.model && EE.model.act_confidence ? Object.keys(EE.model.act_confidence).map(function (k2) { return EE.model.act_confidence[k2]; }) : [];
+    var act = acts.length ? Math.min.apply(null, acts) : null;
+    if (act != null && act <= 1) svg += '<line x1="0" x2="' + W + '" y1="' + y(act) + '" y2="' + y(act) + '" style="stroke: var(--ink);" stroke-opacity=".6" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"></line>';
+    var line = "", on = false;                                       // how sure it is of the state it shows (black)
+    rows.forEach(function (r) {
+      if (r[5] == null || !BELIEF_COL[r[6]] || r[6] === "absent" || r[6] === "unknown") { on = false; return; }
+      line += (on ? " L" : " M") + x(r[0]) + " " + y(r[5]); on = true;
+    });
+    if (line) svg += '<path d="' + line + '" fill="none" style="stroke: var(--ink);" stroke-width="1.6" vector-effect="non-scaling-stroke"></path>';
+    var strip = rows.map(function (r, i) {
+      var x2 = i + 1 < rows.length ? x(rows[i + 1][0]) : x(t1);
+      return '<rect x="' + x(r[0]) + '" y="0" width="' + Math.max(0.6, x2 - x(r[0]) + 0.6).toFixed(1) + '" height="14" style="fill: ' + (BELIEF_COL[r[6]] || "var(--hmm-unknown)") + ';"><title>' + esc(EE.STATE_NAME[r[6]] || r[6]) + "</title></rect>";
+    }).join("");
+    var mmss = function (t) { t = Math.max(0, Math.round(t)); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+    var stepS = [5, 10, 15, 30, 60, 120, 300, 600, 1200].find(function (v) { return (t1 - t0) / v <= 10; }) || 1800;
+    var ticks = "";
+    for (var t = Math.ceil(t0 / stepS) * stepS; t <= t1; t += stepS) ticks += '<span style="left: ' + ((t - t0) / (t1 - t0) * 100).toFixed(2) + '%;">' + mmss(t) + "</span>";
+    return '<div class="btl">'
+      + '<span class="caption how btl__lab">belief</span><svg class="btl__area" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="The HMM\'s belief over the session">' + svg + "</svg>"
+      + '<span class="caption how btl__lab">HMM shows</span><svg class="btl__strip" viewBox="0 0 ' + W + ' 14" preserveAspectRatio="none">' + strip + "</svg>"
+      + '<span></span><div class="caption how btl__axis">' + ticks + "</div></div>";
   }
 
   function drawSince(st) {
     var box = $("#since");
     if (!box) return;
-    var dur = (st.session || {}).elapsed_s || 0, hist = history();
-    var pts = curvePoints(hist, hist.length ? hist[0][0] : 0, Math.max(dur, 1), whole && whole.clock);
-    var strip = whole && whole.strip ? whole.strip : [];
-    var span = Math.max(1, dur);
-    var col = { distracted: "var(--energy-low)", drowsy: "color-mix(in srgb, var(--time-sleep) 60%, transparent)", very_drowsy: "var(--time-sleep)", absent: "repeating-linear-gradient(45deg, var(--hairline-strong) 0 2px, transparent 2px 6px)" };
-    EE.setHTML(box, '<div class="cardhead"><span class="headline" style="flex: 1;">Since the session started</span><span class="caption how">From my vision program, the same numbers I act on</span></div>'
-      + (pts.length > 1 ? EE.focusCurve(pts, { height: 110, label: "Focus" }) : '<div class="vizempty caption">The curve starts after a few seconds of looking.</div>')
-      + '<div class="statestrip" aria-label="Other states">' + strip.filter(function (r) { return col[r.state]; }).map(function (r) {
-        return '<span style="left: ' + (r.from / span * 100).toFixed(2) + "%; width: " + Math.max(0.4, (r.to - r.from) / span * 100).toFixed(2) + "%; background: " + col[r.state] + ';" title="' + esc(EE.STATE_NAME[r.state]) + '"></span>';
-      }).join("") + "</div>"
-      + '<div class="caption stripleg">' + [["distracted", "Distracted"], ["drowsy", "Drowsy"], ["very_drowsy", "Very drowsy"], ["absent", "Away"]].map(function (k) {
-        return '<span><span class="sq" style="background: ' + col[k[0]] + ';"></span>' + k[1] + "</span>";
-      }).join("") + "</div>");
+    var dur = (st.session || {}).elapsed_s || 0;
+    var rows = (whole && whole.belief ? whole.belief : []).concat(liveB);
+    var leg = [["focused", "Focused"], ["distracted", "Distracted"], ["drowsy", "Drowsy"], ["very_drowsy", "Very drowsy"], ["absent", "Away"]].map(function (k) {
+      return '<span><span class="sq" style="background: ' + BELIEF_COL[k[0]] + ';"></span>' + k[1] + "</span>";
+    }).join("") + '<span><span class="ln"></span>how sure I am of what I show</span><span><span class="ln ln--dash"></span>I act from here</span><span><span class="sq" style="background: var(--surface-1); outline: 1px solid var(--hairline-strong);"></span>greyed: no new signs</span>';
+    EE.setHTML(box, '<div class="cardhead"><span class="headline" style="flex: 1;">Since the session started</span><span class="caption how">What the HMM believed each second, like the old Live HMM page</span></div>'
+      + (rows.length > 1 ? beliefTimeline(rows, dur) : '<div class="vizempty caption">' + (st.user_state && !st.user_state.probs ? "These are my simple rules: they give no probabilities. The HMM runs in the “I estimate” modes." : "The belief starts after a few seconds of looking.") + "</div>")
+      + '<div class="caption stripleg">' + leg + "</div>");
   }
 
   function drawCharts() {
@@ -681,7 +777,7 @@
   EE.screens.control = {
     render: function () {
       ctrl.version = null;
-      live = []; whole = null; wholeAt = 0;
+      live = []; liveB = []; whole = null; wholeAt = 0;
       EE.main.innerHTML = '<div class="control">' + sessbar("control") + '<div id="control" class="control__body"></div></div>';
       this.panelUpdate();
       loadVolume();
@@ -706,7 +802,7 @@
         drawVolume();
       }
       EE.setHTML($("#banners"), banners(st));
-      if (ctrl.tab === "hmm") drawLive(st);
+      if (ctrl.tab === "hmm") { drawLive(st); camPicture(); }
       else {
         EE.setHTML($("#now-viz"), nowViz(st));
         EE.setHTML($("#now-doing"), nowDoing(st));

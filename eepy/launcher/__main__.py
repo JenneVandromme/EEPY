@@ -223,6 +223,12 @@ def _handler(launcher: Launcher):
                 self._json(v5api.progress(v5api.SESSIONS, arg("participant")))
             elif path == "model":
                 self._json(v5api.model())
+            elif path == "frame.jpg":
+                picture = v5api.frame(launcher.settings)
+                if picture is None:
+                    self._json({"error": "no picture"}, 404)
+                else:
+                    self._send(200, picture, "image/jpeg")
             else:
                 self._json({"error": "not found"}, 404)
 
