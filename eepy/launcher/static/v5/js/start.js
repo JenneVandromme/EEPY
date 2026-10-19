@@ -318,7 +318,7 @@
         + '<svg id="ring-spin" class="spin wake__svg" width="260" height="260" viewBox="0 0 260 260" aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--time-focus-start);"></stop><stop offset="1" style="stop-color: var(--time-focus);"></stop></linearGradient></defs>'
         + '<circle cx="130" cy="130" r="120" fill="none" stroke="url(#ringgrad)" stroke-width="6" stroke-linecap="round" stroke-dasharray="250 504"></circle></svg>'
         + '<span class="wake__shadow shadowpulse" aria-hidden="true"></span>'
-        + '<img id="ring-img" class="bob2" src="img/eepy-builder.svg" alt="EEPY in a builder\'s hat, setting up"></div>'
+        + '<img id="ring-img" class="bob2" src="img/eepy-builder.svg" decoding="async" alt="EEPY in a builder\'s hat, setting up"></div>'
         + '<div class="wake__text"><span class="caption eyebrow" id="wake-eyebrow">Run a session · step 2 of 3</span>'
         + '<h1 class="display-md" aria-live="polite" id="wake-title" style="margin: 0;"></h1><span class="body-lg" id="wake-text" style="color: var(--ink-muted); max-width: 640px;"></span></div>'
         + '<div id="wake-pills"></div><div id="wake-extra" class="wake__extra"></div><span class="caption" id="wake-hint" style="color: var(--ink-muted);"></span></div>'

@@ -114,6 +114,8 @@ a.ds-btn { text-decoration: none; display: inline-flex; align-items: center; gap
 .wake__svg { position: absolute; inset: 0; }
 .ring__done { transition: stroke-dasharray .8s ease, stroke .3s ease; }
 #ring-spin { transition: opacity .4s ease; will-change: transform; }
+/* Each moving piece on its own compositor layer: the blurs and the drawing are painted once, then only moved. */
+.wake__breathe, .wake__shadow, .wake__ring img, .home__hero .glow, .home__hero img, .done__img img { will-change: transform, opacity; transform: translateZ(0); }
 .wake__shadow { position: absolute; bottom: 52px; width: 90px; height: 12px; border-radius: var(--radius-full); background: var(--atmosphere-deep); filter: blur(6px); }
 .wake__ring img { position: relative; width: 150px; height: 150px; object-fit: contain; }
 .wake__text { display: flex; flex-direction: column; align-items: center; gap: var(--space-xs); }
