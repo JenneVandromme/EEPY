@@ -1,7 +1,7 @@
 # The launcher
 
 ```bash
-python3 launch.py                 # opens http://127.0.0.1:8090
+python3 launch.py                 # opens http://127.0.0.1:8090 (the new page; the old one is at /v1)
 python3 launch.py --port 8091     # if 8090 is taken
 python3 launch.py --no-browser
 ```
@@ -83,10 +83,10 @@ Mixing is fine: a program started in a terminal shows as purple, and **Start all
 The MuJoCo simulator opens in its own window: to show it in a presentation, share the
 whole screen rather than the browser tab.
 
-## The new page (trial): http://127.0.0.1:8090/v5
+## The new page (default): http://127.0.0.1:8090 (= /v5)
 
-On the `try/launcher-ui` branch the launcher also serves a new page at **/v5**, built from the
-EEPY design system. The page at **/** above stays as it is. The new page goes through a session
+On the `try/launcher-ui` branch the launcher opens a new page at **/** (it sends you to **/v5**), built from the
+EEPY design system. The old page described above is still there at **/v1**. The new page goes through a session
 step by step:
 
 | Screen | What it does |

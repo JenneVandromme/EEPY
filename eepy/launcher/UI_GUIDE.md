@@ -227,7 +227,7 @@ Fino ad allora tutto resta su questo computer.
 
 ## 9. La pagina nuova: `/v5`
 
-`python3 launch.py`, poi **http://127.0.0.1:8090/v5**. La pagina vecchia su `/` resta com'era.
+`python3 launch.py`, poi **http://127.0.0.1:8090** (porta a `/v5`, la pagina predefinita). La pagina vecchia resta com'era su **`/v1`**.
 
 - **File:** `static/v5/index.html` (la cornice), `app.css` (tutti gli stili, presi dalle schermate della
   proposta e limitati per schermata con `main.scr-<nome>`), `js/` (nessun build step: basta ricaricare):

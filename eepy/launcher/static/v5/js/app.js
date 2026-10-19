@@ -90,7 +90,7 @@
     nav.innerHTML = '<div class="ds-nav__bar"><div class="ds-nav__brand"><a href="#/" aria-label="EEPY, back to Home" class="brandlink"><img src="img/eepy-mark.svg" alt="" width="26" height="26">EEPY</a></div>'
       + '<nav class="ds-nav__links" aria-label="Main">' + link("#/", "Home", "home") + link("#/setup", "Run a session", "run")
       + link("#/sessions", "Analyze", "analyze") + link("#/advanced", "Advanced tools", "advanced") + "</nav>"
-      + '<div class="ds-nav__actions"><span id="nav-session"></span><a class="nav-old" href="/">Current launcher</a></div></div>';
+      + '<div class="ds-nav__actions"><span id="nav-session"></span><a class="nav-old" href="/v1">Old launcher (v1)</a></div></div>';
     updateNav();
   }
   // A session is recording: a way back to it from every screen.

@@ -246,8 +246,10 @@ def test_the_page_and_the_api(tmp_path):
             return json.load(exc)
 
     try:
-        assert b"EEPY" in urllib.request.urlopen(base + "/").read()
-        assert b"EEPY" in urllib.request.urlopen(base + "/v5").read()          # the new UI, next to the old one
+        with urllib.request.urlopen(base + "/") as response:                 # the new UI is the default
+            assert response.url.endswith("/v5/") and b"EEPY" in response.read()
+        assert b"EEPY" in urllib.request.urlopen(base + "/v5").read()
+        assert b"/api/status" in urllib.request.urlopen(base + "/v1").read()   # the old page, kept as v1
         assert b"window.icon" in urllib.request.urlopen(base + "/v5/ds/icons.js").read()
         status = json.load(urllib.request.urlopen(base + "/api/status"))
         assert status["needed"] == ["panel", "vision"] and status["parts"]["panel"]["state"] == "stopped"
@@ -271,7 +273,7 @@ def test_the_v5_page_serves_only_its_own_files():
     assert v5_file("/v5/") is not None and v5_file("/v5/").name == "index.html"
     assert v5_file("/v5/js/app.js") is not None and v5_file("/v5/fonts/inter-latin.woff2") is not None
     assert v5_file("/v5/../__main__.py") is None          # outside static/v5
-    assert v5_file("/v5/../index.html") is None           # the old page is served at / only
+    assert v5_file("/v5/../index.html") is None           # the old page is served at /v1 only
     assert v5_file("/v5/nothing-here.js") is None
 
 

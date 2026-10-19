@@ -23,8 +23,8 @@ from urllib.parse import parse_qs, urlparse
 
 from .parts import DAEMON_PORT, LogBook, Part, Settings, make_parts, port_open, relay_port, robot_host
 
-PAGE = Path(__file__).with_name("static") / "index.html"
-V5 = Path(__file__).with_name("static") / "v5"        # the new UI (try/launcher-ui), next to the old page
+PAGE = Path(__file__).with_name("static") / "index.html"   # the old page, served at /v1
+V5 = Path(__file__).with_name("static") / "v5"        # the new UI (try/launcher-ui), the default at /
 V5_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
             ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
             ".woff2": "font/woff2"}
@@ -174,13 +174,13 @@ def _handler(launcher: Launcher):
 
         def do_GET(self) -> None:
             url = urlparse(self.path)
-            if url.path == "/":
-                self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
-            elif url.path == "/v5":
-                self.send_response(301)
+            if url.path in ("/", "/v5"):                            # the new UI is the default
+                self.send_response(302)
                 self.send_header("Location", "/v5/")
                 self.send_header("Content-Length", "0")
                 self.end_headers()
+            elif url.path in ("/v1", "/v1/"):                       # the old page, kept as v1
+                self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
             elif url.path.startswith("/v5/"):
                 found = v5_file(url.path)
                 if found is None:
