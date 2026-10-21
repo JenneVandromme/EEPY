@@ -23,7 +23,20 @@ from urllib.parse import parse_qs, urlparse
 
 from .parts import DAEMON_PORT, LogBook, Part, Settings, make_parts, port_open, relay_port, robot_host
 
-PAGE = Path(__file__).with_name("static") / "index.html"
+PAGE = Path(__file__).with_name("static") / "index.html"   # the old page, served at /v1
+V5 = Path(__file__).with_name("static") / "v5"        # the new UI (try/launcher-ui), the default at /
+V5_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+            ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+            ".woff2": "font/woff2"}
+
+
+def v5_file(path: str) -> Optional[Path]:
+    """The file under static/v5 that /v5/<path> asks for, or None (outside the folder, or not a page asset)."""
+    root = V5.resolve()
+    target = (root / (path[len("/v5/"):] or "index.html")).resolve()
+    if root not in target.parents or not target.is_file() or target.suffix not in V5_TYPES:
+        return None
+    return target
 
 
 class Launcher:
@@ -161,8 +174,19 @@ def _handler(launcher: Launcher):
 
         def do_GET(self) -> None:
             url = urlparse(self.path)
-            if url.path == "/":
+            if url.path in ("/", "/v5"):                            # the new UI is the default
+                self.send_response(302)
+                self.send_header("Location", "/v5/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif url.path in ("/v1", "/v1/"):                       # the old page, kept as v1
                 self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+            elif url.path.startswith("/v5/"):
+                found = v5_file(url.path)
+                if found is None:
+                    self._json({"error": "not found"}, 404)
+                else:
+                    self._send(200, found.read_bytes(), V5_TYPES[found.suffix])
             elif url.path == "/api/status":
                 self._json(launcher.status())
             elif url.path == "/api/rewards/sessions":
@@ -176,6 +200,35 @@ def _handler(launcher: Launcher):
                 since = int(query.get("since", ["0"])[0] or 0)
                 rows, last = launcher.logs.since(since, query.get("part", [None])[0] or None)
                 self._json({"lines": rows, "last": last})
+            elif url.path.startswith("/api/v5/"):                  # the /v5 page's own calls (v5api.py)
+                self._v5_get(url.path[len("/api/v5/"):], parse_qs(url.query))
+            else:
+                self._json({"error": "not found"}, 404)
+
+        def _v5_get(self, path: str, query: Dict[str, List[str]]) -> None:
+            from . import v5api
+            arg = lambda name: (query.get(name, [""])[0] or "").strip()   # noqa: E731
+            if path.startswith("panel/"):
+                code, data = v5api.panel(launcher.settings, "GET", path[len("panel/"):])
+                self._json(data, code)
+            elif path == "volume":
+                code, data = v5api.volume(launcher.settings, "GET")
+                self._json(data, code)
+            elif path == "sessions":
+                self._json({"sessions": v5api.sessions(v5api.SESSIONS, arg("participant") or None)})
+            elif path == "session":
+                found = v5api.detail(v5api.SESSIONS, arg("name"))
+                self._json(found if found is not None else {"error": "no such session"}, 200 if found else 404)
+            elif path == "progress":
+                self._json(v5api.progress(v5api.SESSIONS, arg("participant")))
+            elif path == "model":
+                self._json(v5api.model())
+            elif path == "frame.jpg":
+                picture = v5api.frame(launcher.settings)
+                if picture is None:
+                    self._json({"error": "no picture"}, 404)
+                else:
+                    self._send(200, picture, "image/jpeg")
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -184,6 +237,19 @@ def _handler(launcher: Launcher):
             try:
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+                if not isinstance(body, dict):
+                    raise ValueError("the body must be a JSON object")
+                if path.startswith("/api/v5/"):                      # the /v5 page's own calls (v5api.py)
+                    from . import v5api
+                    sub = path[len("/api/v5/"):]
+                    if sub.startswith("panel/"):
+                        code, data = v5api.panel(launcher.settings, "POST", sub[len("panel/"):], body)
+                    elif sub == "volume":
+                        code, data = v5api.volume(launcher.settings, "POST", body)
+                    else:
+                        code, data = 404, {"error": "not found"}
+                    self._json(data, code)
+                    return
                 part = body.get("part")
                 if path in ("/api/start", "/api/stop", "/api/restart") and part not in launcher.parts:
                     raise ValueError(f"unknown part: {part!r}")

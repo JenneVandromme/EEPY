@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Eepy home</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn:hover{transform:translateY(-2px)}
+.ds-btn--primary:hover{box-shadow:var(--glow-focus)}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-16px) rotate(2deg)}}
+@keyframes glow{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:.7;transform:scale(1.08)}}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.bob{animation:bob 3.4s ease-in-out infinite}
+.glow{animation:glow 3.4s ease-in-out infinite}
+.rise{animation:rise .7s ease-out both}
+.rise2{animation:rise .7s .25s ease-out both}
+@media (prefers-reduced-motion: reduce){.bob,.glow,.rise,.rise2{animation:none}.ds-btn{transition:none}.ds-btn:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1280px; height: 820px; box-sizing: border-box; background: radial-gradient(760px 520px at 50% 46%, color-mix(in srgb, var(--atmosphere-glow) 32%, transparent), transparent 70%), radial-gradient(900px 500px at 50% 120%, color-mix(in srgb, var(--atmosphere-mid) 40%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <main style="flex: 1; display: grid; grid-template-columns: 400px 1fr; gap: 48px; align-items: center; padding: 0 100px;">
+    <div style="position: relative; width: 400px; height: 420px; display: flex; align-items: center; justify-content: center;">
+      <span class="glow" aria-hidden="true" style="position: absolute; width: 300px; height: 300px; border-radius: var(--radius-full); background: radial-gradient(circle, var(--time-focus), var(--time-focus-start) 55%, transparent 72%); filter: blur(50px);"></span>
+      <span aria-hidden="true" style="position: absolute; bottom: 40px; width: 170px; height: 20px; border-radius: var(--radius-full); background: var(--atmosphere-deep); filter: blur(10px); opacity: .7;"></span>
+      <img class="bob" src="/_blob/733279fc28a034b83093d893750ae138" alt="Eepy waving hello" style="position: relative; width: 290px; height: 290px; object-fit: contain;">
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: var(--space-xl);">
+      <section class="rise" aria-label="Eepy says hello" style="position: relative; align-self: flex-start; width: 100%; max-width: 640px; box-sizing: border-box; padding: 32px 36px; border-radius: var(--radius-xxl); background: var(--surface-1); border: 1px solid var(--hairline-strong);">
+        <span aria-hidden="true" style="position: absolute; left: -12px; top: 70px; width: 24px; height: 24px; transform: rotate(45deg); background: var(--surface-1); border-left: 1px solid var(--hairline-strong); border-bottom: 1px solid var(--hairline-strong);"></span>
+        <div style="display: flex; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-md);">
+          <span class="caption" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px var(--space-sm); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink);"><x-import component-from-global-scope="DesignSystem.Icon" name="{{timeIcon}}" size="{{small}}"></x-import>{{timeLabel}}</span>
+          <span class="caption" style="color: var(--ink-muted);">Eepy, your study buddy</span>
+        </div>
+        <h1 class="display-lg" style="margin: 0;">{{greeting}}</h1>
+        <p class="body-lg" style="margin: var(--space-sm) 0 var(--space-lg); color: var(--ink-muted);">Shall we study together? Here's how I'll help:</p>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-xs);">
+          <div style="display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-md); border-radius: var(--radius-lg); background: var(--surface-2);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center; color: var(--time-focus-start);"><x-import component-from-global-scope="DesignSystem.Icon" name="BookOpen" size="{{small}}"></x-import></span><span class="body-sm">I keep you company while you work</span></div>
+          <div style="display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-md); border-radius: var(--radius-lg); background: var(--surface-2);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center; color: var(--time-focus-start);"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{small}}"></x-import></span><span class="body-sm">I notice when your focus slips</span></div>
+          <div style="display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-md); border-radius: var(--radius-lg); background: var(--surface-2);"><span style="display: inline-flex; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--surface-1); align-items: center; justify-content: center; color: var(--time-break);"><x-import component-from-global-scope="DesignSystem.Icon" name="Coffee" size="{{small}}"></x-import></span><span class="body-sm">I suggest a break at the right time</span></div>
+        </div>
+      </section>
+
+      <div class="rise2" style="display: flex; align-items: flex-start; gap: var(--space-md);">
+        <a href="V5-S1-Setup.dc.html" class="ds-btn ds-btn--primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-xs); padding: 0 28px; height: 52px; font-size: 16px; box-shadow: var(--glow-focus);"><span class="ds-btn__label">Start a session</span><x-import component-from-global-scope="DesignSystem.Icon" name="ArrowRight" size="{{small}}"></x-import></a>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <a href="V5-S2a-Starting.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-xs); height: 52px; padding: 0 22px; border: 1px solid var(--hairline-strong);"><x-import component-from-global-scope="DesignSystem.Icon" name="Play" size="{{small}}"></x-import><span class="ds-btn__label">Same as last time</span></a>
+          
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer style="padding: var(--space-md) 120px var(--space-xl); display: flex; align-items: center; gap: var(--space-md);">
+    <x-import component-from-global-scope="DesignSystem.Badge" tone="error">My camera isn't set up</x-import>
+    <span class="body-sm" style="color: var(--ink-muted);">No worries, I'll show you the fix in set up.</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"time":{"editor":"enum","options":["morning","afternoon","evening"],"default":"afternoon"},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+var t = this.props.time ?? 'afternoon';
+var g = { morning: 'Good morning!', afternoon: 'Good afternoon!', evening: 'Good evening!' };
+var ic = { morning: 'Coffee', afternoon: 'BookOpen', evening: 'BedDouble' };
+var lb = { morning: 'Morning · 09:12', afternoon: 'Afternoon · 15:04', evening: 'Evening · 20:47' };
+return {
+brand: brand,
+greeting: g[t], timeIcon: ic[t], timeLabel: lb[t], small: 16, tiny: 14,
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html', current: true },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html' },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

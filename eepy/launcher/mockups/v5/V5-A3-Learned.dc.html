@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Analyze: what I learned</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.atabs{display:flex;gap:4px;padding:4px;border-radius:var(--radius-pill);background:var(--surface-1);border:1px solid var(--hairline-soft)}
+.atab{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-pill);color:var(--ink-muted);text-decoration:none;font-size:14px;font-weight:500;transition:background .2s ease, color .2s ease}
+.atab:hover{color:var(--ink);background:var(--hairline)}
+.atab.is-on{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--hairline-strong)}
+.golink{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-md) var(--space-lg);border-radius:var(--radius-xl);background:color-mix(in srgb, var(--surface-1) 80%, transparent);backdrop-filter:blur(16px);border:1px solid var(--hairline);color:var(--ink);text-decoration:none;transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
+.golink:hover{transform:translateY(-3px);box-shadow:var(--shadow-float);border-color:var(--hairline-strong);color:var(--ink)}
+.golink__ic{display:inline-flex;width:40px;height:40px;border-radius:var(--radius-full);background:var(--surface-2);align-items:center;justify-content:center;color:var(--energy-high);flex:none}
+.card{background:var(--surface-1);border:1px solid var(--hairline-soft);border-radius:var(--radius-xl);padding:24px;display:flex;flex-direction:column;gap:var(--space-sm)}
+.sit{display:flex;flex-direction:column;gap:var(--space-xxs);padding:20px 22px;border-radius:var(--radius-xl);background:var(--surface-1);border:1px solid var(--hairline-strong);color:var(--ink);text-decoration:none;transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease}
+.sit:hover{transform:translateY(-2px);border-color:var(--ink-muted);color:var(--ink)}
+.sit.is-on{border-color:var(--accent-blue);box-shadow:0 0 0 1px var(--accent-blue)}
+.sic{display:inline-flex;width:40px;height:40px;flex:none;border-radius:var(--radius-full);background:var(--surface-2);align-items:center;justify-content:center}
+.mrow{display:grid;grid-template-columns:240px 1fr 130px 190px;gap:var(--space-md);align-items:center;padding:var(--space-xs) 0;border-bottom:1px solid var(--hairline-soft)}
+@media (prefers-reduced-motion: reduce){.ds-btn,.atab,.sit{transition:none}.sit:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1280px; height: 1080px; box-sizing: border-box; background: radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--atmosphere-glow) 30%, transparent), transparent 70%), radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--atmosphere-mid) 35%, transparent), transparent 70%), var(--canvas); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+  <div style="padding: var(--space-lg) 80px 0; display: flex; align-items: flex-end; gap: var(--space-md);"><nav class="atabs" aria-label="Analyze"><a href="V5-A1-Sessions.dc.html" class="atab"><x-import component-from-global-scope="DesignSystem.Icon" name="AlarmClock" size="{{tabIcon}}"></x-import>Sessions</a><a href="V5-A2-Story.dc.html" class="atab"><x-import component-from-global-scope="DesignSystem.Icon" name="Search" size="{{tabIcon}}"></x-import>Session story</a><a href="V5-A3-Learned.dc.html" class="atab is-on" aria-current="page"><x-import component-from-global-scope="DesignSystem.Icon" name="AlarmClock" size="{{tabIcon}}"></x-import>What I learned</a></nav><div style="flex: 1;"></div><div style="width: 170px;"><x-import component-from-global-scope="DesignSystem.Select" label="Participant" options="{{people}}" default-value="P05"></x-import></div></div>
+
+  <main style="flex: 1; padding: var(--space-lg) 80px var(--space-lg); display: flex; flex-direction: column; gap: var(--space-lg); min-height: 0;">
+    <header style="display: flex; align-items: flex-end; gap: var(--space-lg);">
+      <img src="/_blob/1eba8738003ec9cc2d3cfb0f7a904f42" alt="" style="width: 84px; height: 84px; object-fit: contain;">
+      <div style="display: flex; flex-direction: column; gap: var(--space-xs);"><h1 class="display-md" style="margin: 0;">What works for P05</h1><span class="body-lg" style="color: var(--ink-muted);">I tried my moves in three kinds of moments. Pick one to see every move I compared.</span></div>
+    </header>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md);">
+      <a href="#" class="{{cls_tired}}">
+        <div style="display: flex; align-items: center; gap: var(--space-sm);"><span class="sic"><x-import component-from-global-scope="DesignSystem.Icon" name="BedDouble" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><b class="body">Tired, before 23:00</b><span class="caption" style="color: var(--ink-muted);">when P05 gets sleepy · 13 tries</span></span></div>
+        <span class="caption" style="color: var(--ink-muted); margin-top: var(--space-xs);">What works best</span>
+        <span class="headline">The spoken rest check</span>
+        <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-sm);"><span style="color: var(--success); font-weight: 700;">helps a lot</span><span style="color: var(--ink-muted);">·</span><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span></span><span style="color: var(--ink-muted);">quite sure</span></div>
+      </a><a href="#" class="{{cls_early}}">
+        <div style="display: flex; align-items: center; gap: var(--space-sm);"><span class="sic"><x-import component-from-global-scope="DesignSystem.Icon" name="Zap" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><b class="body">Distracted, early on</b><span class="caption" style="color: var(--ink-muted);">when P05 drifts off · 9 tries</span></span></div>
+        <span class="caption" style="color: var(--ink-muted); margin-top: var(--space-xs);">What works best</span>
+        <span class="headline">The wordless glance</span>
+        <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-sm);"><span style="color: var(--success); font-weight: 700;">helps a little</span><span style="color: var(--ink-muted);">·</span><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span></span><span style="color: var(--ink-muted);">quite sure</span></div>
+      </a><a href="#" class="{{cls_late}}">
+        <div style="display: flex; align-items: center; gap: var(--space-sm);"><span class="sic"><x-import component-from-global-scope="DesignSystem.Icon" name="Coffee" size="{{icon}}"></x-import></span><span style="display: flex; flex-direction: column;"><b class="body">Distracted, after 45 min</b><span class="caption" style="color: var(--ink-muted);">when P05 has worked a long time · 6 tries</span></span></div>
+        <span class="caption" style="color: var(--ink-muted); margin-top: var(--space-xs);">What works best</span>
+        <span class="headline">The break offer</span>
+        <div class="body-sm" style="display: flex; align-items: center; gap: var(--space-sm);"><span style="color: var(--success); font-weight: 700;">helps a lot</span><span style="color: var(--ink-muted);">·</span><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span><span style="color: var(--ink-muted);">fairly sure</span></div>
+      </a>
+    </div>
+
+    <sc-if value="{{is_tired}}" hint-placeholder-val="{{ true }}">
+      <section class="card">
+        <div style="display: flex; align-items: baseline; gap: var(--space-sm);"><span class="headline" style="flex: 1;">Tired, before 23:00: every move I tried</span><span class="caption" style="color: var(--ink-muted);">13 tries so far</span></div>
+        <div class="mrow caption" style="color: var(--ink-muted); padding-bottom: 0;"><span>Move</span><span style="display: flex; justify-content: space-between;"><span>← makes it worse</span><span>helps →</span></span><span>Effect</span><span>How sure I am</span></div>
+        <div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The tired look</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 7%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">about no effect</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 3 tries</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The yawn at you</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 10%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a little</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 4 tries</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);"><b>The spoken rest check</b><span class="micro" style="padding: 2px 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--success) 18%, var(--surface-2)); color: var(--success); font-weight: 600;">best</span></span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 29%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success); box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 3px var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a lot</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span></span>quite sure · 5 tries</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The wind-down deal</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 15%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a little</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>still guessing · 1 try</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">Saying time to rest</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 30%; right: 30%; top: 4px; height: 12px; border-radius: var(--radius-pill); border: 1px dashed var(--hairline-strong);"></span></span>
+          <span class="body-sm" style="color: var(--ink-muted);">not tried yet</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>not tried yet</span>
+        </div>
+        <span class="caption" style="color: var(--ink-muted);">Waiting and doing nothing counts as a bad result for me: I only wait when no move is allowed right now.</span>
+      </section>
+    </sc-if>    <sc-if value="{{is_early}}" hint-placeholder-val="{{ false }}">
+      <section class="card">
+        <div style="display: flex; align-items: baseline; gap: var(--space-sm);"><span class="headline" style="flex: 1;">Distracted, early on: every move I tried</span><span class="caption" style="color: var(--ink-muted);">9 tries so far</span></div>
+        <div class="mrow caption" style="color: var(--ink-muted); padding-bottom: 0;"><span>Move</span><span style="display: flex; justify-content: space-between;"><span>← makes it worse</span><span>helps →</span></span><span>Effect</span><span>How sure I am</span></div>
+        <div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);"><b>The wordless glance</b><span class="micro" style="padding: 2px 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--success) 18%, var(--surface-2)); color: var(--success); font-weight: 600;">best</span></span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 18%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success); box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 3px var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a little</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span></span>quite sure · 4 tries</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The curious look</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 8%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a little</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 3 tries</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The spoken check</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 2%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">about no effect</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 2 tries</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The break offer</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 30%; right: 30%; top: 4px; height: 12px; border-radius: var(--radius-pill); border: 1px dashed var(--hairline-strong);"></span></span>
+          <span class="body-sm" style="color: var(--ink-muted);">not tried yet</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>not tried yet</span>
+        </div>
+        <span class="caption" style="color: var(--ink-muted);">Waiting and doing nothing counts as a bad result for me: I only wait when no move is allowed right now.</span>
+      </section>
+    </sc-if>    <sc-if value="{{is_late}}" hint-placeholder-val="{{ false }}">
+      <section class="card">
+        <div style="display: flex; align-items: baseline; gap: var(--space-sm);"><span class="headline" style="flex: 1;">Distracted, after 45 min: every move I tried</span><span class="caption" style="color: var(--ink-muted);">6 tries so far</span></div>
+        <div class="mrow caption" style="color: var(--ink-muted); padding-bottom: 0;"><span>Move</span><span style="display: flex; justify-content: space-between;"><span>← makes it worse</span><span>helps →</span></span><span>Effect</span><span>How sure I am</span></div>
+        <div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The wordless glance</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 2%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">about no effect</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 1 try</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The curious look</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 6%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">about no effect</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 1 try</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);">The spoken check</span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 10%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a little</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 1 try</span>
+        </div><div class="mrow">
+          <span class="body-sm" style="display: flex; align-items: center; gap: var(--space-xs);"><b>The break offer</b><span class="micro" style="padding: 2px 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--success) 18%, var(--surface-2)); color: var(--success); font-weight: 600;">best</span></span>
+          <span style="position: relative; height: 20px;"><span style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--hairline-strong);"></span><span style="position: absolute; left: 50%; width: 25%; top: 4px; height: 12px; border-radius: var(--radius-pill); background: var(--success); box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 3px var(--success);"></span></span>
+          <span class="body-sm" style="color: var(--ink);">helps a lot</span>
+          <span class="caption" style="display: flex; align-items: center; gap: var(--space-xs); color: var(--ink-muted);"><span style="display: inline-flex; gap: 3px;" aria-hidden="true"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink);"></span><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--hairline-strong);"></span></span>fairly sure · 3 tries</span>
+        </div>
+        <span class="caption" style="color: var(--ink-muted);">Waiting and doing nothing counts as a bad result for me: I only wait when no move is allowed right now.</span>
+      </section>
+    </sc-if>
+  </main>
+
+  <footer style="padding: var(--space-md) 80px; display: flex; align-items: center; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 75%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--hairline);">
+    <span style="color: var(--ink-muted); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{icon}}"></x-import></span>
+    <span class="body-sm" style="color: var(--ink-muted);">Nothing learned yet for <b style="color: var(--ink);">tired after 23:00</b> and <b style="color: var(--ink);">unclear moments</b>: there I use my first guesses.</span>
+    <div style="flex: 1;"></div>
+    <x-import component-from-global-scope="DesignSystem.Button" variant="secondary" icon="X" icon-position="start">Forget what I learned</x-import>
+  </footer>
+
+  <sc-if value="{{confirm}}" hint-placeholder-val="{{ false }}">
+    <x-import component-from-global-scope="DesignSystem.Modal" open="{{confirm}}" on-close="{{noop}}" portal="{{no}}" title="Forget everything I learned about P05?" description="I'll go back to my first guesses for P05. Their recorded sessions stay safe, only my learning is wiped. This can't be undone." image="/_blob/5b958025008d52f4c88775c71cb9ceca" actions="{{actions}}"></x-import>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"situation":{"editor":"enum","options":["tired","early","late"],"default":"tired"},"confirmForget":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1080}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+var DS = window.DesignSystem;
+var actions = (R && DS) ? R.createElement(R.Fragment, null,
+  R.createElement(DS.Button, { variant: 'secondary' }, 'Keep it'),
+  R.createElement(DS.Button, { variant: 'primary' }, 'Forget P05')) : null;
+var sit = this.props.situation ?? 'tired';
+return {
+brand: brand,
+icon: 18, tabIcon: 16, no: false,
+is_tired: sit === 'tired', is_early: sit === 'early', is_late: sit === 'late',
+cls_tired: sit === 'tired' ? 'sit is-on' : 'sit', cls_early: sit === 'early' ? 'sit is-on' : 'sit', cls_late: sit === 'late' ? 'sit is-on' : 'sit',
+confirm: this.props.confirmForget ?? false,
+noop: function () {},
+actions: actions,
+people: [{ value: 'P01', label: 'P01' }, { value: 'P02', label: 'P02' }, { value: 'P03', label: 'P03' }, { value: 'P05', label: 'P05' }],
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html' },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html', current: true },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

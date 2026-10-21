@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Session: something did not start</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}a:hover{color:var(--ink)}
+.ds-btn{transition:transform .15s ease, box-shadow .2s ease, background .2s ease}
+.ds-btn:hover{transform:translateY(-2px)}
+.ds-btn--primary:hover{box-shadow:var(--glow-focus)}
+@media (prefers-reduced-motion: reduce){.ds-btn{transition:none}.ds-btn:hover{transform:none}}
+</style>
+</helmet>
+<div class="ds-text" style="position: relative; overflow: hidden; width: 1280px; height: 800px; box-sizing: border-box; background: radial-gradient(700px 520px at 50% 45%, color-mix(in srgb, var(--atmosphere-glow) 22%, transparent), transparent 70%), var(--atmosphere-deep); color: var(--ink); font-family: var(--font-text); display: flex; flex-direction: column;">
+  <x-import component-from-global-scope="DesignSystem.TopNav" brand="{{brand}}" links="{{links}}"></x-import>
+
+  <main style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-lg); padding: 0 120px; text-align: center;">
+    <div style="position: relative; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
+      <svg width="200" height="200" viewBox="0 0 200 200" aria-hidden="true" style="position: absolute; inset: 0;"><circle cx="100" cy="100" r="92" fill="none" style="stroke: var(--time-track);" stroke-width="6"></circle><circle cx="100" cy="100" r="92" fill="none" style="stroke: var(--error);" stroke-width="6" stroke-linecap="round" stroke-dasharray="385 578" transform="rotate(-90 100 100)"></circle></svg>
+      <img src="/_blob/debdcd9d3b80ea5212334139b6ae736f" alt="Eepy in a builder's hat" style="position: relative; width: 130px; height: 130px; object-fit: contain;">
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: var(--space-xs);">
+      <span class="caption" style="color: var(--error); letter-spacing: .06em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px;"><x-import component-from-global-scope="DesignSystem.Icon" name="CircleAlert" size="{{tiny}}"></x-import>Run a session · step 2 of 3 · waking up</span>
+      <h1 class="display-md" style="margin: 0;">I couldn't open my eyes.</h1>
+      <span class="body-lg" style="color: var(--ink-muted); max-width: 640px;">My camera program did not come up in time, so I didn't open the session. My body and control panel are ready.</span>
+    </div>
+
+    <ol style="display: flex; gap: var(--space-sm); list-style: none; margin: 0; padding: 0;">
+      <li class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1);"><span style="color: var(--success); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{small}}"></x-import></span>My body</li>
+      <li class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1);"><span style="color: var(--success); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="Check" size="{{small}}"></x-import></span>My control panel</li>
+      <li class="body-sm" style="display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); background: var(--surface-1); border: 1px solid var(--error);"><span style="color: var(--error); display: inline-flex;"><x-import component-from-global-scope="DesignSystem.Icon" name="X" size="{{small}}"></x-import></span>My eyes</li>
+    </ol>
+
+    <section style="width: 100%; max-width: 760px; box-sizing: border-box; text-align: left; padding: var(--space-lg) 24px; border-radius: var(--radius-xl); background: var(--surface-1); border: 1px solid var(--hairline); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg);">
+      <div style="display: flex; flex-direction: column; gap: var(--space-xs);">
+        <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">Try this</span>
+        <span class="body-sm"><b>1</b> Close other apps that use the camera</span>
+        <span class="body-sm"><b>2</b> Check the camera choice in Advanced tools</span>
+        <span class="body-sm"><b>3</b> Try again</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-xs);">
+        <span class="caption" style="color: var(--ink-muted); letter-spacing: .06em; text-transform: uppercase;">What my log says</span>
+        <span class="caption" style="padding: var(--space-sm); border-radius: var(--radius-md); background: var(--surface-2); font-family: ui-monospace, Menlo, monospace; line-height: 1.5;">My eyes did not come up within 90 s (see its log). The rest was not started.</span>
+        <a href="V5-Advanced.dc.html" class="caption">Open the full log</a>
+      </div>
+    </section>
+  </main>
+
+  <footer style="padding: var(--space-md) 80px; display: flex; align-items: center; gap: var(--space-md); background: color-mix(in srgb, var(--surface-1) 75%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--hairline);">
+    <a href="V5-S1-Setup.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none;"><span class="ds-btn__label">Back to set up</span></a>
+    <a href="V5-S2-Control.dc.html" class="ds-btn ds-btn--secondary" style="text-decoration: none;"><span class="ds-btn__label">Go on without my eyes</span></a>
+    <span class="caption" style="color: var(--ink-muted);">Then only you decide when I step in.</span>
+    <div style="flex: 1;"></div>
+    <a href="V5-S2a-Starting.dc.html" class="ds-btn ds-btn--primary" style="text-decoration: none; box-shadow: var(--glow-focus);"><span class="ds-btn__label">Try again</span></a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+var R = window.React;
+var brand = R ? R.createElement('a', { href: 'V5-Home.dc.html', 'aria-label': 'Eepy, back to Home', style: { display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'inherit', textDecoration: 'none' } },
+  R.createElement('img', { src: '/_blob/6981a4c8b945761fb5624d42c711735e', alt: '', width: 26, height: 26 }), 'Eepy') : 'Eepy';
+return {
+brand: brand,
+small: 16, tiny: 12,
+links: [
+  { label: 'Home', href: 'V5-Home.dc.html' },
+  { label: 'Run a session', href: 'V5-S1-Setup.dc.html', current: true },
+  { label: 'Analyze', href: 'V5-A1-Sessions.dc.html' },
+  { label: 'Advanced tools', href: 'V5-Advanced.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,912 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Analizza-1-Scelta.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "D1 · Analizza: domanda e dati",
+      "w": 1280,
+      "x": 0,
+      "y": 4340
+    },
+    "Analizza-2-Risultato.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "D2 · Analizza: risultato",
+      "w": 1280,
+      "x": 1360,
+      "y": 4340
+    },
+    "Flusso.dc.html": {
+      "h": 980,
+      "page": "v2",
+      "title": "B · Mappa dei percorsi",
+      "w": 1600,
+      "x": 1480,
+      "y": 0
+    },
+    "Home.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "C0 · Home: cosa vuoi fare?",
+      "w": 1280,
+      "x": 0,
+      "y": 3120
+    },
+    "Main.dc.html": {
+      "h": 820,
+      "page": "v1",
+      "title": "1 · Oggi: Overview com'è adesso (problemi numerati)",
+      "w": 1400,
+      "x": 0,
+      "y": 0
+    },
+    "Proposta-Analisi.dc.html": {
+      "h": 1060,
+      "page": "v1",
+      "title": "5 · Proposta: tab di analisi (es. Reward)",
+      "w": 1400,
+      "x": 1480,
+      "y": 1400
+    },
+    "Proposta-Mobile.dc.html": {
+      "h": 844,
+      "page": "v1",
+      "title": "3 · Proposta: schermo stretto",
+      "w": 390,
+      "x": 2960,
+      "y": 0
+    },
+    "Proposta-Overview.dc.html": {
+      "h": 980,
+      "page": "v1",
+      "title": "2 · Proposta: Overview",
+      "w": 1400,
+      "x": 1480,
+      "y": 0
+    },
+    "Proposta-Situazioni.dc.html": {
+      "h": 900,
+      "page": "v1",
+      "title": "4 · Proposta: situazioni (conferme, avvio, errori)",
+      "w": 1400,
+      "x": 0,
+      "y": 1400
+    },
+    "Sessione-1-Prepara.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "C1 · Sessione: prepara",
+      "w": 1280,
+      "x": 1360,
+      "y": 3120
+    },
+    "Sessione-2-Avvio.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "C2 · Sessione: avvio",
+      "w": 1280,
+      "x": 2720,
+      "y": 3120
+    },
+    "Sessione-3a-Codice.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "C3a · Sessione: codice partecipante",
+      "w": 1280,
+      "x": 4080,
+      "y": 3120
+    },
+    "Sessione-3b-InCorso.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "C3b · Sessione: in corso",
+      "w": 1280,
+      "x": 5440,
+      "y": 3120
+    },
+    "Sessione-4-Chiusura.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v2",
+      "title": "C4 · Sessione: chiusura e riepilogo",
+      "w": 1280,
+      "x": 6800,
+      "y": 3120
+    },
+    "Usabilita.dc.html": {
+      "h": 2700,
+      "page": "v2",
+      "title": "A · Analisi di usabilità",
+      "w": 1400,
+      "x": 0,
+      "y": 0
+    },
+    "V3-A1-Start.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "A1 · Analyze: what do you want to know?",
+      "w": 1280,
+      "x": 0,
+      "y": 2680
+    },
+    "V3-A2-Story.dc.html": {
+      "h": 1200,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "A2 · Analyze: session story + why (explainable AI)",
+      "w": 1440,
+      "x": 1360,
+      "y": 2680
+    },
+    "V3-A3-Learned.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "A3 · Analyze: what EEPY learned about a participant",
+      "w": 1280,
+      "x": 2880,
+      "y": 2680
+    },
+    "V3-A4-Simulate.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "A4 · Analyze: try with simulated people",
+      "w": 1280,
+      "x": 4240,
+      "y": 2680
+    },
+    "V3-Feedback.dc.html": {
+      "h": 1040,
+      "page": "v3",
+      "title": "★ Il tuo spazio per le modifiche",
+      "w": 1400,
+      "x": 1680,
+      "y": 0
+    },
+    "V3-Home.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "H · Home",
+      "w": 1280,
+      "x": 0,
+      "y": 1460
+    },
+    "V3-S1-Setup.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "S1 · Session: set up",
+      "w": 1280,
+      "x": 1360,
+      "y": 1460
+    },
+    "V3-S2-Starting.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "S2 · Session: starting",
+      "w": 1280,
+      "x": 2720,
+      "y": 1460
+    },
+    "V3-S3-Participant.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "S3 · Session: participant",
+      "w": 1280,
+      "x": 4080,
+      "y": 1460
+    },
+    "V3-S4-Live.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "S4 · Session: live",
+      "w": 1280,
+      "x": 5440,
+      "y": 1460
+    },
+    "V3-S5-WrapUp.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v3",
+      "title": "S5 · Session: wrap up",
+      "w": 1280,
+      "x": 6800,
+      "y": 1460
+    },
+    "V3-Structure.dc.html": {
+      "h": 1040,
+      "page": "v3",
+      "title": "0 · Structure & button priority",
+      "w": 1600,
+      "x": 0,
+      "y": 0
+    },
+    "V4-A1-Sessions.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "A1 · Analyze: start",
+      "w": 1280,
+      "x": 0,
+      "y": 3020
+    },
+    "V4-A2-Story.dc.html": {
+      "h": 1200,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "A2 · Session story + why (real data only)",
+      "w": 1440,
+      "x": 1360,
+      "y": 3020
+    },
+    "V4-A3-Learned.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "A3 · What EEPY learned",
+      "w": 1280,
+      "x": 2880,
+      "y": 3020
+    },
+    "V4-A4-Simulate.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "A4 · Simulated people",
+      "w": 1280,
+      "x": 4240,
+      "y": 3020
+    },
+    "V4-Feedback-yhnj.dc.html": {
+      "h": 1040,
+      "w": 1400,
+      "x": 8640,
+      "y": 0
+    },
+    "V4-Feedback.dc.html": {
+      "h": 1040,
+      "page": "v4",
+      "title": "★ Il tuo spazio per le modifiche",
+      "w": 1400,
+      "x": 1680,
+      "y": 0
+    },
+    "V4-Home.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "H · Home",
+      "w": 1280,
+      "x": 0,
+      "y": 1600
+    },
+    "V4-Map.dc.html": {
+      "h": 1180,
+      "page": "v4",
+      "title": "0 · Flow + where every piece of data comes from",
+      "w": 1600,
+      "x": 0,
+      "y": 0
+    },
+    "V4-S1-Setup.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "S1 · Set up",
+      "w": 1280,
+      "x": 1360,
+      "y": 1600
+    },
+    "V4-S2-Control.dc.html": {
+      "h": 1000,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "S2 · Session = the new control panel (old Wizard panel)",
+      "w": 1440,
+      "x": 2720,
+      "y": 1600
+    },
+    "V4-S3-WrapUp.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v4",
+      "title": "S3 · Wrap up",
+      "w": 1280,
+      "x": 4240,
+      "y": 1600
+    },
+    "V5-A1-Sessions.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "A1 · Sessions · click any session",
+      "w": 1280,
+      "x": 0,
+      "y": 3080
+    },
+    "V5-A2-Story.dc.html": {
+      "h": 1420,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "A2 · Session story · click any circle, strip or card",
+      "w": 1440,
+      "x": 1360,
+      "y": 3080
+    },
+    "V5-A3-Learned.dc.html": {
+      "h": 1080,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "A3 · What works for P05 · Tweaks: situation, confirmForget",
+      "w": 1280,
+      "x": 2880,
+      "y": 3080
+    },
+    "V5-Advanced.dc.html": {
+      "h": 1100,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "X · Advanced tools",
+      "w": 1440,
+      "x": 5600,
+      "y": 3080
+    },
+    "V5-Flow.dc.html": {
+      "h": 1440,
+      "page": "v5",
+      "title": "★ Flow of every screen · write your verdict on each card",
+      "w": 2300,
+      "x": 0,
+      "y": 5100
+    },
+    "V5-Home.dc.html": {
+      "h": 820,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "H · Home · Tweak: time of day",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "V5-S1-Setup.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S1 · Set up · Tweaks: robot, help",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    },
+    "V5-S2-Control.dc.html": {
+      "h": 1120,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2 · Control panel + Live HMM · red = End session · Tweaks: view, mode, problem, log",
+      "w": 1440,
+      "x": 5600,
+      "y": 0
+    },
+    "V5-S2a-Problem.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2a-! · Something didn't start",
+      "w": 1280,
+      "x": 0,
+      "y": 1540
+    },
+    "V5-S2a-Starting.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2a · Waking up (loading only, then S2b)",
+      "w": 1280,
+      "x": 2720,
+      "y": 0
+    },
+    "V5-S2b-1-Face.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-1 · Face check · participant screen, full screen",
+      "w": 1440,
+      "x": 1360,
+      "y": 1540
+    },
+    "V5-S2b-2-Gaze.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-2 · Dots at the screen corners · full screen",
+      "w": 1440,
+      "x": 4400,
+      "y": 1540
+    },
+    "V5-S2b-3-Work.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-3 · One minute of normal work · small window",
+      "w": 1440,
+      "x": 7440,
+      "y": 1540
+    },
+    "V5-S2b-4-Done.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-4 · Calibrated, name the desk",
+      "w": 1440,
+      "x": 10480,
+      "y": 1540
+    },
+    "V5-S2b-5-Skipped.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-5 · Skipped, with a reason",
+      "w": 1440,
+      "x": 12000,
+      "y": 1540
+    },
+    "V5-S2b-6-Problem.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-1! · Face check problem · full screen",
+      "w": 1440,
+      "x": 2880,
+      "y": 1540
+    },
+    "V5-S2b-7-GazeAgain.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-2! · A dot repeats · full screen",
+      "w": 1440,
+      "x": 5920,
+      "y": 1540
+    },
+    "V5-S2b-8-WorkFailed.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-3! · The minute failed twice",
+      "w": 1440,
+      "x": 8960,
+      "y": 1540
+    },
+    "V5-S2b-Calibration.dc.html": {
+      "h": 960,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S2b-0 · Your desk: pick a saved one or teach me · Tweak: choice",
+      "w": 1440,
+      "x": 4080,
+      "y": 0
+    },
+    "V5-S3-WrapUp.dc.html": {
+      "h": 1060,
+      "is_interactive": true,
+      "page": "v5",
+      "title": "S3 · Session complete · Tweaks: ending, confirm",
+      "w": 1440,
+      "x": 7120,
+      "y": 0
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-17T18:10:00Z",
+    "v": 1
+  },
+  "designSystems": [
+    {
+      "artifact": "https://claude.ai/artifact/SnJDd6wrs1wBC9xCbeoerG",
+      "copiedAt": "2026-10-18T10:00:00Z",
+      "namespace": "designsystem",
+      "title": "Design System",
+      "version": "1792272293-ba4f"
+    }
+  ],
+  "launch": {
+    "page": "v5",
+    "view": "canvas"
+  },
+  "notes": {
+    "n1": {
+      "fill": "orange",
+      "maxH": 820,
+      "page": "v1",
+      "text": "Numeri nella schermata 1 (oggi)\n\n1  Sette tab tutti uguali: sessione, analisi e impostazioni mescolate.\n2  Nessuna indicazione di cosa fare dopo Start all (manca: avvia la sessione nel Wizard panel).\n3  Robot e modalità si cambiano solo nel tab Developer; il chip 'mode' non sembra cliccabile.\n4  Errore tecnico: percorso di file e 'README, step 1', nessun comando pronto.\n6  Le card si riscrivono ogni secondo: non si può selezionare il testo del log.\n7  Riquadro log nero alto 150 px anche quando è vuoto.\n8  Start / Stop / Restart sempre visibili, anche quando non servono; Start blu in ogni card compete con Start all.\n9  Il messaggio di esito compare in fondo, lontano dal pulsante premuto.\n10  Stop all non chiede conferma, anche con una sessione in registrazione.",
+      "w": 480,
+      "x": -560,
+      "y": 0
+    },
+    "n2": {
+      "fill": "blue",
+      "maxH": 900,
+      "page": "v1",
+      "text": "Cosa mostrano le proposte\n\nSchermata 2: stato complessivo in alto, robot e modalità visibili, configurazioni pronte, tab divisi in Sessione / Analisi / Impostazioni, guida a 4 passi, card compatte con solo le azioni utili, errore spiegato con il comando da copiare.\n\nSchermata 3: la stessa Overview su un telefono o una finestra stretta.\n\nSchermata 4: conferma prima di fermare una sessione, avanzamento di Avvia tutto, aiuto per il permesso della camera, avviso 'riavvia per applicare'.\n\nSchermata 5: un tab di analisi in linguaggio semplice: prima la sintesi, scenari pronti al posto della sintassi a testo libero, avanzamento con Annulla, tabelle richiudibili.\n\nI valori tra [parentesi] sono segnaposto, non dati veri.",
+      "w": 480,
+      "x": -560,
+      "y": 1400
+    },
+    "note-40kia3": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "S1 - Controlla se devi correggere qualcosa",
+      "w": 240,
+      "x": 1474,
+      "y": 950
+    },
+    "note-4lzu7w": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "Home - Correggimi il riquadro con scritto good afternoon toglimi quell'effetto sfocato tipico dello stile AI, creami\nun pulsante per Same as Last time",
+      "w": 240,
+      "x": 9,
+      "y": 900
+    },
+    "note-7zng1i": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "A4 - Migliorala, troppo confusionaria, capisci se tenere questa pagina",
+      "w": 240,
+      "x": 4271,
+      "y": 4180
+    },
+    "note-a0acd5": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "S2b - Spiega meglio la sezione Why I check the desk",
+      "w": 240,
+      "x": 4580,
+      "y": 985
+    },
+    "note-eyxz21": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "S2b-2 - è importante che la calibrazione per punti avvenga a tutto schermo in modo che gli occhi possano muoversi più di un piccolo riquadro",
+      "w": 240,
+      "x": 1440,
+      "y": 2553
+    },
+    "note-lsuc99": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "A3 - Migliorala, troppo confusionaria",
+      "w": 240,
+      "x": 2880,
+      "y": 4418
+    },
+    "note-n9ttay": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "S2 - Correggi le gerarchi dei blocchi",
+      "w": 240,
+      "x": 5825,
+      "y": 1154
+    },
+    "note-qt4fnr": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "A1 - Controlla che le animazioni dei rettangoli siano corrette",
+      "w": 240,
+      "x": 247,
+      "y": 4105
+    },
+    "note-tvkr7a": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "A2 - Controlla che i pop up con le informazioni aggiuntive escano solo quando ci clicco sopra e poi si possano chiudere",
+      "w": 240,
+      "x": 1382,
+      "y": 4528
+    },
+    "note-xdjh0l": {
+      "bold": false,
+      "kind": "title1",
+      "size": 24,
+      "text": "S3 - Evidenzia che si possa cliccare la parte di analisi e mostra meglio i dati nella sezione analisi",
+      "w": 240,
+      "x": 7271,
+      "y": 1099
+    },
+    "t1": {
+      "kind": "title1",
+      "maxW": 3350,
+      "page": "v1",
+      "text": "Overview: oggi e proposta",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 2880,
+      "page": "v1",
+      "text": "Situazioni e schermate di analisi",
+      "w": 240,
+      "x": 0,
+      "y": 1100
+    },
+    "v2n1": {
+      "fill": "blue",
+      "maxH": 700,
+      "page": "v2",
+      "text": "Come leggere questa pagina\n\nA · L'analisi: compiti, passaggi oggi e nella proposta, problemi trovati e principi della nuova struttura.\n\nB · La mappa: da una domanda iniziale si entra in un percorso; ogni percorso è diviso in passaggi numerati.\n\nC · Le schermate del percorso 'Condurre una sessione', da sinistra a destra. Ogni schermata ha UNA sola azione principale (il pulsante blu) e mostra solo ciò che serve in quel passaggio.\n\nD · Le schermate del percorso 'Analizzare i risultati'.\n\nI valori tra [parentesi] sono segnaposto. È solo una proposta visiva: nessun codice del progetto è stato toccato.",
+      "w": 520,
+      "x": 1480,
+      "y": 1100
+    },
+    "v2t1": {
+      "kind": "title1",
+      "maxW": 3080,
+      "page": "v2",
+      "text": "Analisi di usabilità e mappa dei percorsi",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "v2t2": {
+      "kind": "title1",
+      "maxW": 8000,
+      "page": "v2",
+      "text": "Percorso 1 · Condurre una sessione (clicca Play e segui i pulsanti)",
+      "w": 240,
+      "x": 0,
+      "y": 2820
+    },
+    "v2t3": {
+      "kind": "title1",
+      "maxW": 2640,
+      "page": "v2",
+      "text": "Percorso 2 · Analizzare i risultati",
+      "w": 240,
+      "x": 0,
+      "y": 4040
+    },
+    "v3n1": {
+      "fill": "blue",
+      "maxH": 800,
+      "page": "v3",
+      "text": "Spazio SESSIONE (blu)\n\nH  Home: due grandi scelte separate per colore e icona. Sessione = blu, Analisi = viola.\nS1 Prepara: robot e chi decide; controlli automatici.\nS2 Avvio: avanzamento, passa da solo.\nS3 Codice partecipante.\nS4 Sessione in corso: barra rossa 'Recording' + 'Why EEPY acted' (spiegazione dell'ultimo intervento, in diretta).\nS5 Chiusura: conferma, riepilogo, prossime azioni.\n\nPriorità pulsanti: 1 primario (pieno) per schermata, in basso a destra; secondari bordati; terziari come link; rosso solo per azioni che chiudono/cancellano.\n\nOgni blocco ha un'etichetta grigia (es. S1·B): usala per dirmi esattamente cosa cambiare.",
+      "w": 520,
+      "x": -600,
+      "y": 1460
+    },
+    "v3n2": {
+      "fill": "purple",
+      "maxH": 1200,
+      "page": "v3",
+      "text": "Spazio ANALISI (viola)\n\nA1 Tre domande in parole semplici + scelta della sessione.\nA2 La storia della sessione (explainable AI):\n · cosa pensava EEPY nel tempo (fasce colorate per stato)\n · ogni intervento è un segnaposto sulla linea del tempo, con l'esito\n · a destra, perché EEPY ha agito: stato deciso vs alternativa, sicurezza, prove a favore/contro (barre), cosa poteva fare (scala dei livelli), perché proprio questo intervento (bandit), cosa è successo dopo.\nA3 Cosa ha imparato su un partecipante: per ogni situazione, quanto funziona ogni intervento, con incertezza.\nA4 Prove con persone simulate: bandit contro scala fissa, serata dopo serata.\n\nTweaks: seleziona A2 e apri Tweaks per cambiare stile del grafico e livello di dettaglio.\n\nDati reali che esistono già nei log: stato e sicurezza, prove con il loro peso, alternativa scartata, livelli permessi, scelta del bandit, esito e reward. I valori mostrati sono esempi.",
+      "w": 520,
+      "x": -600,
+      "y": 2680
+    },
+    "v3t0": {
+      "kind": "title1",
+      "maxW": 3080,
+      "page": "v3",
+      "text": "v3 · Structure, priorities and your workspace",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "v3t1": {
+      "kind": "title1",
+      "maxW": 8000,
+      "page": "v3",
+      "text": "RUN A SESSION · blue space (press Play on H and follow the blue buttons)",
+      "w": 240,
+      "x": 0,
+      "y": 1160
+    },
+    "v3t2": {
+      "kind": "title1",
+      "maxW": 5520,
+      "page": "v3",
+      "text": "ANALYZE DATA · violet space · explainable AI",
+      "w": 240,
+      "x": 0,
+      "y": 2380
+    },
+    "v4n1": {
+      "fill": "blue",
+      "maxH": 1000,
+      "page": "v4",
+      "text": "Cosa è cambiato rispetto a v3\n\n• Sessione: 3 passi invece di 5. L'avvio non è più una schermata: compare come barra in cima al pannello di controllo, e il codice partecipante si inserisce lì.\n• S2 è il vecchio Wizard panel ridisegnato: stessi comandi e stessi tasti (scale Refocus 0–4 e Bedtime 0–5, frasi con tono hedged/direct, 'Say this', marcatori 'I observed', risposte del partecipante, STOP). Tutto viene dall'API del panel che esiste già.\n• Le parti automatiche (stato stimato, scale, Why, bandit) compaiono solo nelle modalità che le usano: prova il Tweak 'mode' su S2.\n\nOgni dato mostrato è elencato nella tavola 0 con il file o l'API da cui arriva.",
+      "w": 520,
+      "x": -600,
+      "y": 1600
+    },
+    "v4n2": {
+      "fill": "purple",
+      "maxH": 1200,
+      "page": "v4",
+      "text": "Analisi: solo dati reali\n\n• Grafico: probabilità da state.csv (Focused, Distracted, Drowsy, Very drowsy). 'Absent/Unknown' sono indicatori, mostrati come fascia tratteggiata, non come probabilità.\n• Interventi ed esiti: nudge_decision + nudge_outcome (success, no reaction, dismissed, snoozed, false alarm, not counted).\n• I tuoi marcatori: eventi 'annotation'.\n• Why: nudge_decision.explanation (stato vs alternativa, sicurezza, quota di ogni indizio, frase di contrasto, frase detta).\n• Scelta: livelli permessi, scelto, estrazioni del bandit e probabilità.\n• Reward: nudge_reward.\n• A3: data/bandit/<codice>.json (media, incertezza, tentativi, frase). 'Wait' è fisso a −0.7.\n• A4: eepy.bandit.smoke dà, per ogni persona simulata, la curva serata per serata ('curve'), i totali, interventi e falsi allarmi, e se ha trovato l'intervento migliore.\n\nRimosso da v3 perché non esiste nei dati: nomi dei livelli inventati, 'sicurezza media', 'Away' come probabilità.",
+      "w": 520,
+      "x": -600,
+      "y": 3020
+    },
+    "v4t0": {
+      "kind": "title1",
+      "maxW": 3080,
+      "page": "v4",
+      "text": "v4 · Simplified, and only what EEPY really knows",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "v4t1": {
+      "kind": "title1",
+      "maxW": 5520,
+      "page": "v4",
+      "text": "RUN A SESSION · 3 steps (press Play on H)",
+      "w": 240,
+      "x": 0,
+      "y": 1300
+    },
+    "v4t2": {
+      "kind": "title1",
+      "maxW": 5520,
+      "page": "v4",
+      "text": "ANALYZE DATA · explainable AI from real logs",
+      "w": 240,
+      "x": 0,
+      "y": 2720
+    },
+    "v5n1": {
+      "fill": "blue",
+      "maxH": 1100,
+      "page": "v5",
+      "text": "v5: stesse schermate e stessi dati della v4, rifatte solo con il tuo design system (EEPY/design-system).\n\n• Tema scuro, Mona Sans per i titoli, Inter per il testo, spaziature e raggi dai token.\n• Componenti veri del design system: TopNav, Button (primary bianco, secondary su surface-1), RadioGroup, TextInput, Switch, Badge, SpotlightCard, TemplateCard, Textarea.\n• Un solo pulsante primario per schermata.\n• Sticker: builder = setup, puppet = controllo a distanza (il pannello), scientist = sessione, cookie = pausa.\n• Sessione e Analisi separate dalla barra in alto (voce corrente evidenziata) e dal titolo grande di ogni schermata.\n\nDa decidere: il design system non ha colori per i grafici. Ho usato i suoi token: Focused = spotlight-violet, Distracted = spotlight-orange, Drowsy / Very drowsy = spotlight-magenta chiaro / pieno. Gli spotlight sono pensati per le card: dimmi se va bene o se preferisci altro.\n\nTweaks: S2 (mode, recording), A2 (detail).",
+      "w": 520,
+      "x": -600,
+      "y": 0
+    },
+    "v5t1": {
+      "kind": "title1",
+      "maxW": 8000,
+      "page": "v5",
+      "text": "Run a session · Eepy design system (press Play on H)",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "v5t2": {
+      "kind": "title1",
+      "maxW": 7040,
+      "page": "v5",
+      "text": "Analyze data · explainable AI · Advanced tools",
+      "w": 240,
+      "x": 0,
+      "y": 2780
+    },
+    "v5t3": {
+      "kind": "title1",
+      "maxW": 2300,
+      "page": "v5",
+      "text": "The whole flow · your review",
+      "w": 240,
+      "x": 0,
+      "y": 4800
+    },
+    "v5t4": {
+      "kind": "title1",
+      "maxW": 8000,
+      "page": "v5",
+      "text": "Before we study: your desk, step by step · each step is followed by its \"something went wrong\" screen",
+      "w": 240,
+      "x": 0,
+      "y": 1240
+    }
+  },
+  "order": [
+    "V4-Map.dc.html",
+    "V4-Feedback.dc.html",
+    "V4-Home.dc.html",
+    "V4-S1-Setup.dc.html",
+    "V4-S2-Control.dc.html",
+    "V4-S3-WrapUp.dc.html",
+    "V4-A1-Sessions.dc.html",
+    "V4-A2-Story.dc.html",
+    "V4-A3-Learned.dc.html",
+    "V4-A4-Simulate.dc.html",
+    "V3-Structure.dc.html",
+    "V3-Feedback.dc.html",
+    "V3-Home.dc.html",
+    "V3-S1-Setup.dc.html",
+    "V3-S2-Starting.dc.html",
+    "V3-S3-Participant.dc.html",
+    "V3-S4-Live.dc.html",
+    "V3-S5-WrapUp.dc.html",
+    "V3-A1-Start.dc.html",
+    "V3-A2-Story.dc.html",
+    "V3-A3-Learned.dc.html",
+    "V3-A4-Simulate.dc.html",
+    "Main.dc.html",
+    "Proposta-Overview.dc.html",
+    "Proposta-Mobile.dc.html",
+    "Proposta-Situazioni.dc.html",
+    "Proposta-Analisi.dc.html",
+    "Usabilita.dc.html",
+    "Flusso.dc.html",
+    "Home.dc.html",
+    "Sessione-1-Prepara.dc.html",
+    "Sessione-2-Avvio.dc.html",
+    "Sessione-3a-Codice.dc.html",
+    "Sessione-3b-InCorso.dc.html",
+    "Sessione-4-Chiusura.dc.html",
+    "Analizza-1-Scelta.dc.html",
+    "Analizza-2-Risultato.dc.html",
+    "V5-Flow.dc.html",
+    "V5-Home.dc.html",
+    "V5-S2a-Starting.dc.html",
+    "V5-S2b-Calibration.dc.html",
+    "V5-S2b-8-WorkFailed.dc.html",
+    "V5-S2b-7-GazeAgain.dc.html",
+    "V5-S2a-Problem.dc.html",
+    "V5-S2b-1-Face.dc.html",
+    "V5-S2b-2-Gaze.dc.html",
+    "V5-S2b-3-Work.dc.html",
+    "V5-S2b-4-Done.dc.html",
+    "V5-S2b-5-Skipped.dc.html",
+    "V5-S2b-6-Problem.dc.html",
+    "V5-Advanced.dc.html",
+    "V5-S1-Setup.dc.html",
+    "V5-S2-Control.dc.html",
+    "V5-S3-WrapUp.dc.html",
+    "V5-A1-Sessions.dc.html",
+    "V5-A2-Story.dc.html",
+    "V5-A3-Learned.dc.html",
+    "V4-Feedback-yhnj.dc.html"
+  ],
+  "pages": [
+    {
+      "id": "v5",
+      "name": "v5 · Eepy design system (current)"
+    },
+    {
+      "id": "v4",
+      "name": "v4 · archive (feasible, plain style)"
+    },
+    {
+      "id": "v3",
+      "name": "v3 · archive (English)"
+    },
+    {
+      "id": "v2",
+      "name": "v2 · archivio (flusso guidato, IT)"
+    },
+    {
+      "id": "v1",
+      "name": "v1 · archivio (prima proposta)"
+    }
+  ],
+  "title": "EEPY launcher: proposta UI"
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Desk check 2: gaze (participant screen)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(77,163,255,.6)}50%{box-shadow:0 0 0 22px rgba(77,163,255,0)}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+.dot{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%}
+.opnote{position:absolute;right:24px;bottom:24px;width:340px;padding:14px 16px;border-radius:12px;border:1px dashed #5c5c5c;background:rgba(20,20,20,.85);color:#e6e6e6;font:500 13px/1.4 Inter, system-ui, sans-serif}
+.opnote b{color:#fff}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none}}
+</style>
+</helmet>
+<div style="position: relative; overflow: hidden; width: 1440px; height: 900px; background: #000; color: #ebebeb; font-family: Inter, system-ui, sans-serif;">
+<span class="dot" style="left: 720px; top: 450px; background: #3ecf6e;"></span><span class="dot" style="left: 60px; top: 60px; background: #3ecf6e;"></span><span class="dot" style="left: 1380px; top: 60px; background: #3ecf6e;"></span><span class="dot pulse" style="left: 60px; top: 840px; width: 34px; height: 34px; margin: -17px 0 0 -17px; background: #3d82f0;"></span><span class="dot" style="left: 1380px; top: 840px; border: 3px solid #4a4a4a; box-sizing: border-box;"></span>
+  <div style="position: absolute; left: 0; right: 0; top: 330px; text-align: center;"><div style="font-size: 32px; font-weight: 600; color: #ebebeb;">Look at the blue dot</div><div style="font-size: 18px; color: #bdbdbd; margin-top: 8px;">until it turns green · dot 4 of 5</div></div>
+  <div style="position: absolute; left: 50%; top: 540px; transform: translateX(-50%); display: flex; gap: 8px; font-size: 13px; color: #9a9a9a;"><span style="padding: 5px 12px; border-radius: 99px; background: #1c1c1c; color: #fff;">a · the dots</span><span style="padding: 5px 12px; border-radius: 99px; border: 1px solid #333;">b · your notes</span><span style="padding: 5px 12px; border-radius: 99px; border: 1px solid #333;">c · look away, back at the beep</span></div>
+  <span style="position: absolute; left: 24px; bottom: 20px; font-size: 13px; color: #8a8a8a;">Q: stop</span>
+  <div class="opnote" role="note"><b>Participant's screen, full screen.</b> The dots sit at the real corners of the screen, so the eyes move as far as they do while working. Then the notes and a look to the side, about 40 s in all.<br><a href="V5-S2b-3-Work.dc.html">Next: normal work (demo)</a> · <a href="V5-S2b-7-GazeAgain.dc.html">If a dot doesn't work (demo)</a></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+Inter: Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+Mona Sans: Copyright 2023 The Mona Sans Project Authors (https://github.com/github/mona-sans)
+
+Both fonts are licensed under the SIL Open Font License, Version 1.1.
+The license text is available with an FAQ at: https://openfontlicense.org
+
+The font files in this folder are the unmodified latin and latin-ext subsets served by Google Fonts.

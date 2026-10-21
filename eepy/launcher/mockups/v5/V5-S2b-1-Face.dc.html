@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Desk check 1: face (participant screen)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/designsystem/tokens.css">
+<link rel="stylesheet" href="ds/designsystem/components/bundle.css">
+<script src="ds/designsystem/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:var(--accent-blue)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(77,163,255,.6)}50%{box-shadow:0 0 0 22px rgba(77,163,255,0)}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+.dot{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%}
+.opnote{position:absolute;right:24px;bottom:24px;width:340px;padding:14px 16px;border-radius:12px;border:1px dashed #5c5c5c;background:rgba(20,20,20,.85);color:#e6e6e6;font:500 13px/1.4 Inter, system-ui, sans-serif}
+.opnote b{color:#fff}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none}}
+</style>
+</helmet>
+<div style="position: relative; overflow: hidden; width: 1440px; height: 900px; background: #000; color: #ebebeb; font-family: Inter, system-ui, sans-serif;">
+<svg viewBox="0 0 1440 900" width="1440" height="900" aria-hidden="true" style="position: absolute; inset: 0;">
+    <rect width="1440" height="900" fill="#151515"></rect>
+    <ellipse cx="720" cy="430" rx="150" ry="190" fill="#2a2a2a"></ellipse>
+    <path d="M520 900 C540 720, 900 720, 920 900 Z" fill="#2a2a2a"></path>
+    <ellipse cx="665" cy="405" rx="20" ry="11" fill="#d9d9d9"></ellipse><ellipse cx="775" cy="405" rx="20" ry="11" fill="#d9d9d9"></ellipse>
+    <path d="M685 520 Q720 540 755 520" fill="none" stroke="#d9d9d9" stroke-width="5" stroke-linecap="round"></path>
+    <rect x="500" y="170" width="440" height="560" rx="24" fill="none" stroke="#2878ff" stroke-width="5"></rect>
+  </svg>
+  <div style="position: absolute; left: 0; right: 0; top: 48px; text-align: center;"><div style="font-size: 34px; font-weight: 600;">Sit as you normally work</div><div style="font-size: 18px; color: #bdbdbd; margin-top: 8px;">Keep your whole face inside the blue box</div></div>
+  <div style="position: absolute; left: 0; right: 0; bottom: 60px; text-align: center; font-size: 18px; color: #7fd07f;">Face found · inside the box · checking the light…</div>
+  <span style="position: absolute; left: 24px; bottom: 20px; font-size: 13px; color: #8a8a8a;">Q: stop</span>
+  <div class="opnote" role="note"><b>Participant's screen, full screen.</b> This is my calibration window: it covers the launcher until the face check passes (about 5 s). I say the same out loud.<br><a href="V5-S2b-2-Gaze.dc.html">Next: gaze (demo)</a> · <a href="V5-S2b-6-Problem.dc.html">If the face isn't right (demo)</a></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
