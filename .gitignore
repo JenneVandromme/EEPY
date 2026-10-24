@@ -63,3 +63,10 @@ Thumbs.db
 
 # MuJoCo drops this in the working directory on simulator startup errors
 MUJOCO_LOG.TXT
+
+# Report: the LaTeX, figures, results and drafts stay local. Only the scripts that
+# reproduce the report's numbers and figures are tracked (report/scripts/*.py).
+report/*
+!report/scripts/
+report/scripts/*
+!report/scripts/*.py
